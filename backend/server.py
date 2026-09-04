@@ -4,7 +4,9 @@ load_dotenv()
 import os
 import re
 import hmac
+import io
 import uuid
+import hashlib
 import ipaddress
 import logging
 from datetime import datetime, date, timezone, timedelta
@@ -15,6 +17,7 @@ from urllib.parse import urlparse
 import bcrypt
 import jwt
 import httpx
+import pandas as pd
 from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -610,6 +613,194 @@ async def operators_stats(user: dict = Depends(get_current_user)):
                        "clienti_gestiti": tot_clients,
                        "chiusi_mese": per_status.get("cambio_effettuato", 0) + per_status.get("rinnovato", 0)})
     return result
+
+# ---------------- Import Google Sheet ----------------
+
+HEADER_MAP = {
+    "nome": "nome", "cognome": "cognome", "ragione sociale": "cognome",
+    "codice fiscale": "codice_fiscale", "cf": "codice_fiscale",
+    "p iva": "p_iva", "piva": "p_iva", "partita iva": "p_iva",
+    "indirizzo": "indirizzo", "pod": "pod", "pdr": "pdr", "iban": "iban",
+    "mail": "email", "email": "email", "e mail": "email",
+    "telefono": "telefono", "tel": "telefono", "cellulare": "telefono",
+    "kw": "kw_potenza", "potenza": "kw_potenza", "potenza kw": "kw_potenza", "potenza luce": "kw_potenza",
+    "tipo bolletta": "tipo_bolletta", "tipo": "tipo_bolletta", "bolletta": "tipo_bolletta",
+    "fornitore": "fornitore_provenienza", "fornitore di provenienza": "fornitore_provenienza",
+    "fornitore attuale": "fornitore_provenienza",
+    "costo al kw": "costo_kwh_attuale", "costo kwh": "costo_kwh_attuale",
+    "costo al kwh": "costo_kwh_attuale", "prezzo kwh": "costo_kwh_attuale",
+    "spese fisse": "spese_fisse_attuale", "spese fisse attuali": "spese_fisse_attuale",
+    "costo smc": "costo_smc_attuale", "costo al smc": "costo_smc_attuale", "prezzo smc": "costo_smc_attuale",
+    "data contratto": "data_contratto", "data di contratto": "data_contratto",
+    "data verifica": "data_verifica", "data di verifica": "data_verifica",
+    "data cambio": "data_cambio", "data di cambio": "data_cambio",
+    "tipo contratto": "tipo_contratto", "fisso o variabile": "tipo_contratto",
+    "nuovo fornitore": "nuovo_fornitore", "fornitore nuovo": "nuovo_fornitore",
+    "costo kwh nuovo": "costo_kwh_nuovo", "nuovo costo kwh": "costo_kwh_nuovo", "nuovo costo al kw": "costo_kwh_nuovo",
+    "spese fisse nuovo": "spese_fisse_nuovo", "nuove spese fisse": "spese_fisse_nuovo",
+    "costo smc nuovo": "costo_smc_nuovo", "nuovo costo smc": "costo_smc_nuovo",
+    "privacy": "privacy_firmata", "privacy firmata": "privacy_firmata",
+    "pagato": "pagato", "note": "note",
+    "lavorazione": "lavorazione", "stato": "lavorazione", "tipologia lavorazione": "lavorazione",
+}
+
+LAV_BY_LABEL = {
+    "cambiare": "cambiare", "da cambiare": "cambiare",
+    "non cambiare": "non_cambiare", "cambio effettuato": "cambio_effettuato",
+    "in quotazione": "in_quotazione", "richieste bollette": "richieste_bollette",
+    "richieste le bollette": "richieste_bollette", "in attesa ok": "in_attesa_ok",
+    "in attesa ok cliente": "in_attesa_ok", "problema tecnico": "problema_tecnico",
+    "da quotare": "da_quotare", "contattare cliente": "contattare_cliente",
+    "non vuole cambiare": "non_vuole_cambiare", "passa in negozio": "passa_in_negozio",
+    "attesa documenti": "attesa_documenti", "rinnovato": "rinnovato",
+}
+LAV_BY_LABEL.update({l.replace("_", " "): l for l in LAVORAZIONI})
+
+def _norm_header(h: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[._/\\-]", " ", str(h)).strip().lower())
+
+def _parse_float(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() == "":
+        return None
+    try:
+        return float(re.sub(r"[^\d,.\-]", "", str(v)).replace(",", "."))
+    except ValueError:
+        return None
+
+def _parse_date(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)) or str(v).strip() == "":
+        return None
+    try:
+        return pd.to_datetime(str(v).strip(), dayfirst=True).date().isoformat()
+    except Exception:
+        return None
+
+def _parse_bool(v) -> bool:
+    return str(v).strip().lower() in ("si", "sì", "yes", "true", "1", "x", "ok", "pagato", "firmata")
+
+def _norm_lavorazione(v) -> str:
+    return LAV_BY_LABEL.get(str(v).strip().lower(), "da_quotare")
+
+def _parse_sheet_csv(text: str, store_id: str, admin: dict):
+    try:
+        df = pd.read_csv(io.StringIO(text), dtype=str)
+    except Exception:
+        return None, "Formato del foglio non leggibile"
+    col_map = {}
+    for col in df.columns:
+        field = HEADER_MAP.get(_norm_header(col))
+        if field and field not in col_map.values():
+            col_map[col] = field
+    if "nome" not in col_map.values() and "cognome" not in col_map.values():
+        return None, f"Colonne 'nome'/'cognome' non trovate. Intestazioni lette: {', '.join(str(c) for c in df.columns[:15])}"
+    now = datetime.now(timezone.utc).isoformat()
+    docs, skipped = [], 0
+    for _, row in df.iterrows():
+        data = {field: (row[col] if pd.notna(row[col]) else "") for col, field in col_map.items()}
+        nome = str(data.get("nome", "")).strip()
+        cognome = str(data.get("cognome", "")).strip()
+        if not nome and not cognome:
+            skipped += 1
+            continue
+        tb = str(data.get("tipo_bolletta", "")).strip().lower()
+        tc = str(data.get("tipo_contratto", "")).strip().lower()
+        pagato = _parse_bool(data.get("pagato", ""))
+        docs.append({
+            "id": str(uuid.uuid4()),
+            "nome": nome, "cognome": cognome,
+            "tipo_cliente": "business" if str(data.get("p_iva", "")).strip() else "privato",
+            "codice_fiscale": str(data.get("codice_fiscale", "")).strip().upper(),
+            "p_iva": str(data.get("p_iva", "")).strip(),
+            "indirizzo": str(data.get("indirizzo", "")).strip(),
+            "pod": str(data.get("pod", "")).strip().upper(),
+            "pdr": str(data.get("pdr", "")).strip(),
+            "iban": str(data.get("iban", "")).strip().upper(),
+            "email": str(data.get("email", "")).strip(),
+            "telefono": str(data.get("telefono", "")).strip(),
+            "kw_potenza": _parse_float(data.get("kw_potenza")),
+            "tipo_bolletta": "gas" if "gas" in tb else "luce",
+            "fornitore_provenienza": str(data.get("fornitore_provenienza", "")).strip(),
+            "costo_kwh_attuale": _parse_float(data.get("costo_kwh_attuale")),
+            "spese_fisse_attuale": _parse_float(data.get("spese_fisse_attuale")),
+            "costo_smc_attuale": _parse_float(data.get("costo_smc_attuale")),
+            "data_contratto": _parse_date(data.get("data_contratto")),
+            "data_verifica": _parse_date(data.get("data_verifica")),
+            "data_cambio": _parse_date(data.get("data_cambio")),
+            "tipo_contratto": "variabile" if "var" in tc else "fisso",
+            "nuovo_fornitore": str(data.get("nuovo_fornitore", "")).strip(),
+            "costo_kwh_nuovo": _parse_float(data.get("costo_kwh_nuovo")),
+            "spese_fisse_nuovo": _parse_float(data.get("spese_fisse_nuovo")),
+            "costo_smc_nuovo": _parse_float(data.get("costo_smc_nuovo")),
+            "privacy_firmata": _parse_bool(data.get("privacy_firmata", "")),
+            "note": str(data.get("note", "")).strip(),
+            "lavorazione": _norm_lavorazione(data.get("lavorazione", "")),
+            "venditore_id": store_id, "operatore_id": "",
+            "pagato": pagato,
+            "last_payment_date": date.today().isoformat() if pagato else None,
+            "created_by": admin["id"], "created_at": now, "updated_at": now,
+        })
+    return (docs, skipped), None
+
+async def _insert_imported(docs: list, admin: dict):
+    now = datetime.now(timezone.utc).isoformat()
+    await db.clients.insert_many(docs)
+    await db.lavorazioni_log.insert_many([
+        {"id": str(uuid.uuid4()), "client_id": d["id"], "client_name": f"{d['cognome']} {d['nome']}".strip(),
+         "operatore_id": admin["id"], "operatore_name": admin["name"],
+         "status": d["lavorazione"], "note": "Importato da Google Sheet", "created_at": now}
+        for d in docs])
+
+class SheetImportInput(BaseModel):
+    sheet_url: str
+    store_id: str = ""
+    all_tabs: bool = False
+
+@api_router.post("/import/google-sheet")
+async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(require_admin)):
+    m = re.search(r"/d/([a-zA-Z0-9\-_]+)", input.sheet_url)
+    if not m:
+        raise HTTPException(status_code=400, detail="Link Google Sheet non valido")
+    sheet_id = m.group(1)
+    gid_m = re.search(r"gid=(\d+)", input.sheet_url)
+
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http_client:
+        if input.all_tabs:
+            stores = await db.stores.find({}, {"_id": 0}).to_list(500)
+            fallback_resp = await http_client.get(
+                f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=__non_esiste__")
+            if fallback_resp.status_code != 200:
+                raise HTTPException(status_code=400, detail="Impossibile leggere il foglio. Verifica che sia condiviso: 'Chiunque abbia il link può visualizzare'.")
+            fallback_hash = hashlib.sha256(fallback_resp.text.encode()).hexdigest()
+            report, total_imported = [], 0
+            for s in stores:
+                r = await http_client.get(
+                    f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={s['nome']}")
+                if r.status_code != 200 or hashlib.sha256(r.text.encode()).hexdigest() == fallback_hash:
+                    report.append({"store": s["nome"], "status": "pagina_non_trovata", "imported": 0})
+                    continue
+                parsed, err = _parse_sheet_csv(r.text, s["id"], admin)
+                if err:
+                    report.append({"store": s["nome"], "status": "errore", "detail": err, "imported": 0})
+                    continue
+                docs, skipped = parsed
+                if docs:
+                    await _insert_imported(docs, admin)
+                total_imported += len(docs)
+                report.append({"store": s["nome"], "status": "ok", "imported": len(docs), "skipped": skipped})
+            return {"mode": "all_tabs", "total_imported": total_imported, "report": report,
+                    "hint": "Le pagine segnate come non trovate devono avere lo stesso nome del negozio, oppure importale singolarmente dal link della pagina (contiene gid)."}
+
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid_m.group(1) if gid_m else '0'}"
+        resp = await http_client.get(csv_url)
+    if resp.status_code != 200 or "text/csv" not in resp.headers.get("content-type", ""):
+        raise HTTPException(status_code=400, detail="Impossibile leggere il foglio. Verifica che sia condiviso: 'Chiunque abbia il link può visualizzare'.")
+    parsed, err = _parse_sheet_csv(resp.text, input.store_id, admin)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    docs, skipped = parsed
+    if docs:
+        await _insert_imported(docs, admin)
+    return {"imported": len(docs), "skipped": skipped}
 
 # ---------------- Cron ----------------
 

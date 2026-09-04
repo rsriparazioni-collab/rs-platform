@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Trash2, Pencil, ShieldCheck, Wallet } from "lucide-react";
+import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Trash2, Pencil, ShieldCheck, Wallet, Upload } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -9,6 +9,8 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Label } from "../components/ui/label";
 
 export default function Clienti() {
   const { user } = useAuth();
@@ -18,7 +20,40 @@ export default function Clienti() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [importStore, setImportStore] = useState("");
+  const [importMode, setImportMode] = useState("single");
+  const [importResult, setImportResult] = useState(null);
+  const [importing, setImporting] = useState(false);
   const canSeeAll = user.role === "admin" || user.can_view_all;
+
+  const runImport = async (e) => {
+    e.preventDefault();
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const res = await api.post("/import/google-sheet", {
+        sheet_url: importUrl,
+        store_id: importMode === "single" ? importStore : "",
+        all_tabs: importMode === "all",
+      });
+      if (res.data.mode === "all_tabs") {
+        setImportResult(res.data);
+        const ok = res.data.report.filter((r) => r.status === "ok").length;
+        toast.success(`Importazione completata: ${res.data.total_imported} clienti da ${ok} negozi`);
+      } else {
+        toast.success(`Importazione completata: ${res.data.imported} clienti importati, ${res.data.skipped} righe saltate`);
+        setImportOpen(false);
+        setImportUrl("");
+      }
+      load();
+    } catch (err) {
+      toast.error(apiError(err, "Importazione fallita"));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const load = useCallback(() => {
     const params = {};
@@ -75,10 +110,18 @@ export default function Clienti() {
           <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">Clienti</h1>
           <p className="mt-1 text-sm text-slate-500">{clients.length} utenze {canSeeAll ? "in totale" : "del tuo negozio"}</p>
         </div>
-        <Button onClick={() => { setEditing(null); setFormOpen(true); }} data-testid="add-client-button"
-                className="gap-2 bg-slate-900 hover:bg-slate-800">
-          <Plus className="h-4 w-4" /> Nuovo cliente
-        </Button>
+        <div className="flex gap-2">
+          {user.role === "admin" && (
+            <Button variant="outline" onClick={() => { setImportStore(meta.stores[0]?.id || ""); setImportOpen(true); }}
+                    data-testid="import-sheet-button" className="gap-2">
+              <Upload className="h-4 w-4" /> Importa da Google Sheet
+            </Button>
+          )}
+          <Button onClick={() => { setEditing(null); setFormOpen(true); }} data-testid="add-client-button"
+                  className="gap-2 bg-slate-900 hover:bg-slate-800">
+            <Plus className="h-4 w-4" /> Nuovo cliente
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="filters-bar">
@@ -287,6 +330,67 @@ export default function Clienti() {
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={importOpen} onOpenChange={(o) => { setImportOpen(o); if (!o) setImportResult(null); }}>
+        <DialogContent data-testid="import-sheet-dialog">
+          <DialogHeader><DialogTitle className="font-heading text-xl">Importa da Google Sheet</DialogTitle></DialogHeader>
+          <form onSubmit={runImport} className="space-y-4" data-testid="import-sheet-form">
+            <div className="space-y-1.5">
+              <Label>Cosa importare</Label>
+              <Select value={importMode} onValueChange={(v) => { setImportMode(v); setImportResult(null); }}>
+                <SelectTrigger data-testid="import-mode-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="single">Una pagina (usa il link con gid della pagina)</SelectItem>
+                  <SelectItem value="all">Tutte le pagine — una per negozio</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Link del foglio Google *</Label>
+              <Input required value={importUrl} onChange={(e) => setImportUrl(e.target.value)}
+                     placeholder="https://docs.google.com/spreadsheets/d/..." data-testid="import-sheet-url-input" />
+              <p className="text-xs text-slate-500">
+                Il foglio deve essere condiviso con "Chiunque abbia il link può visualizzare".
+                {importMode === "all"
+                  ? " Ogni pagina deve avere lo stesso nome del negozio (es. Tirano, Sondalo, Gravedona...)."
+                  : " Per importare una pagina specifica, aprila nel foglio e copia il link (contiene gid=...)."}
+              </p>
+            </div>
+            {importMode === "single" && (
+              <div className="space-y-1.5">
+                <Label>Assegna al negozio</Label>
+                <Select value={importStore} onValueChange={setImportStore}>
+                  <SelectTrigger data-testid="import-sheet-store-select"><SelectValue placeholder="Seleziona negozio" /></SelectTrigger>
+                  <SelectContent>
+                    {meta.stores.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.nome}{s.referente ? ` (${s.referente})` : ""}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {importResult && (
+              <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-lg border border-slate-200 p-3" data-testid="import-report">
+                {importResult.report.map((r) => (
+                  <div key={r.store} className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-slate-800">{r.store}</span>
+                    {r.status === "ok"
+                      ? <span className="text-xs font-semibold text-emerald-700">{r.imported} importati{r.skipped ? `, ${r.skipped} saltati` : ""}</span>
+                      : <span className="text-xs font-semibold text-rose-600" title={r.detail || ""}>Pagina non trovata</span>}
+                  </div>
+                ))}
+                <p className="pt-1 text-xs text-slate-500">{importResult.hint}</p>
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setImportOpen(false)} data-testid="import-sheet-cancel">Chiudi</Button>
+              <Button type="submit" disabled={importing} className="bg-slate-900 hover:bg-slate-800" data-testid="import-sheet-submit">
+                {importing ? "Importazione..." : "Importa clienti"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <ClientForm open={formOpen} onClose={() => setFormOpen(false)} client={editing} meta={meta} onSaved={load} />
     </div>
