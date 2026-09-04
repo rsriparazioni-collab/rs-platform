@@ -6,7 +6,7 @@ Gestionale per utenze clienti con rinnovi a 10 mesi (utenza 12 mesi, attivazione
 ## Scelte utente
 - Auth: email+password con ruoli (accesso secondario rispetto al sito WordPress/Elementor)
 - Devis = amministratore
-- Alert anche via email a cmbiaora.rs@gmail.com (BLOCCATA: il proxy email la rifiuta come undeliverable — probabile refuso, in attesa conferma se sia cambiaora.rs@gmail.com)
+- Alert anche via email a cambiaora.rs@gmail.com (confermata dall'utente il 2026-09-04)
 - Design moderno (slate/azure, Outfit+Inter)
 - Import: link Google Sheet condiviso, colonne corrispondenti ai campi, una pagina per negozio
 
@@ -31,7 +31,6 @@ Gestionale per utenze clienti con rinnovi a 10 mesi (utenza 12 mesi, attivazione
 Vedi /app/memory/test_credentials.md
 
 ## Backlog prioritizzato
-- P0: confermare email alert corretta (cmbiaora vs cambiaora) e aggiornare ALERT_EMAIL in backend/.env
 - P0: eseguire import reale dai Google Sheet dell'utente (serve il link condiviso "chiunque abbia il link")
 - P1: notifiche email ai negozi quando viene registrato il loro compenso
 - P1: export clienti in Excel/CSV
@@ -40,4 +39,3 @@ Vedi /app/memory/test_credentials.md
 
 ## Prossimi task
 1. Ricevere link Google Sheet dall'utente ed eseguire l'importazione per negozio
-2. Conferma indirizzo email alert
