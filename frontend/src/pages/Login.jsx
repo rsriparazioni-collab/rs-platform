@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Zap, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiError } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -31,28 +31,23 @@ export default function Login() {
 
   return (
     <div className="flex min-h-screen" data-testid="login-page">
-      <div className="hidden w-1/2 flex-col justify-between bg-gradient-to-br from-slate-900 via-slate-800 to-sky-950 p-12 lg:flex">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10">
-            <Zap className="h-6 w-6 text-amber-400" />
-          </div>
-          <span className="font-heading text-lg font-bold text-white">Gestionale Utenze</span>
-        </div>
+      <div className="hidden w-1/2 flex-col justify-between bg-gradient-to-br from-fuchsia-700 via-violet-700 to-blue-800 p-12 lg:flex">
+        <img src="/cambiaora-logo.jpg" alt="CambiaOra - Risparmia su energia e servizi"
+             className="w-72 rounded-2xl bg-white p-4 shadow-2xl" data-testid="login-logo" />
         <div>
           <h1 className="font-heading text-4xl font-bold leading-tight text-white lg:text-5xl">
             Rinnovi luce & gas,<br />sotto controllo.
           </h1>
-          <p className="mt-4 max-w-md text-base text-slate-300">
-            Gestisci clienti, contratti, rinnovi a 10 mesi e compensi dei negozi da un'unica postazione di comando.
+          <p className="mt-4 max-w-md text-base text-fuchsia-100">
+            Il gestionale CambiaOra: clienti, contratti, rinnovi a 10 mesi e compensi dei negozi da un'unica postazione di comando.
           </p>
         </div>
-        <p className="text-xs text-slate-400">Accesso riservato al team autorizzato</p>
+        <p className="text-xs text-fuchsia-200">Ci trovi a Sondrio e Sondalo · Accesso riservato al team autorizzato</p>
       </div>
       <div className="flex flex-1 items-center justify-center bg-slate-50 p-6">
         <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden flex items-center gap-2">
-            <Zap className="h-6 w-6 text-amber-500" />
-            <span className="font-heading text-lg font-bold">Gestionale Utenze</span>
+          <div className="mb-8 lg:hidden flex justify-center">
+            <img src="/cambiaora-logo.jpg" alt="CambiaOra" className="w-56 rounded-xl bg-white p-3 shadow-lg" data-testid="login-logo-mobile" />
           </div>
           <h2 className="font-heading text-2xl font-bold text-slate-900">Accedi</h2>
           <p className="mt-1 text-sm text-slate-500">Inserisci le tue credenziali per continuare</p>
@@ -73,7 +68,7 @@ export default function Login() {
               </div>
             )}
             <Button type="submit" disabled={loading} data-testid="login-submit-button"
-                    className="h-11 w-full bg-slate-900 text-white hover:bg-slate-800">
+                    className="h-11 w-full bg-gradient-to-r from-fuchsia-600 to-blue-700 text-white hover:opacity-90">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Accedi"}
             </Button>
           </form>

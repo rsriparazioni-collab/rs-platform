@@ -14,6 +14,7 @@ from html import escape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
+import csv
 import bcrypt
 import jwt
 import httpx
@@ -653,6 +654,8 @@ LAV_BY_LABEL = {
     "da quotare": "da_quotare", "contattare cliente": "contattare_cliente",
     "non vuole cambiare": "non_vuole_cambiare", "passa in negozio": "passa_in_negozio",
     "attesa documenti": "attesa_documenti", "rinnovato": "rinnovato",
+    "chieste le bollette": "richieste_bollette", "in attesa di ok del cliente": "in_attesa_ok",
+    "attesa ok cliente": "in_attesa_ok", "in attesa di ok cliente": "in_attesa_ok",
 }
 LAV_BY_LABEL.update({l.replace("_", " "): l for l in LAVORAZIONI})
 
@@ -680,6 +683,108 @@ def _parse_bool(v) -> bool:
 
 def _norm_lavorazione(v) -> str:
     return LAV_BY_LABEL.get(str(v).strip().lower(), "da_quotare")
+
+def _parse_date_flex(v):
+    v = str(v).strip()
+    if not v:
+        return None
+    if re.fullmatch(r"\d{5}", v):
+        return (date(1899, 12, 30) + timedelta(days=int(v))).isoformat()
+    m = re.match(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})", v)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if y < 100:
+            y += 2000
+        try:
+            return date(y, mo, d).isoformat()
+        except ValueError:
+            return None
+    return _parse_date(v)
+
+def _parse_gestionale_csv(text: str, store_id: str, admin: dict):
+    rows = list(csv.reader(io.StringIO(text)))
+    hdr_i = None
+    for i, r in enumerate(rows[:10]):
+        if any(re.sub(r"[^a-z0-9 ]", "", str(c).lower()).strip() == "nome cognome" for c in r):
+            hdr_i = i
+            break
+    if hdr_i is None:
+        return None, "Intestazioni 'nome cognome' non trovate"
+    now = datetime.now(timezone.utc).isoformat()
+    docs, skipped = [], 0
+    for r in rows[hdr_i + 1:]:
+        starts = []
+        for j, c in enumerate(r):
+            c = str(c).strip()
+            if re.fullmatch(r"\d{1,4}", c) and j + 1 < len(r) and str(r[j + 1]).strip():
+                window = [str(x).strip().upper() for x in r[j:j + 12]]
+                if "LUCE" in window or "GAS" in window:
+                    starts.append(j)
+        if not starts:
+            skipped += 1
+        for s in starts:
+            b = [str(x).strip() for x in r[s:s + 22]] + [""] * max(0, 22 - len(r[s:s + 22]))
+            servizio = b[10].upper()
+            if servizio not in ("LUCE", "GAS"):
+                skipped += 1
+                continue
+            toks = b[1].split()
+            if not toks:
+                skipped += 1
+                continue
+            tar = [float(n.replace(",", ".")) for n in re.findall(r"\d+[.,]\d+|\d+", b[16])]
+            prezzo_n, fisse_n = None, None
+            if len(tar) == 2:
+                prezzo_n, fisse_n = tar
+            elif len(tar) == 1 and tar[0] < 5:
+                prezzo_n = tar[0]
+            note = b[20]
+            if b[16] and len(tar) > 2:
+                note = (note + " | Tariffa nuova: " + b[16]).strip(" |")
+            lav_raw = b[21].strip().lower()
+            lav = _norm_lavorazione(lav_raw)
+            if lav_raw and lav == "da_quotare" and lav_raw != "da quotare":
+                note = (note + " | Stato foglio: " + b[21]).strip(" |")
+            if b[19].strip().lower() == "annullato":
+                note = (note + " | Pagamento: annullato").strip(" |")
+            pagato = _parse_bool(b[19])
+            is_gas = servizio == "GAS"
+            docs.append({
+                "id": str(uuid.uuid4()),
+                "nome": toks[0], "cognome": " ".join(toks[1:]),
+                "tipo_cliente": "business" if b[3] else "privato",
+                "codice_fiscale": b[2].upper(), "p_iva": b[3], "indirizzo": b[4],
+                "pod": "" if is_gas else b[5].upper(), "pdr": b[5] if is_gas else "",
+                "iban": b[6].upper(), "email": b[7], "telefono": b[8],
+                "kw_potenza": _parse_float(b[9]),
+                "tipo_bolletta": "gas" if is_gas else "luce",
+                "fornitore_provenienza": b[11],
+                "costo_kwh_attuale": None, "spese_fisse_attuale": None, "costo_smc_attuale": None,
+                "data_contratto": _parse_date_flex(b[14]),
+                "data_verifica": _parse_date_flex(b[12]),
+                "data_cambio": _parse_date_flex(b[13]),
+                "tipo_contratto": "variabile" if "var" in b[15].lower() else "fisso",
+                "nuovo_fornitore": b[17],
+                "costo_kwh_nuovo": None if is_gas else prezzo_n,
+                "spese_fisse_nuovo": fisse_n,
+                "costo_smc_nuovo": prezzo_n if is_gas else None,
+                "privacy_firmata": False,
+                "note": note,
+                "lavorazione": lav,
+                "venditore_id": store_id, "operatore_id": "",
+                "pagato": pagato,
+                "last_payment_date": date.today().isoformat() if pagato else None,
+                "created_by": admin["id"], "created_at": now, "updated_at": now,
+            })
+    if not docs:
+        return None, "Nessun cliente riconosciuto nel formato gestionale"
+    return (docs, skipped), None
+
+def _parse_any_csv(text: str, store_id: str, admin: dict):
+    head = text[:2000].lower()
+    if "nome cognome" in head and "servizio" in head:
+        return _parse_gestionale_csv(text, store_id, admin)
+    return _parse_sheet_csv(text, store_id, admin)
 
 def _parse_sheet_csv(text: str, store_id: str, admin: dict):
     try:
@@ -754,6 +859,7 @@ class SheetImportInput(BaseModel):
     sheet_url: str
     store_id: str = ""
     all_tabs: bool = False
+    sheet_name: str = ""
 
 @api_router.post("/import/google-sheet")
 async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(require_admin)):
@@ -778,7 +884,7 @@ async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(req
                 if r.status_code != 200 or hashlib.sha256(r.text.encode()).hexdigest() == fallback_hash:
                     report.append({"store": s["nome"], "status": "pagina_non_trovata", "imported": 0})
                     continue
-                parsed, err = _parse_sheet_csv(r.text, s["id"], admin)
+                parsed, err = _parse_any_csv(r.text, s["id"], admin)
                 if err:
                     report.append({"store": s["nome"], "status": "errore", "detail": err, "imported": 0})
                     continue
@@ -790,11 +896,14 @@ async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(req
             return {"mode": "all_tabs", "total_imported": total_imported, "report": report,
                     "hint": "Le pagine segnate come non trovate devono avere lo stesso nome del negozio, oppure importale singolarmente dal link della pagina (contiene gid)."}
 
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid_m.group(1) if gid_m else '0'}"
+        if input.sheet_name:
+            csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={input.sheet_name}"
+        else:
+            csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid_m.group(1) if gid_m else '0'}"
         resp = await http_client.get(csv_url)
-    if resp.status_code != 200 or "text/csv" not in resp.headers.get("content-type", ""):
+    if resp.status_code != 200 or ("text/csv" not in resp.headers.get("content-type", "") and "text/plain" not in resp.headers.get("content-type", "")):
         raise HTTPException(status_code=400, detail="Impossibile leggere il foglio. Verifica che sia condiviso: 'Chiunque abbia il link può visualizzare'.")
-    parsed, err = _parse_sheet_csv(resp.text, input.store_id, admin)
+    parsed, err = _parse_any_csv(resp.text, input.store_id, admin)
     if err:
         raise HTTPException(status_code=400, detail=err)
     docs, skipped = parsed
