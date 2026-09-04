@@ -132,7 +132,9 @@ def compute_dates(c: dict) -> dict:
 
 async def build_alerts(user: dict) -> dict:
     scope = client_scope_filter(user)
-    clients = await db.clients.find(scope, {"_id": 0}).to_list(5000)
+    projection = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "data_contratto": 1,
+                  "lavorazione": 1, "tipo_bolletta": 1, "pagato": 1, "last_payment_date": 1}
+    clients = await db.clients.find(scope, projection).to_list(5000)
     stores = await db.stores.find({}, {"_id": 0}).to_list(500)
     today = date.today()
     rinnovi, pagamenti_clienti, pagamenti_negozi = [], [], []
@@ -474,7 +476,12 @@ async def list_clients(user: dict = Depends(get_current_user),
         rx = {"$regex": re.escape(q), "$options": "i"}
         scope["$or"] = [{"nome": rx}, {"cognome": rx}, {"codice_fiscale": rx},
                         {"pod": rx}, {"pdr": rx}, {"telefono": rx}, {"email": rx}]
-    clients = await db.clients.find(scope, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    proj = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "tipo_cliente": 1, "p_iva": 1,
+            "telefono": 1, "email": 1, "codice_fiscale": 1, "pod": 1, "pdr": 1,
+            "tipo_bolletta": 1, "fornitore_provenienza": 1, "lavorazione": 1,
+            "data_contratto": 1, "venditore_id": 1, "pagato": 1, "last_payment_date": 1,
+            "privacy_firmata": 1, "created_at": 1}
+    clients = await db.clients.find(scope, proj).sort("created_at", -1).to_list(5000)
     return [compute_dates(c) for c in clients]
 
 @api_router.post("/clients")
@@ -1165,7 +1172,13 @@ EXPORT_COLUMNS = [
 @api_router.get("/export/clients.xlsx")
 async def export_clients(user: dict = Depends(get_current_user)):
     scope = client_scope_filter(user)
-    clients = await db.clients.find(scope, {"_id": 0}).sort("cognome", 1).to_list(10000)
+    proj = {"_id": 0, "id": 1, "cognome": 1, "nome": 1, "codice_fiscale": 1, "p_iva": 1,
+            "indirizzo": 1, "telefono": 1, "email": 1, "iban": 1, "tipo_bolletta": 1, "pod": 1,
+            "pdr": 1, "kw_potenza": 1, "fornitore_provenienza": 1, "nuovo_fornitore": 1,
+            "tipo_contratto": 1, "costo_kwh_nuovo": 1, "costo_smc_nuovo": 1, "spese_fisse_nuovo": 1,
+            "data_contratto": 1, "data_verifica": 1, "data_cambio": 1, "lavorazione": 1,
+            "pagato": 1, "last_payment_date": 1, "privacy_firmata": 1, "venditore_id": 1, "note": 1}
+    clients = await db.clients.find(scope, proj).sort("cognome", 1).to_list(10000)
     stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0}).to_list(500)}
     lav_labels = {"cambiare": "Da Cambiare", "non_cambiare": "Non Cambiare", "cambio_effettuato": "Cambio Effettuato",
                   "in_quotazione": "In Quotazione", "richieste_bollette": "Richieste Bollette",
@@ -1332,10 +1345,17 @@ async def startup():
 
 app.include_router(api_router)
 
+cors_origins = os.environ.get("CORS_ORIGINS", "*")
+allow_origins = ["*"] if cors_origins == "*" else [o.strip() for o in cors_origins.split(",")]
+extra_origins = [os.environ.get("FRONTEND_URL", ""), "http://localhost:3000"]
+for o in extra_origins:
+    if o and o not in allow_origins and allow_origins != ["*"]:
+        allow_origins.append(o)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:3000"), "http://localhost:3000"],
+    allow_credentials=allow_origins != ["*"],
+    allow_origins=allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

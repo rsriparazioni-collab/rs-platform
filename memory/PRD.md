@@ -41,6 +41,10 @@ Gestionale per utenze clienti con rinnovi a 10 mesi (utenza 12 mesi, attivazione
 ## Credenziali
 Vedi /app/memory/test_credentials.md
 
+- Deploy readiness: pino aggiunto a whatsapp-service, [program:whatsapp] spostato in supervisord.conf, CORS da CORS_ORIGINS env, proiezioni MongoDB su list_clients/build_alerts/export — deployment_agent: PASS (2026-09-04)
+- Test aggiornati per dati reali (conteggi dinamici RBAC/dashboard, ricerca multi-campo): 42/42 pass
+- INCIDENTE UTENTE: dominio ROOT rsriparazioni.com collegato all'app Emergent invece del sottodominio → il sito WordPress non è toccato, serve ripristino DNS (A record → 81.88.52.225) e custom domain su gestionale.rsriparazioni.com
+
 ## Backlog prioritizzato
 - P0: utente deve scansionare il QR WhatsApp (pagina WhatsApp) con il numero 3519460591 per attivare gli invii
 - P1: notifiche email ai negozi quando viene registrato il loro compenso
