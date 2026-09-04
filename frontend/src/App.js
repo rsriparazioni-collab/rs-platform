@@ -9,6 +9,7 @@ import Clienti from "./pages/Clienti";
 import Negozi from "./pages/Negozi";
 import Operatori from "./pages/Operatori";
 import Utenti from "./pages/Utenti";
+import WhatsApp from "./pages/WhatsApp";
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -45,7 +46,8 @@ function App() {
             <Route path="clienti" element={<Clienti />} />
             <Route path="negozi" element={<RequireRole roles={["admin", "operatore"]}><Negozi /></RequireRole>} />
             <Route path="operatori" element={<RequireRole roles={["admin", "operatore"]}><Operatori /></RequireRole>} />
-            <Route path="utenti" element={<RequireRole roles={["admin"]}><Utenti /></RequireRole>} />
+            <Route path="whatsapp" element={<RequireRole roles={["admin"]}><WhatsApp /></RequireRole>} />
+            <Route path="utenti" element={<Utenti />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

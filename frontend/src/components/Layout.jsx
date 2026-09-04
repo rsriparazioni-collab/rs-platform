@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu } from "lucide-react";
+import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { RUOLI } from "../lib/constants";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -11,7 +11,8 @@ const NAV = [
   { to: "/clienti", label: "Clienti", icon: Users, roles: ["admin", "operatore", "negozio"], testid: "nav-clienti" },
   { to: "/negozi", label: "Negozi", icon: Building2, roles: ["admin", "operatore"], testid: "nav-negozi" },
   { to: "/operatori", label: "Operatori", icon: UserCog, roles: ["admin", "operatore"], testid: "nav-operatori" },
-  { to: "/utenti", label: "Utenti", icon: ShieldCheck, roles: ["admin"], testid: "nav-utenti" },
+  { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: ["admin"], testid: "nav-whatsapp" },
+  { to: "/utenti", label: "Utenti", icon: ShieldCheck, roles: ["admin", "operatore", "negozio"], testid: "nav-utenti" },
 ];
 
 function NavItems({ onNavigate, mobile }) {

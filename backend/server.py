@@ -20,7 +20,8 @@ import jwt
 import httpx
 import pandas as pd
 from dateutil.relativedelta import relativedelta
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, BackgroundTasks, UploadFile, File
+from fastapi.responses import StreamingResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -334,7 +335,9 @@ async def list_users(admin: dict = Depends(require_admin)):
     return users
 
 @api_router.post("/users")
-async def create_user(input: UserCreate, admin: dict = Depends(require_admin)):
+async def create_user(input: UserCreate, user: dict = Depends(get_current_user)):
+    if user["role"] != "admin" and input.role == "admin":
+        raise HTTPException(status_code=403, detail="Solo un amministratore può creare altri amministratori")
     email = input.email.strip().lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email già registrata")
@@ -911,6 +914,233 @@ async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(req
         await _insert_imported(docs, admin)
     return {"imported": len(docs), "skipped": skipped}
 
+# ---------------- Object Storage (allegati bollette/documenti) ----------------
+
+STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+APP_NAME = "gestionale-utenze"
+storage_key = None
+
+def init_storage(force: bool = False):
+    global storage_key
+    if storage_key and not force:
+        return storage_key
+    resp = httpx.post(f"{STORAGE_URL}/init", json={"emergent_key": os.environ["EMERGENT_LLM_KEY"]}, timeout=30)
+    resp.raise_for_status()
+    storage_key = resp.json()["storage_key"]
+    return storage_key
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = httpx.put(f"{STORAGE_URL}/objects/{path}",
+                     headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
+def get_object(path: str):
+    key = init_storage()
+    resp = httpx.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+async def get_scoped_client(client_id: str, user: dict) -> dict:
+    scope = client_scope_filter(user)
+    scope["id"] = client_id
+    c = await db.clients.find_one(scope, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    return c
+
+@api_router.post("/clients/{client_id}/attachments")
+async def upload_attachment(client_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    await get_scoped_client(client_id, user)
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
+    if ext not in ("pdf", "jpg", "jpeg", "png", "webp"):
+        raise HTTPException(status_code=400, detail="Formato non supportato (PDF, JPG, PNG, WEBP)")
+    data = await file.read()
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File troppo grande (max 15 MB)")
+    path = f"{APP_NAME}/attachments/{client_id}/{uuid.uuid4()}.{ext}"
+    result = put_object(path, data, file.content_type or "application/octet-stream")
+    doc = {"id": str(uuid.uuid4()), "client_id": client_id, "storage_path": result["path"],
+           "original_filename": file.filename, "content_type": file.content_type,
+           "size": result["size"], "is_deleted": False, "uploaded_by": user["id"],
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.attachments.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/clients/{client_id}/attachments")
+async def list_attachments(client_id: str, user: dict = Depends(get_current_user)):
+    await get_scoped_client(client_id, user)
+    return await db.attachments.find({"client_id": client_id, "is_deleted": False}, {"_id": 0}).to_list(200)
+
+@api_router.get("/attachments/{att_id}/download")
+async def download_attachment(att_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.attachments.find_one({"id": att_id, "is_deleted": False}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Allegato non trovato")
+    await get_scoped_client(rec["client_id"], user)
+    data, content_type = get_object(rec["storage_path"])
+    return Response(content=data, media_type=rec.get("content_type", content_type),
+                    headers={"Content-Disposition": f'attachment; filename="{rec["original_filename"]}"'})
+
+@api_router.delete("/attachments/{att_id}")
+async def delete_attachment(att_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.attachments.find_one({"id": att_id, "is_deleted": False}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Allegato non trovato")
+    await get_scoped_client(rec["client_id"], user)
+    await db.attachments.update_one({"id": att_id}, {"$set": {"is_deleted": True}})
+    return {"status": "ok"}
+
+@api_router.get("/clients/{client_id}/attachments/merged")
+async def merged_pdf(client_id: str, user: dict = Depends(get_current_user)):
+    from pypdf import PdfWriter, PdfReader
+    client_doc = await get_scoped_client(client_id, user)
+    atts = await db.attachments.find({"client_id": client_id, "is_deleted": False,
+                                      "content_type": "application/pdf"}, {"_id": 0}).to_list(200)
+    if not atts:
+        raise HTTPException(status_code=400, detail="Nessun PDF tra gli allegati di questo cliente")
+    writer = PdfWriter()
+    for att in atts:
+        data, _ = get_object(att["storage_path"])
+        reader = PdfReader(io.BytesIO(data))
+        for page in reader.pages:
+            writer.add_page(page)
+    buf = io.BytesIO()
+    writer.write(buf)
+    buf.seek(0)
+    fname = f"documenti_{client_doc.get('cognome', 'cliente')}_{client_doc.get('nome', '')}.pdf".replace(" ", "_")
+    return StreamingResponse(buf, media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+# ---------------- WhatsApp (Baileys service) ----------------
+
+WA_SERVICE = "http://127.0.0.1:3001"
+
+PRIVACY_MSG = """RS Group – Grazie per averci scelto!
+Ciao {nome}
+per procedere con la tua richiesta e completare l'attivazione del servizio, è necessario firmare l'autorizzazione privacy.
+Puoi farlo in modo semplice e veloce al link qui sotto:
+https://rsriparazioni.it/privacy/
+La firma è richiesta per attivare correttamente il servizio (riparazioni, contratti energia o telefonia).
+Grazie per la fiducia
+RS Group"""
+
+REVIEW_MSG = """Ciao!
+Grazie per aver scelto CAMBIAORA
+Se ti sei trovato bene, ci farebbe davvero piacere una tua recensione
+Basta un clic qui
+https://g.page/r/CaSv3O7luiBPEAE/review
+Grazie per il supporto"""
+
+async def wa_send(phone: str, message: str):
+    async with httpx.AsyncClient(timeout=30) as http_client:
+        resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message})
+    data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+    if resp.status_code != 200 or not data.get("success"):
+        raise HTTPException(status_code=502, detail=data.get("error", "Servizio WhatsApp non disponibile"))
+    return data
+
+@api_router.get("/whatsapp/status")
+async def whatsapp_status(admin: dict = Depends(require_admin)):
+    try:
+        async with httpx.AsyncClient(timeout=10) as http_client:
+            resp = await http_client.get(f"{WA_SERVICE}/status")
+        return resp.json()
+    except Exception:
+        return {"connected": False, "user": None, "has_qr": False, "service_down": True}
+
+@api_router.get("/whatsapp/qr")
+async def whatsapp_qr(admin: dict = Depends(require_admin)):
+    async with httpx.AsyncClient(timeout=10) as http_client:
+        resp = await http_client.get(f"{WA_SERVICE}/qr")
+    return resp.json()
+
+@api_router.post("/clients/{client_id}/whatsapp/privacy")
+async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user)):
+    c = await get_scoped_client(client_id, user)
+    if not c.get("telefono"):
+        raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
+    await wa_send(c["telefono"], PRIVACY_MSG.format(nome=c.get("nome", "")))
+    now = datetime.now(timezone.utc)
+    await db.clients.update_one({"id": client_id}, {"$set": {"privacy_msg_sent_at": now.isoformat()}})
+    await db.whatsapp_queue.insert_one({
+        "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
+        "type": "review", "send_after": (now + timedelta(minutes=5)).isoformat(),
+        "sent": False, "created_at": now.isoformat()})
+    return {"status": "ok", "review_scheduled_at": (now + timedelta(minutes=5)).isoformat()}
+
+@api_router.post("/clients/{client_id}/whatsapp/review")
+async def whatsapp_review(client_id: str, user: dict = Depends(get_current_user)):
+    c = await get_scoped_client(client_id, user)
+    if not c.get("telefono"):
+        raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
+    await wa_send(c["telefono"], REVIEW_MSG)
+    await db.clients.update_one({"id": client_id},
+                                {"$set": {"review_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
+    return {"status": "ok"}
+
+async def process_whatsapp_queue():
+    now = datetime.now(timezone.utc).isoformat()
+    due = await db.whatsapp_queue.find({"sent": False, "send_after": {"$lte": now}}, {"_id": 0}).to_list(100)
+    sent_count = 0
+    for item in due:
+        try:
+            await wa_send(item["phone"], REVIEW_MSG)
+            await db.whatsapp_queue.update_one({"id": item["id"]}, {"$set": {"sent": True, "sent_at": now}})
+            await db.clients.update_one({"id": item["client_id"]}, {"$set": {"review_msg_sent_at": now}})
+            sent_count += 1
+        except Exception as e:
+            logger.error(f"WhatsApp queue send fallito per {item['id']}: {getattr(e, 'detail', str(e))}")
+    if sent_count:
+        logger.info(f"WhatsApp queue: {sent_count} recensioni inviate")
+
+# ---------------- Export Excel ----------------
+
+EXPORT_COLUMNS = [
+    ("cognome", "Cognome"), ("nome", "Nome"), ("codice_fiscale", "Codice Fiscale"), ("p_iva", "P.IVA"),
+    ("indirizzo", "Indirizzo"), ("telefono", "Telefono"), ("email", "Email"), ("iban", "IBAN"),
+    ("tipo_bolletta", "Tipo"), ("pod", "POD"), ("pdr", "PDR"), ("kw_potenza", "kW"),
+    ("fornitore_provenienza", "Fornitore attuale"), ("nuovo_fornitore", "Nuovo fornitore"),
+    ("tipo_contratto", "Tipo contratto"), ("costo_kwh_nuovo", "€/kWh nuovo"),
+    ("costo_smc_nuovo", "€/Smc nuovo"), ("spese_fisse_nuovo", "Spese fisse nuove"),
+    ("data_contratto", "Data contratto"), ("data_attivazione", "Attivazione"),
+    ("data_rinnovo", "Rinnovo (10 mesi)"), ("data_scadenza", "Scadenza"),
+    ("data_verifica", "Data verifica"), ("data_cambio", "Data cambio"),
+    ("lavorazione_label", "Lavorazione"), ("pagato_label", "Pagato"),
+    ("privacy_label", "Privacy firmata"), ("negozio_nome", "Negozio"), ("note", "Note"),
+]
+
+@api_router.get("/export/clients.xlsx")
+async def export_clients(user: dict = Depends(get_current_user)):
+    scope = client_scope_filter(user)
+    clients = await db.clients.find(scope, {"_id": 0}).sort("cognome", 1).to_list(10000)
+    stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0}).to_list(500)}
+    lav_labels = {"cambiare": "Da Cambiare", "non_cambiare": "Non Cambiare", "cambio_effettuato": "Cambio Effettuato",
+                  "in_quotazione": "In Quotazione", "richieste_bollette": "Richieste Bollette",
+                  "in_attesa_ok": "In Attesa OK Cliente", "problema_tecnico": "Problema Tecnico",
+                  "da_quotare": "Da Quotare", "contattare_cliente": "Contattare Cliente",
+                  "non_vuole_cambiare": "Non Vuole Cambiare", "passa_in_negozio": "Passa in Negozio",
+                  "attesa_documenti": "Attesa Documenti", "rinnovato": "Rinnovato"}
+    rows = []
+    for c in clients:
+        compute_dates(c)
+        c["lavorazione_label"] = lav_labels.get(c.get("lavorazione"), c.get("lavorazione", ""))
+        c["pagato_label"] = "Pagato" if c["pagato_effettivo"] else "Non pagato"
+        c["privacy_label"] = "Sì" if c.get("privacy_firmata") else "No"
+        c["negozio_nome"] = stores.get(c.get("venditore_id"), "")
+        rows.append({label: c.get(key, "") for key, label in EXPORT_COLUMNS})
+    df = pd.DataFrame(rows, columns=[label for _, label in EXPORT_COLUMNS])
+    buf = io.BytesIO()
+    df.to_excel(buf, index=False, sheet_name="Clienti")
+    buf.seek(0)
+    fname = f"report_clienti_{date.today().isoformat()}.xlsx"
+    return StreamingResponse(buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
 # ---------------- Cron ----------------
 
 @api_router.post("/cron/daily-digest")
@@ -922,6 +1152,17 @@ async def cron_daily_digest(request: Request, background_tasks: BackgroundTasks)
     if not token or not secret or not hmac.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(send_digest_email)
+    return {"status": "accepted"}
+
+@api_router.post("/cron/whatsapp-due")
+async def cron_whatsapp_due(request: Request, background_tasks: BackgroundTasks):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(process_whatsapp_queue)
     return {"status": "accepted"}
 
 @api_router.get("/")
@@ -1034,6 +1275,11 @@ async def seed_data():
 @app.on_event("startup")
 async def startup():
     await seed_data()
+    try:
+        init_storage()
+        logger.info("Object storage inizializzato")
+    except Exception as e:
+        logger.error(f"Storage init fallito: {e}")
 
 app.include_router(api_router)
 

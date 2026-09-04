@@ -5,5 +5,10 @@ crons:
     timezone: "Europe/Rome"
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     endpoint: "{{BASE_URL}}/api/cron/daily-digest"
+  - name: whatsapp-due
+    description: "Invia i messaggi WhatsApp in coda (richiesta recensione 5 minuti dopo il link privacy)"
+    cron: "*/5 * * * *"
+    timezone: "Europe/Rome"
+    endpoint: "{{BASE_URL}}/api/cron/whatsapp-due"
     method: POST
     enabled: true

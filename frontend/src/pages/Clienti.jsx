@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Trash2, Pencil, ShieldCheck, Wallet, Upload } from "lucide-react";
+import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Trash2, Pencil, ShieldCheck, Wallet, Upload, Download, Paperclip, MessageCircle, FileText } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -26,7 +26,71 @@ export default function Clienti() {
   const [importMode, setImportMode] = useState("single");
   const [importResult, setImportResult] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [attachments, setAttachments] = useState([]);
+  const [waLoading, setWaLoading] = useState("");
   const canSeeAll = user.role === "admin" || user.can_view_all;
+
+  const downloadBlob = async (url, filename) => {
+    try {
+      const res = await api.get(url, { responseType: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(res.data);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error(apiError(e, "Download fallito"));
+    }
+  };
+
+  const loadAttachments = async (clientId) => {
+    try {
+      const res = await api.get(`/clients/${clientId}/attachments`);
+      setAttachments(res.data);
+    } catch {
+      setAttachments([]);
+    }
+  };
+
+  const uploadAttachment = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !detail) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      await api.post(`/clients/${detail.id}/attachments`, fd);
+      toast.success("Allegato caricato");
+      loadAttachments(detail.id);
+    } catch (err) {
+      toast.error(apiError(err, "Upload fallito"));
+    }
+  };
+
+  const deleteAttachment = async (att) => {
+    try {
+      await api.delete(`/attachments/${att.id}`);
+      toast.success("Allegato eliminato");
+      loadAttachments(detail.id);
+    } catch (e) {
+      toast.error(apiError(e, "Eliminazione fallita"));
+    }
+  };
+
+  const sendWhatsApp = async (tipo) => {
+    setWaLoading(tipo);
+    try {
+      await api.post(`/clients/${detail.id}/whatsapp/${tipo}`);
+      toast.success(tipo === "privacy"
+        ? "Messaggio privacy inviato. La richiesta recensione partirà automaticamente tra 5 minuti."
+        : "Richiesta recensione inviata");
+      openDetail(detail);
+    } catch (e) {
+      toast.error(apiError(e, "Invio WhatsApp fallito"));
+    } finally {
+      setWaLoading("");
+    }
+  };
 
   const runImport = async (e) => {
     e.preventDefault();
@@ -75,6 +139,7 @@ export default function Clienti() {
     try {
       const res = await api.get(`/clients/${c.id}`);
       setDetail(res.data);
+      loadAttachments(c.id);
     } catch {
       toast.error("Impossibile caricare il cliente");
     }
@@ -111,6 +176,10 @@ export default function Clienti() {
           <p className="mt-1 text-sm text-slate-500">{clients.length} utenze {canSeeAll ? "in totale" : "del tuo negozio"}</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => downloadBlob("/export/clients.xlsx", `report_clienti_${new Date().toISOString().slice(0, 10)}.xlsx`)}
+                  data-testid="export-excel-button" className="gap-2">
+            <Download className="h-4 w-4" /> Esporta Excel
+          </Button>
           {user.role === "admin" && (
             <Button variant="outline" onClick={() => { setImportStore(meta.stores[0]?.id || ""); setImportOpen(true); }}
                     data-testid="import-sheet-button" className="gap-2">
@@ -305,6 +374,60 @@ export default function Clienti() {
                     ))}
                     {(detail.history || []).length === 0 && <p className="text-xs text-slate-400">Nessuno storico</p>}
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4" data-testid="whatsapp-card">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">WhatsApp automatico</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => sendWhatsApp("privacy")} disabled={waLoading !== ""}
+                            data-testid="wa-privacy-button" className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+                      <MessageCircle className="h-4 w-4" />
+                      {waLoading === "privacy" ? "Invio..." : "Invia link privacy"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => sendWhatsApp("review")} disabled={waLoading !== ""}
+                            data-testid="wa-review-button" className="gap-2">
+                      <MessageCircle className="h-4 w-4" />
+                      {waLoading === "review" ? "Invio..." : "Invia richiesta recensione"}
+                    </Button>
+                  </div>
+                  <div className="mt-2 space-y-0.5 text-xs text-slate-500">
+                    {detail.privacy_msg_sent_at && <p data-testid="wa-privacy-sent">Privacy inviata il {fmtDate(detail.privacy_msg_sent_at)} — recensione automatica dopo 5 min</p>}
+                    {detail.review_msg_sent_at && <p data-testid="wa-review-sent">Recensione richiesta il {fmtDate(detail.review_msg_sent_at)}</p>}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 p-4" data-testid="attachments-card">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Allegati (bollette, documenti)</p>
+                    {attachments.length > 0 && (
+                      <Button size="sm" variant="outline" data-testid="merged-pdf-button"
+                              onClick={() => downloadBlob(`/clients/${detail.id}/attachments/merged`, `documenti_${detail.cognome}.pdf`)}>
+                        <FileText className="mr-2 h-4 w-4" /> PDF unico
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-1.5" data-testid="attachments-list">
+                    {attachments.map((a) => (
+                      <div key={a.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                        <button className="flex items-center gap-2 text-sky-700 hover:underline"
+                                onClick={() => downloadBlob(`/attachments/${a.id}/download`, a.original_filename)}
+                                data-testid={`attachment-download-${a.id}`}>
+                          <Paperclip className="h-3.5 w-3.5" /> {a.original_filename}
+                        </button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" data-testid={`attachment-delete-${a.id}`}
+                                onClick={() => deleteAttachment(a)}>
+                          <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                        </Button>
+                      </div>
+                    ))}
+                    {attachments.length === 0 && <p className="text-xs text-slate-400">Nessun allegato</p>}
+                  </div>
+                  <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 transition-colors hover:border-sky-400 hover:text-sky-700"
+                         data-testid="attachment-upload-label">
+                    <Upload className="h-4 w-4" /> Carica PDF o immagine
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={uploadAttachment}
+                           data-testid="attachment-upload-input" />
+                  </label>
                 </div>
 
                 <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">

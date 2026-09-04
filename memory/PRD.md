@@ -30,16 +30,21 @@ Gestionale per utenze clienti con rinnovi a 10 mesi (utenza 12 mesi, attivazione
 - Email alert corretta: cambiaora.rs@gmail.com (digest verificato, email_id ricevuto)
 - Negozio "Ipro" creato (referente Deborah) + tab ipro importato: 8 clienti (2026-09-04)
 - Clienti di Devis restano nel negozio Sondrio, gestiti da Deborah (decisione utente); Deborah assegnata come operatrice su tutti i clienti Sondrio + Ipro (431 clienti)
+- Allegati documenti/bollette: upload PDF/JPG/PNG/WEBP su object storage (EMERGENT_LLM_KEY), download, soft-delete, "PDF unico" (merge pypdf) — verificato E2E
+- WhatsApp: microservizio Node.js Baileys (/app/whatsapp-service, porta 3001, supervisor program "whatsapp"), QR in pagina WhatsApp (admin), invio link privacy dalla scheda cliente + richiesta recensione automatica dopo 5 minuti (coda whatsapp_queue + cron /api/cron/whatsapp-due ogni 5 min)
+- Export report Excel stampabile: GET /api/export/clients.xlsx (rispetta permessi ruolo), pulsante "Esporta Excel" in Clienti
+- Creazione utenti aperta a tutti i ruoli (solo admin può creare admin); pagina Utenti visibile a tutti, tabella solo admin
+- NOTA: pagina privacy .com è dietro login WordPress (wppb) — l'auto-compilazione del modulo non è fattibile dall'esterno; il messaggio WhatsApp usa il link .it come da testo fornito
 - Test: 42/42 pytest backend, E2E frontend verificato (testing agent iterazione 1)
 
 ## Credenziali
 Vedi /app/memory/test_credentials.md
 
 ## Backlog prioritizzato
+- P0: utente deve scansionare il QR WhatsApp (pagina WhatsApp) con il numero 3519460591 per attivare gli invii
 - P1: notifiche email ai negozi quando viene registrato il loro compenso
-- P1: export clienti in Excel/CSV
-- P2: allegati documenti (bollette) via object storage
 - P2: statistiche avanzate per fornitore/periodo
+- P2: auto-compilazione modulo privacy .com (richiede accesso admin WordPress al sito)
 
 ## Prossimi task
-1. Attendere feedback utente / nuove richieste
+1. Utente scansiona QR WhatsApp → test invio privacy + recensione su cliente reale

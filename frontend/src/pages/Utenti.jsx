@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, ShieldCheck, Store, KeyRound, Power } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { RUOLI } from "../lib/constants";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -12,16 +13,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
 export default function Utenti() {
+  const { user } = useAuth();
+  const isAdmin = user.role === "admin";
   const [users, setUsers] = useState([]);
   const [stores, setStores] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "negozio", store_ids: [], can_view_all: false });
 
   const load = useCallback(() => {
-    api.get("/users").then((r) => setUsers(r.data))
-      .catch((e) => toast.error(apiError(e, "Impossibile caricare gli utenti")));
+    if (isAdmin) {
+      api.get("/users").then((r) => setUsers(r.data))
+        .catch((e) => toast.error(apiError(e, "Impossibile caricare gli utenti")));
+    }
     api.get("/meta").then((r) => setStores(r.data.stores)).catch(() => {});
-  }, []);
+  }, [isAdmin]);
   useEffect(() => { load(); }, [load]);
 
   const toggleStore = (id) => {
@@ -80,6 +85,7 @@ export default function Utenti() {
         </Button>
       </div>
 
+      {isAdmin && (
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="users-table">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -128,6 +134,7 @@ export default function Utenti() {
           </table>
         </div>
       </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent data-testid="user-form-dialog">
@@ -143,7 +150,7 @@ export default function Utenti() {
                 <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
                   <SelectTrigger data-testid="user-select-role"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">Amministratore</SelectItem>
+                    {isAdmin && <SelectItem value="admin">Amministratore</SelectItem>}
                     <SelectItem value="operatore">Operatore</SelectItem>
                     <SelectItem value="negozio">Negozio</SelectItem>
                   </SelectContent>
