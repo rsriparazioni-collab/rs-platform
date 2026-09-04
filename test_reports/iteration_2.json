@@ -1,0 +1,57 @@
+{
+  "summary": "Iteration 2 focused on the httpOnly-cookie auth migration, the ClientDetail split and role guards. Backend: 53 pytest cases (existing backend_test.py 40 + new test_rbac_scoping.py 8 + test_privilege_escalation.py 1) -> 51 passed, 2 failed, both proving the SAME security defect: POST /api/users is not admin-only, so a 'negozio' user can create an 'operatore' account with can_view_all=true and then read all 488 clients (verified end-to-end: michael 432 clients -> escalated account 488). Frontend (admin): login sets httpOnly+secure cookie gu_token, NO app token in localStorage, document.cookie does not expose gu_token, session survives reload, navigation Dashboard->Clienti->Negozi->Operatori->Utenti->WhatsApp keeps the session, logout clears the cookie and /clienti afterwards redirects to /login. ClientDetail sheet after the split renders all expected testids (timeline contratto/attivazione/rinnovo/scadenza, confronto tariffe, storico lavorazioni, whatsapp-card + wa-privacy/wa-review, attachments-card, mark-paid/edit/delete). Create -> edit -> mark-paid (badge Non pagato -> Pagato) -> delete all work; Esporta Excel downloads report_clienti_2026-09-04.xlsx; WhatsApp page shows 'Non connesso' + QR. Negozio (michael): sees only own stores (432/488, API-verified no client outside his store_ids), sidebar hides Negozi/Operatori/WhatsApp, /negozi /operatori /whatsapp all redirect to / (route guards now working - iteration 1 defect fixed), /utenti still reachable and exposes the create-user form. All QA data was removed afterwards (488 clients / 5 users, the client touched by mark-paid was reset to Non pagato).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/users", "issue": "PRIVILEGE ESCALATION: endpoint uses Depends(get_current_user) and only blocks role='admin'. Any authenticated user (negozio) can create an 'operatore' / 'negozio' account with can_view_all=true and arbitrary store_ids, then log in with it and read every client (proved: 432 -> 488). Must require admin (require_admin) or at minimum forbid role!=negozio, can_view_all and stores outside the caller's own store_ids.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "CORS config (server.py ~1395)", "issue": "CORS_ORIGINS=\"*\" makes allow_credentials=False. Cookie auth only works because frontend and backend share the origin; per the auth playbook it should list explicit origins (FRONTEND_URL) with allow_credentials=True."},
+      {"endpoint": "POST /api/clients/{id}/whatsapp/privacy | /review", "issue": "Returns 502 while no number is linked (expected in this env). UI shows the Italian toast 'Invio WhatsApp fallito' correctly."},
+      {"endpoint": "POST /api/auth/login", "issue": "Still open from iteration 1: login_attempts.count is not reset when the 15-min lock expires, so one further failed attempt re-locks immediately."},
+      {"endpoint": "PATCH /api/clients/{id}", "issue": "Still open from iteration 1: PATCH validates the full ClientInput, omitted fields fall back to defaults (PUT semantics)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Utenti.jsx (role negozio)", "issue": "A 'negozio' user can open /utenti, click 'Nuovo utente' and the Ruolo select offers 'Operatore' - combined with the backend defect above this is an escalation path from the UI. The page also renders a completely blank area (no users table, no message) because GET /api/users 403 is only fetched when isAdmin.", "selector": "[data-testid=add-user-button], [data-testid=user-select-role]", "priority": "HIGH"},
+      {"component": "ClientDetail / ClientForm dialogs", "issue": "Console warning 'DialogContent requires a DialogTitle' on the client form dialog (a11y).", "selector": "[data-testid=client-form-dialog]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "WhatsApp review send (second consecutive send)", "issue": "Clicking wa-review-button right after wa-privacy-button produced the 502 request but no visible toast in the run (first toast still occupying the slot); privacy send did toast correctly. Worth double-checking toast de-duplication.", "affected_selectors": ["[data-testid=wa-review-button]", "[data-sonner-toast]"]}
+    ],
+    "design_issues": [
+      {"screen": "Utenti (role negozio)", "issues": ["Whole content area empty below the header - only the 'Nuovo utente' button; needs an explanatory empty state or the route should be admin-only"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_rbac_scoping.py",
+    "/app/backend/tests/test_privilege_escalation.py",
+    "/app/backend/tests/revert_qa_state.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: protect POST /api/users with require_admin (and/or validate role/can_view_all/store_ids against the caller) - a negozio user can currently mint an operatore account that sees all 488 clients.",
+    "Hide the create-user form for non-admins in Utenti.jsx (or make /utenti admin-only) and remove 'Operatore' from the role select for non-admins; add an empty/permission state instead of a blank page.",
+    "Set CORS_ORIGINS to the explicit frontend origin so allow_credentials=True is used with the cookie auth.",
+    "Carry over from iteration 1: reset login_attempts.count after the lock window; PATCH /api/clients partial-update semantics; add DialogTitle to dialogs."
+  ],
+  "critical_code_review_comments": [
+    "server.py:349 create_user uses get_current_user instead of require_admin - only the 'admin' role is blocked, every other role can create privileged accounts (can_view_all=true bypasses store scoping entirely).",
+    "Utenti.jsx gates the users table on isAdmin but not the creation dialog, mirroring the backend hole on the client side.",
+    "server.py is now 1412 lines (auth, email, parser, whatsapp, export, seed) - split into routers/services; the ClientDetail extraction on the frontend is a good precedent.",
+    "Cookie is set with samesite='lax' + secure=True and gu_token is unreadable from JS - migration verified correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_rbac_scoping.py",
+    "/app/backend/tests/test_privilege_escalation.py",
+    "/app/backend/tests/revert_qa_state.py"
+  ],
+  "success_rate": {"backend": "96% (51/53; the 2 failures are the same privilege-escalation defect)", "frontend": "92% (all cookie-auth, ClientDetail, CRUD, export, WhatsApp and negozio route-guard checks pass; /utenti exposure for negozio fails)"},
+  "seed_data_creation": "Temporary client 'TEST_QA Cookie/CookieMod' (created, edited, marked paid, deleted) and API users test_qa_neg@ / test_qa_escalate@cambiaora.local (deleted). Client 'giuditta di trio' was marked paid during the sheet test and reset to pagato=false/last_payment_date=null. Final DB state verified: 488 clients, 5 users, 100 paid clients.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "/app/memory/test_credentials.md is valid for all 5 accounts, but its 'Note' section is stale: it still says the frontend stores the token in localStorage - update to httpOnly cookie gu_token.",
+  "context_for_next_testing_agent": "Run `cd /app/backend && python -m pytest tests/ -q` (53 cases). test_privilege_escalation.py and test_rbac_scoping.py::test_negozio_cannot_create_user are EXPECTED to fail until POST /api/users is restricted to admin; they create/delete their own users but run `python tests/revert_qa_state.py --revert` afterwards to purge test_qa_* users. UI testids: login-email-input/login-password-input/login-submit-button, ClientForm uses input-nome/input-cognome/client-form-submit (not client-nome-input), Layout nav ids are nav-* with a '-mobile' suffix for the drawer. Route guards for /negozi /operatori /whatsapp now redirect negozio users to /; /utenti is still open. WhatsApp send returns 502 by design (number not linked).",
+  "rca_of_the_issue": "POST /api/users depends on get_current_user and only rejects input.role == 'admin'. Because 'operatore' (and can_view_all=true) bypass the store scoping applied in GET /api/clients, any negozio account can self-escalate in two calls (create user -> login). Frontend Utenti.jsx compounds it by rendering the creation dialog for every authenticated role with 'Operatore' selectable. Fix by switching the dependency to require_admin; if shop owners must create their own staff, restrict role to 'negozio', force can_view_all=False and intersect store_ids with the caller's store_ids."
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { MessageCircle, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import api from "../lib/api";
@@ -7,9 +7,8 @@ import { Button } from "../components/ui/button";
 export default function WhatsApp() {
   const [status, setStatus] = useState(null);
   const [qr, setQr] = useState(null);
-  const intervalRef = useRef(null);
 
-  const poll = async () => {
+  const poll = useCallback(async () => {
     try {
       const res = await api.get("/whatsapp/status");
       setStatus(res.data);
@@ -22,13 +21,13 @@ export default function WhatsApp() {
     } catch {
       setStatus({ connected: false, service_down: true });
     }
-  };
+  }, []);
 
   useEffect(() => {
     poll();
-    intervalRef.current = setInterval(poll, 4000);
-    return () => clearInterval(intervalRef.current);
-  }, []);
+    const id = setInterval(poll, 4000);
+    return () => clearInterval(id);
+  }, [poll]);
 
   return (
     <div className="space-y-6" data-testid="whatsapp-page">

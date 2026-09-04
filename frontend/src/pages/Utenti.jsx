@@ -36,6 +36,8 @@ export default function Utenti() {
     }));
   };
 
+  const visibleStores = isAdmin ? stores : stores.filter((s) => user.store_ids?.includes(s.id));
+
   const create = async (e) => {
     e.preventDefault();
     try {
@@ -86,8 +88,7 @@ export default function Utenti() {
       </div>
 
       {isAdmin && (
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="users-table">
-        <div className="overflow-x-auto">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="users-table">        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -136,6 +137,13 @@ export default function Utenti() {
       </div>
       )}
 
+      {!isAdmin && (
+        <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm" data-testid="utenti-info-box">
+          Puoi creare account di accesso per i collaboratori dei tuoi negozi con il pulsante "Nuovo utente".
+          Gli account creati vedranno solo i clienti dei negozi che gli assegni. La gestione completa degli utenti è riservata all'amministratore.
+        </div>
+      )}
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent data-testid="user-form-dialog">
           <DialogHeader><DialogTitle className="font-heading text-xl">Nuovo utente</DialogTitle></DialogHeader>
@@ -145,17 +153,19 @@ export default function Utenti() {
                 <Label>Nome *</Label>
                 <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="user-input-name" />
               </div>
-              <div className="space-y-1.5">
-                <Label>Ruolo</Label>
-                <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
-                  <SelectTrigger data-testid="user-select-role"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {isAdmin && <SelectItem value="admin">Amministratore</SelectItem>}
-                    <SelectItem value="operatore">Operatore</SelectItem>
-                    <SelectItem value="negozio">Negozio</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {isAdmin && (
+                <div className="space-y-1.5">
+                  <Label>Ruolo</Label>
+                  <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
+                    <SelectTrigger data-testid="user-select-role"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Amministratore</SelectItem>
+                      <SelectItem value="operatore">Operatore</SelectItem>
+                      <SelectItem value="negozio">Negozio</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Email *</Label>
@@ -169,7 +179,7 @@ export default function Utenti() {
               <div className="space-y-2">
                 <Label>Negozi assegnati</Label>
                 <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 p-3" data-testid="user-stores-checkboxes">
-                  {stores.map((s) => (
+                  {visibleStores.map((s) => (
                     <label key={s.id} className="flex items-center gap-2 text-sm">
                       <Checkbox checked={form.store_ids.includes(s.id)} onCheckedChange={() => toggleStore(s.id)}
                                 data-testid={`user-store-check-${s.id}`} />
@@ -179,10 +189,12 @@ export default function Utenti() {
                 </div>
               </div>
             )}
-            <div className="flex items-center gap-3">
-              <Switch checked={form.can_view_all} onCheckedChange={(v) => setForm({ ...form, can_view_all: v })} data-testid="user-switch-view-all" />
-              <Label className="text-sm">Può vedere tutti i clienti (es. Deborah)</Label>
-            </div>
+            {isAdmin && (
+              <div className="flex items-center gap-3">
+                <Switch checked={form.can_view_all} onCheckedChange={(v) => setForm({ ...form, can_view_all: v })} data-testid="user-switch-view-all" />
+                <Label className="text-sm">Può vedere tutti i clienti (es. Deborah)</Label>
+              </div>
+            )}
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} data-testid="user-form-cancel">Annulla</Button>
               <Button type="submit" className="bg-slate-900 hover:bg-slate-800" data-testid="user-form-submit">Crea utente</Button>

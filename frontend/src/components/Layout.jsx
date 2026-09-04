@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -18,9 +18,10 @@ const NAV = [
 function NavItems({ onNavigate, mobile }) {
   const { user } = useAuth();
   const suffix = mobile ? "-mobile" : "";
+  const items = useMemo(() => NAV.filter((n) => n.roles.includes(user.role)), [user.role]);
   return (
     <nav className="flex-1 space-y-1 px-3 py-4">
-      {NAV.filter((n) => n.roles.includes(user.role)).map((n) => (
+      {items.map((n) => (
         <NavLink
           key={n.to}
           to={n.to}

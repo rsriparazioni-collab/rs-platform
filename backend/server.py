@@ -76,11 +76,12 @@ def serialize_user(u: dict) -> dict:
             "store_ids": u.get("store_ids", []), "can_view_all": u.get("can_view_all", False),
             "active": u.get("active", True)}
 
-async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)) -> dict:
-    if not creds:
+async def get_current_user(request: Request, creds: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    token = request.cookies.get("gu_token") or (creds.credentials if creds else None)
+    if not token:
         raise HTTPException(status_code=401, detail="Non autenticato")
     try:
-        payload = jwt.decode(creds.credentials, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
         if not user or not user.get("active", True):
             raise HTTPException(status_code=401, detail="Utente non trovato")
@@ -107,10 +108,11 @@ def effective_pagato(pagato: bool, last_payment_date: Optional[str]) -> bool:
         return False
     if not last_payment_date:
         return True
+    paid_on = None
     try:
         paid_on = date.fromisoformat(last_payment_date[:10])
     except ValueError:
-        return bool(pagato)
+        return True
     return date.today() < paid_on + relativedelta(months=6)
 
 def compute_dates(c: dict) -> dict:
@@ -303,7 +305,11 @@ async def login(input: LoginInput):
     if not user.get("active", True):
         raise HTTPException(status_code=403, detail="Account disattivato")
     await db.login_attempts.delete_one({"identifier": identifier})
-    return {"token": create_token(user["id"]), "user": serialize_user(user)}
+    from fastapi.responses import JSONResponse
+    token = create_token(user["id"])
+    resp = JSONResponse({"token": token, "user": serialize_user(user)})
+    resp.set_cookie("gu_token", token, httponly=True, secure=True, samesite="lax", max_age=86400)
+    return resp
 
 @api_router.get("/auth/me")
 async def auth_me(user: dict = Depends(get_current_user)):
@@ -311,7 +317,10 @@ async def auth_me(user: dict = Depends(get_current_user)):
 
 @api_router.post("/auth/logout")
 async def logout(user: dict = Depends(get_current_user)):
-    return {"status": "ok"}
+    from fastapi.responses import JSONResponse
+    resp = JSONResponse({"status": "ok"})
+    resp.delete_cookie("gu_token")
+    return resp
 
 # ---------------- Users (admin) ----------------
 
@@ -338,8 +347,13 @@ async def list_users(admin: dict = Depends(require_admin)):
 
 @api_router.post("/users")
 async def create_user(input: UserCreate, user: dict = Depends(get_current_user)):
-    if user["role"] != "admin" and input.role == "admin":
-        raise HTTPException(status_code=403, detail="Solo un amministratore può creare altri amministratori")
+    if user["role"] != "admin":
+        # Non-admin: solo account negozio, senza vista globale, limitati ai propri negozi
+        if input.role != "negozio":
+            raise HTTPException(status_code=403, detail="Puoi creare solo utenti di tipo Negozio")
+        input.can_view_all = False
+        own = user.get("store_ids", [])
+        input.store_ids = [s for s in input.store_ids if s in own] or own[:1]
     email = input.email.strip().lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email già registrata")
@@ -516,12 +530,12 @@ async def update_client(client_id: str, input: ClientInput, user: dict = Depends
     old = await db.clients.find_one(scope, {"_id": 0})
     if not old:
         raise HTTPException(status_code=404, detail="Cliente non trovato")
-    data = input.model_dump()
+    data = input.model_dump(exclude_unset=True)
     if user["role"] == "negozio":
-        data["venditore_id"] = old.get("venditore_id", "")
+        data.pop("venditore_id", None)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.clients.update_one({"id": client_id}, {"$set": data})
-    if data["lavorazione"] != old.get("lavorazione"):
+    if data.get("lavorazione") and data["lavorazione"] != old.get("lavorazione"):
         await log_lavorazione({**old, **data}, user, data["lavorazione"], "Cambio stato lavorazione")
     updated = await db.clients.find_one({"id": client_id}, {"_id": 0})
     return compute_dates(updated)
@@ -711,6 +725,68 @@ def _parse_date_flex(v):
             return None
     return _parse_date(v)
 
+def _find_gestionale_blocks(r: list) -> list:
+    starts = []
+    for j, c in enumerate(r):
+        c = str(c).strip()
+        if re.fullmatch(r"\d{1,4}", c) and j + 1 < len(r) and str(r[j + 1]).strip():
+            window = [str(x).strip().upper() for x in r[j:j + 12]]
+            if "LUCE" in window or "GAS" in window:
+                starts.append(j)
+    return starts
+
+def _gestionale_block_to_doc(b: list, store_id: str, admin: dict, now: str) -> Optional[dict]:
+    servizio = b[10].upper()
+    if servizio not in ("LUCE", "GAS"):
+        return None
+    toks = b[1].split()
+    if not toks:
+        return None
+    tar = [float(n.replace(",", ".")) for n in re.findall(r"\d+[.,]\d+|\d+", b[16])]
+    prezzo_n, fisse_n = None, None
+    if len(tar) == 2:
+        prezzo_n, fisse_n = tar
+    elif len(tar) == 1 and tar[0] < 5:
+        prezzo_n = tar[0]
+    note = b[20]
+    if b[16] and len(tar) > 2:
+        note = (note + " | Tariffa nuova: " + b[16]).strip(" |")
+    lav_raw = b[21].strip().lower()
+    lav = _norm_lavorazione(lav_raw)
+    if lav_raw and lav == "da_quotare" and lav_raw != "da quotare":
+        note = (note + " | Stato foglio: " + b[21]).strip(" |")
+    if b[19].strip().lower() == "annullato":
+        note = (note + " | Pagamento: annullato").strip(" |")
+    pagato = _parse_bool(b[19])
+    is_gas = servizio == "GAS"
+    return {
+        "id": str(uuid.uuid4()),
+        "nome": toks[0], "cognome": " ".join(toks[1:]),
+        "tipo_cliente": "business" if b[3] else "privato",
+        "codice_fiscale": b[2].upper(), "p_iva": b[3], "indirizzo": b[4],
+        "pod": "" if is_gas else b[5].upper(), "pdr": b[5] if is_gas else "",
+        "iban": b[6].upper(), "email": b[7], "telefono": b[8],
+        "kw_potenza": _parse_float(b[9]),
+        "tipo_bolletta": "gas" if is_gas else "luce",
+        "fornitore_provenienza": b[11],
+        "costo_kwh_attuale": None, "spese_fisse_attuale": None, "costo_smc_attuale": None,
+        "data_contratto": _parse_date_flex(b[14]),
+        "data_verifica": _parse_date_flex(b[12]),
+        "data_cambio": _parse_date_flex(b[13]),
+        "tipo_contratto": "variabile" if "var" in b[15].lower() else "fisso",
+        "nuovo_fornitore": b[17],
+        "costo_kwh_nuovo": None if is_gas else prezzo_n,
+        "spese_fisse_nuovo": fisse_n,
+        "costo_smc_nuovo": prezzo_n if is_gas else None,
+        "privacy_firmata": False,
+        "note": note,
+        "lavorazione": lav,
+        "venditore_id": store_id, "operatore_id": "",
+        "pagato": pagato,
+        "last_payment_date": date.today().isoformat() if pagato else None,
+        "created_by": admin["id"], "created_at": now, "updated_at": now,
+    }
+
 def _parse_gestionale_csv(text: str, store_id: str, admin: dict):
     rows = list(csv.reader(io.StringIO(text)))
     hdr_i = None
@@ -723,69 +799,16 @@ def _parse_gestionale_csv(text: str, store_id: str, admin: dict):
     now = datetime.now(timezone.utc).isoformat()
     docs, skipped = [], 0
     for r in rows[hdr_i + 1:]:
-        starts = []
-        for j, c in enumerate(r):
-            c = str(c).strip()
-            if re.fullmatch(r"\d{1,4}", c) and j + 1 < len(r) and str(r[j + 1]).strip():
-                window = [str(x).strip().upper() for x in r[j:j + 12]]
-                if "LUCE" in window or "GAS" in window:
-                    starts.append(j)
+        starts = _find_gestionale_blocks(r)
         if not starts:
             skipped += 1
         for s in starts:
             b = [str(x).strip() for x in r[s:s + 22]] + [""] * max(0, 22 - len(r[s:s + 22]))
-            servizio = b[10].upper()
-            if servizio not in ("LUCE", "GAS"):
+            doc = _gestionale_block_to_doc(b, store_id, admin, now)
+            if doc:
+                docs.append(doc)
+            else:
                 skipped += 1
-                continue
-            toks = b[1].split()
-            if not toks:
-                skipped += 1
-                continue
-            tar = [float(n.replace(",", ".")) for n in re.findall(r"\d+[.,]\d+|\d+", b[16])]
-            prezzo_n, fisse_n = None, None
-            if len(tar) == 2:
-                prezzo_n, fisse_n = tar
-            elif len(tar) == 1 and tar[0] < 5:
-                prezzo_n = tar[0]
-            note = b[20]
-            if b[16] and len(tar) > 2:
-                note = (note + " | Tariffa nuova: " + b[16]).strip(" |")
-            lav_raw = b[21].strip().lower()
-            lav = _norm_lavorazione(lav_raw)
-            if lav_raw and lav == "da_quotare" and lav_raw != "da quotare":
-                note = (note + " | Stato foglio: " + b[21]).strip(" |")
-            if b[19].strip().lower() == "annullato":
-                note = (note + " | Pagamento: annullato").strip(" |")
-            pagato = _parse_bool(b[19])
-            is_gas = servizio == "GAS"
-            docs.append({
-                "id": str(uuid.uuid4()),
-                "nome": toks[0], "cognome": " ".join(toks[1:]),
-                "tipo_cliente": "business" if b[3] else "privato",
-                "codice_fiscale": b[2].upper(), "p_iva": b[3], "indirizzo": b[4],
-                "pod": "" if is_gas else b[5].upper(), "pdr": b[5] if is_gas else "",
-                "iban": b[6].upper(), "email": b[7], "telefono": b[8],
-                "kw_potenza": _parse_float(b[9]),
-                "tipo_bolletta": "gas" if is_gas else "luce",
-                "fornitore_provenienza": b[11],
-                "costo_kwh_attuale": None, "spese_fisse_attuale": None, "costo_smc_attuale": None,
-                "data_contratto": _parse_date_flex(b[14]),
-                "data_verifica": _parse_date_flex(b[12]),
-                "data_cambio": _parse_date_flex(b[13]),
-                "tipo_contratto": "variabile" if "var" in b[15].lower() else "fisso",
-                "nuovo_fornitore": b[17],
-                "costo_kwh_nuovo": None if is_gas else prezzo_n,
-                "spese_fisse_nuovo": fisse_n,
-                "costo_smc_nuovo": prezzo_n if is_gas else None,
-                "privacy_firmata": False,
-                "note": note,
-                "lavorazione": lav,
-                "venditore_id": store_id, "operatore_id": "",
-                "pagato": pagato,
-                "last_payment_date": date.today().isoformat() if pagato else None,
-                "created_by": admin["id"], "created_at": now, "updated_at": now,
-            })
     if not docs:
         return None, "Nessun cliente riconosciuto nel formato gestionale"
     return (docs, skipped), None
@@ -796,64 +819,69 @@ def _parse_any_csv(text: str, store_id: str, admin: dict):
         return _parse_gestionale_csv(text, store_id, admin)
     return _parse_sheet_csv(text, store_id, admin)
 
-def _parse_sheet_csv(text: str, store_id: str, admin: dict):
-    try:
-        df = pd.read_csv(io.StringIO(text), dtype=str)
-    except Exception:
-        return None, "Formato del foglio non leggibile"
+def _build_col_map(df) -> dict:
     col_map = {}
     for col in df.columns:
         field = HEADER_MAP.get(_norm_header(col))
         if field and field not in col_map.values():
             col_map[col] = field
+    return col_map
+
+def _row_to_doc(data: dict, store_id: str, admin: dict, now: str) -> dict:
+    tb = str(data.get("tipo_bolletta", "")).strip().lower()
+    tc = str(data.get("tipo_contratto", "")).strip().lower()
+    pagato = _parse_bool(data.get("pagato", ""))
+    return {
+        "id": str(uuid.uuid4()),
+        "nome": str(data.get("nome", "")).strip(), "cognome": str(data.get("cognome", "")).strip(),
+        "tipo_cliente": "business" if str(data.get("p_iva", "")).strip() else "privato",
+        "codice_fiscale": str(data.get("codice_fiscale", "")).strip().upper(),
+        "p_iva": str(data.get("p_iva", "")).strip(),
+        "indirizzo": str(data.get("indirizzo", "")).strip(),
+        "pod": str(data.get("pod", "")).strip().upper(),
+        "pdr": str(data.get("pdr", "")).strip(),
+        "iban": str(data.get("iban", "")).strip().upper(),
+        "email": str(data.get("email", "")).strip(),
+        "telefono": str(data.get("telefono", "")).strip(),
+        "kw_potenza": _parse_float(data.get("kw_potenza")),
+        "tipo_bolletta": "gas" if "gas" in tb else "luce",
+        "fornitore_provenienza": str(data.get("fornitore_provenienza", "")).strip(),
+        "costo_kwh_attuale": _parse_float(data.get("costo_kwh_attuale")),
+        "spese_fisse_attuale": _parse_float(data.get("spese_fisse_attuale")),
+        "costo_smc_attuale": _parse_float(data.get("costo_smc_attuale")),
+        "data_contratto": _parse_date(data.get("data_contratto")),
+        "data_verifica": _parse_date(data.get("data_verifica")),
+        "data_cambio": _parse_date(data.get("data_cambio")),
+        "tipo_contratto": "variabile" if "var" in tc else "fisso",
+        "nuovo_fornitore": str(data.get("nuovo_fornitore", "")).strip(),
+        "costo_kwh_nuovo": _parse_float(data.get("costo_kwh_nuovo")),
+        "spese_fisse_nuovo": _parse_float(data.get("spese_fisse_nuovo")),
+        "costo_smc_nuovo": _parse_float(data.get("costo_smc_nuovo")),
+        "privacy_firmata": _parse_bool(data.get("privacy_firmata", "")),
+        "note": str(data.get("note", "")).strip(),
+        "lavorazione": _norm_lavorazione(data.get("lavorazione", "")),
+        "venditore_id": store_id, "operatore_id": "",
+        "pagato": pagato,
+        "last_payment_date": date.today().isoformat() if pagato else None,
+        "created_by": admin["id"], "created_at": now, "updated_at": now,
+    }
+
+def _parse_sheet_csv(text: str, store_id: str, admin: dict):
+    try:
+        df = pd.read_csv(io.StringIO(text), dtype=str)
+    except Exception:
+        return None, "Formato del foglio non leggibile"
+    col_map = _build_col_map(df)
     if "nome" not in col_map.values() and "cognome" not in col_map.values():
         return None, f"Colonne 'nome'/'cognome' non trovate. Intestazioni lette: {', '.join(str(c) for c in df.columns[:15])}"
     now = datetime.now(timezone.utc).isoformat()
     docs, skipped = [], 0
     for _, row in df.iterrows():
         data = {field: (row[col] if pd.notna(row[col]) else "") for col, field in col_map.items()}
-        nome = str(data.get("nome", "")).strip()
-        cognome = str(data.get("cognome", "")).strip()
-        if not nome and not cognome:
+        if not str(data.get("nome", "")).strip() and not str(data.get("cognome", "")).strip():
             skipped += 1
             continue
-        tb = str(data.get("tipo_bolletta", "")).strip().lower()
-        tc = str(data.get("tipo_contratto", "")).strip().lower()
-        pagato = _parse_bool(data.get("pagato", ""))
-        docs.append({
-            "id": str(uuid.uuid4()),
-            "nome": nome, "cognome": cognome,
-            "tipo_cliente": "business" if str(data.get("p_iva", "")).strip() else "privato",
-            "codice_fiscale": str(data.get("codice_fiscale", "")).strip().upper(),
-            "p_iva": str(data.get("p_iva", "")).strip(),
-            "indirizzo": str(data.get("indirizzo", "")).strip(),
-            "pod": str(data.get("pod", "")).strip().upper(),
-            "pdr": str(data.get("pdr", "")).strip(),
-            "iban": str(data.get("iban", "")).strip().upper(),
-            "email": str(data.get("email", "")).strip(),
-            "telefono": str(data.get("telefono", "")).strip(),
-            "kw_potenza": _parse_float(data.get("kw_potenza")),
-            "tipo_bolletta": "gas" if "gas" in tb else "luce",
-            "fornitore_provenienza": str(data.get("fornitore_provenienza", "")).strip(),
-            "costo_kwh_attuale": _parse_float(data.get("costo_kwh_attuale")),
-            "spese_fisse_attuale": _parse_float(data.get("spese_fisse_attuale")),
-            "costo_smc_attuale": _parse_float(data.get("costo_smc_attuale")),
-            "data_contratto": _parse_date(data.get("data_contratto")),
-            "data_verifica": _parse_date(data.get("data_verifica")),
-            "data_cambio": _parse_date(data.get("data_cambio")),
-            "tipo_contratto": "variabile" if "var" in tc else "fisso",
-            "nuovo_fornitore": str(data.get("nuovo_fornitore", "")).strip(),
-            "costo_kwh_nuovo": _parse_float(data.get("costo_kwh_nuovo")),
-            "spese_fisse_nuovo": _parse_float(data.get("spese_fisse_nuovo")),
-            "costo_smc_nuovo": _parse_float(data.get("costo_smc_nuovo")),
-            "privacy_firmata": _parse_bool(data.get("privacy_firmata", "")),
-            "note": str(data.get("note", "")).strip(),
-            "lavorazione": _norm_lavorazione(data.get("lavorazione", "")),
-            "venditore_id": store_id, "operatore_id": "",
-            "pagato": pagato,
-            "last_payment_date": date.today().isoformat() if pagato else None,
-            "created_by": admin["id"], "created_at": now, "updated_at": now,
-        })
+        docs.append(_row_to_doc(data, store_id, admin, now))
     return (docs, skipped), None
 
 async def _insert_imported(docs: list, admin: dict):
@@ -871,6 +899,25 @@ class SheetImportInput(BaseModel):
     all_tabs: bool = False
     sheet_name: str = ""
 
+async def _fetch_tab_csv(http_client, sheet_id: str, gid: Optional[str] = None, sheet_name: str = ""):
+    if sheet_name:
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
+    else:
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid or '0'}"
+    return await http_client.get(url)
+
+async def _import_store_tab(http_client, sheet_id: str, store: dict, fallback_hash: str, admin: dict) -> dict:
+    r = await _fetch_tab_csv(http_client, sheet_id, sheet_name=store["nome"])
+    if r.status_code != 200 or hashlib.sha256(r.text.encode()).hexdigest() == fallback_hash:
+        return {"store": store["nome"], "status": "pagina_non_trovata", "imported": 0}
+    parsed, err = _parse_any_csv(r.text, store["id"], admin)
+    if err:
+        return {"store": store["nome"], "status": "errore", "detail": err, "imported": 0}
+    docs, skipped = parsed
+    if docs:
+        await _insert_imported(docs, admin)
+    return {"store": store["nome"], "status": "ok", "imported": len(docs), "skipped": skipped}
+
 @api_router.post("/import/google-sheet")
 async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(require_admin)):
     m = re.search(r"/d/([a-zA-Z0-9\-_]+)", input.sheet_url)
@@ -882,35 +929,21 @@ async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(req
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http_client:
         if input.all_tabs:
             stores = await db.stores.find({}, {"_id": 0}).to_list(500)
-            fallback_resp = await http_client.get(
-                f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=__non_esiste__")
+            fallback_resp = await _fetch_tab_csv(http_client, sheet_id, sheet_name="__non_esiste__")
             if fallback_resp.status_code != 200:
                 raise HTTPException(status_code=400, detail="Impossibile leggere il foglio. Verifica che sia condiviso: 'Chiunque abbia il link può visualizzare'.")
             fallback_hash = hashlib.sha256(fallback_resp.text.encode()).hexdigest()
             report, total_imported = [], 0
             for s in stores:
-                r = await http_client.get(
-                    f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={s['nome']}")
-                if r.status_code != 200 or hashlib.sha256(r.text.encode()).hexdigest() == fallback_hash:
-                    report.append({"store": s["nome"], "status": "pagina_non_trovata", "imported": 0})
-                    continue
-                parsed, err = _parse_any_csv(r.text, s["id"], admin)
-                if err:
-                    report.append({"store": s["nome"], "status": "errore", "detail": err, "imported": 0})
-                    continue
-                docs, skipped = parsed
-                if docs:
-                    await _insert_imported(docs, admin)
-                total_imported += len(docs)
-                report.append({"store": s["nome"], "status": "ok", "imported": len(docs), "skipped": skipped})
+                rep = await _import_store_tab(http_client, sheet_id, s, fallback_hash, admin)
+                report.append(rep)
+                total_imported += rep["imported"]
             return {"mode": "all_tabs", "total_imported": total_imported, "report": report,
                     "hint": "Le pagine segnate come non trovate devono avere lo stesso nome del negozio, oppure importale singolarmente dal link della pagina (contiene gid)."}
 
-        if input.sheet_name:
-            csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={input.sheet_name}"
-        else:
-            csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid_m.group(1) if gid_m else '0'}"
-        resp = await http_client.get(csv_url)
+        resp = await _fetch_tab_csv(http_client, sheet_id,
+                                    gid=gid_m.group(1) if gid_m else None,
+                                    sheet_name=input.sheet_name)
     if resp.status_code != 200 or ("text/csv" not in resp.headers.get("content-type", "") and "text/plain" not in resp.headers.get("content-type", "")):
         raise HTTPException(status_code=400, detail="Impossibile leggere il foglio. Verifica che sia condiviso: 'Chiunque abbia il link può visualizzare'.")
     parsed, err = _parse_any_csv(resp.text, input.store_id, admin)
@@ -1254,13 +1287,27 @@ SEED_USERS = [
      "role": "negozio", "can_view_all": False, "stores": ["Gravedona"]},
 ]
 
-async def seed_data():
+SEED_CLIENT_SAMPLES = [
+    ("Mario", "Rossi", "privato", "luce", "Enel Energia", "cambio_effettuato", "Tirano", 10, True, 7),
+    ("Giuseppe", "Bianchi", "privato", "gas", "Eni Plenitude", "rinnovato", "Sondalo", 11, True, 2),
+    ("Valtellina Eco", "Srl", "business", "luce", "A2A Energia", "in_quotazione", "Tirano", 1, False, None),
+    ("Anna", "Verdi", "privato", "luce", "Sorgenia", "richieste_bollette", "Gravedona", 3, False, None),
+    ("Luca", "Fontana", "privato", "gas", "Hera Comm", "attesa_documenti", "Sondrio", 9, True, 5),
+    ("Bar al Lago", "Sas", "business", "luce", "Illumia", "contattare_cliente", "Gravedona", 0, False, None),
+    ("Paola", "Neri", "privato", "gas", "NeN", "da_quotare", "Sondalo", 2, False, None),
+    ("Franco", "Colombo", "privato", "luce", "Octopus Energy", "in_attesa_ok", "Deriu", 10, True, 4),
+    ("Agriturismo Pizzo", "Srl", "business", "gas", "Dolomiti Energia", "passa_in_negozio", "Sondrio Grosio", 6, False, None),
+    ("Sara", "Galli", "privato", "luce", "Tate", "problema_tecnico", "Tirano", 4, False, None),
+]
+
+async def _seed_indexes():
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
     await db.clients.create_index("venditore_id")
     await db.clients.create_index("lavorazione")
     await db.lavorazioni_log.create_index("operatore_id")
 
+async def _seed_admin():
     admin_email = os.environ["ADMIN_EMAIL"].strip().lower()
     admin_password = os.environ["ADMIN_PASSWORD"]
     existing = await db.users.find_one({"email": admin_email})
@@ -1273,12 +1320,14 @@ async def seed_data():
         await db.users.update_one({"email": admin_email},
                                   {"$set": {"password_hash": hash_password(admin_password)}})
 
+async def _seed_stores():
     if await db.stores.count_documents({}) == 0:
         for s in SEED_STORES:
             await db.stores.insert_one({"id": str(uuid.uuid4()), **s, "note": "", "pagato": False,
                                         "last_payment_date": None,
                                         "created_at": datetime.now(timezone.utc).isoformat()})
 
+async def _seed_users():
     stores = {s["nome"]: s["id"] for s in await db.stores.find({}, {"_id": 0}).to_list(100)}
     for su in SEED_USERS:
         if not await db.users.find_one({"email": su["email"]}):
@@ -1288,51 +1337,53 @@ async def seed_data():
                                        "can_view_all": su["can_view_all"], "active": True,
                                        "created_at": datetime.now(timezone.utc).isoformat()})
 
-    if await db.clients.count_documents({}) == 0:
-        deborah = await db.users.find_one({"email": "deborah@cambiaora.local"}, {"_id": 0})
-        op_id = deborah["id"] if deborah else ""
-        today = date.today()
-        samples = [
-            ("Mario", "Rossi", "privato", "luce", "Enel Energia", "cambio_effettuato", "Tirano", 10, True, 7),
-            ("Giuseppe", "Bianchi", "privato", "gas", "Eni Plenitude", "rinnovato", "Sondalo", 11, True, 2),
-            ("Valtellina Eco", "Srl", "business", "luce", "A2A Energia", "in_quotazione", "Tirano", 1, False, None),
-            ("Anna", "Verdi", "privato", "luce", "Sorgenia", "richieste_bollette", "Gravedona", 3, False, None),
-            ("Luca", "Fontana", "privato", "gas", "Hera Comm", "attesa_documenti", "Sondrio", 9, True, 5),
-            ("Bar al Lago", "Sas", "business", "luce", "Illumia", "contattare_cliente", "Gravedona", 0, False, None),
-            ("Paola", "Neri", "privato", "gas", "NeN", "da_quotare", "Sondalo", 2, False, None),
-            ("Franco", "Colombo", "privato", "luce", "Octopus Energy", "in_attesa_ok", "Deriu", 10, True, 4),
-            ("Agriturismo Pizzo", "Srl", "business", "gas", "Dolomiti Energia", "passa_in_negozio", "Sondrio Grosio", 6, False, None),
-            ("Sara", "Galli", "privato", "luce", "Tate", "problema_tecnico", "Tirano", 4, False, None),
-        ]
-        for nome, cognome, tipo_c, bolletta, forn, lav, store_name, mesi_fa, pagato, pag_mesi_fa in samples:
-            dc = today - relativedelta(months=mesi_fa)
-            doc = {"id": str(uuid.uuid4()), "nome": nome, "cognome": cognome, "tipo_cliente": tipo_c,
-                   "codice_fiscale": "RSSMRA80A01F205X" if tipo_c == "privato" else "",
-                   "p_iva": "01234567890" if tipo_c == "business" else "",
-                   "indirizzo": "Via Roma 1, 23100 Sondrio", "pod": "IT001E12345678" if bolletta == "luce" else "",
-                   "pdr": "12345678901234" if bolletta == "gas" else "", "iban": "IT60X0542811101000000123456",
-                   "email": f"{nome.lower().replace(' ', '')}@esempio.it", "telefono": "3331234567",
-                   "kw_potenza": 3.0 if bolletta == "luce" else None, "tipo_bolletta": bolletta,
-                   "fornitore_provenienza": forn,
-                   "costo_kwh_attuale": 0.32 if bolletta == "luce" else None,
-                   "spese_fisse_attuale": 10.0,
-                   "costo_smc_attuale": 1.15 if bolletta == "gas" else None,
-                   "data_contratto": dc.isoformat(), "data_verifica": None, "data_cambio": None,
-                   "tipo_contratto": "fisso", "nuovo_fornitore": "Sorgenia",
-                   "costo_kwh_nuovo": 0.24 if bolletta == "luce" else None, "spese_fisse_nuovo": 8.0,
-                   "costo_smc_nuovo": 0.89 if bolletta == "gas" else None,
-                   "privacy_firmata": True, "note": "", "lavorazione": lav,
-                   "venditore_id": stores.get(store_name, ""), "operatore_id": op_id,
-                   "pagato": pagato,
-                   "last_payment_date": (today - relativedelta(months=pag_mesi_fa)).isoformat() if pag_mesi_fa is not None else None,
-                   "created_by": op_id, "created_at": datetime.now(timezone.utc).isoformat(),
-                   "updated_at": datetime.now(timezone.utc).isoformat()}
-            await db.clients.insert_one(doc)
-            await db.lavorazioni_log.insert_one({
-                "id": str(uuid.uuid4()), "client_id": doc["id"],
-                "client_name": f"{cognome} {nome}", "operatore_id": op_id,
-                "operatore_name": "Deborah", "status": lav, "note": "Cliente inserito",
-                "created_at": datetime.now(timezone.utc).isoformat()})
+def _sample_client_doc(nome, cognome, tipo_c, bolletta, forn, lav, store_id, dc, pagato, last_pay, op_id, now):
+    return {"id": str(uuid.uuid4()), "nome": nome, "cognome": cognome, "tipo_cliente": tipo_c,
+            "codice_fiscale": "RSSMRA80A01F205X" if tipo_c == "privato" else "",
+            "p_iva": "01234567890" if tipo_c == "business" else "",
+            "indirizzo": "Via Roma 1, 23100 Sondrio", "pod": "IT001E12345678" if bolletta == "luce" else "",
+            "pdr": "12345678901234" if bolletta == "gas" else "", "iban": "IT60X0542811101000000123456",
+            "email": f"{nome.lower().replace(' ', '')}@esempio.it", "telefono": "3331234567",
+            "kw_potenza": 3.0 if bolletta == "luce" else None, "tipo_bolletta": bolletta,
+            "fornitore_provenienza": forn,
+            "costo_kwh_attuale": 0.32 if bolletta == "luce" else None,
+            "spese_fisse_attuale": 10.0,
+            "costo_smc_attuale": 1.15 if bolletta == "gas" else None,
+            "data_contratto": dc.isoformat(), "data_verifica": None, "data_cambio": None,
+            "tipo_contratto": "fisso", "nuovo_fornitore": "Sorgenia",
+            "costo_kwh_nuovo": 0.24 if bolletta == "luce" else None, "spese_fisse_nuovo": 8.0,
+            "costo_smc_nuovo": 0.89 if bolletta == "gas" else None,
+            "privacy_firmata": True, "note": "", "lavorazione": lav,
+            "venditore_id": store_id, "operatore_id": op_id,
+            "pagato": pagato, "last_payment_date": last_pay,
+            "created_by": op_id, "created_at": now, "updated_at": now}
+
+async def _seed_clients():
+    if await db.clients.count_documents({}) > 0:
+        return
+    deborah = await db.users.find_one({"email": "deborah@cambiaora.local"}, {"_id": 0})
+    op_id = deborah["id"] if deborah else ""
+    stores = {s["nome"]: s["id"] for s in await db.stores.find({}, {"_id": 0}).to_list(100)}
+    today = date.today()
+    now = datetime.now(timezone.utc).isoformat()
+    for nome, cognome, tipo_c, bolletta, forn, lav, store_name, mesi_fa, pagato, pag_mesi_fa in SEED_CLIENT_SAMPLES:
+        dc = today - relativedelta(months=mesi_fa)
+        last_pay = (today - relativedelta(months=pag_mesi_fa)).isoformat() if pag_mesi_fa is not None else None
+        doc = _sample_client_doc(nome, cognome, tipo_c, bolletta, forn, lav,
+                                 stores.get(store_name, ""), dc, pagato, last_pay, op_id, now)
+        await db.clients.insert_one(doc)
+        await db.lavorazioni_log.insert_one({
+            "id": str(uuid.uuid4()), "client_id": doc["id"],
+            "client_name": f"{cognome} {nome}", "operatore_id": op_id,
+            "operatore_name": "Deborah", "status": lav, "note": "Cliente inserito",
+            "created_at": now})
+
+async def seed_data():
+    await _seed_indexes()
+    await _seed_admin()
+    await _seed_stores()
+    await _seed_users()
+    await _seed_clients()
 
 @app.on_event("startup")
 async def startup():

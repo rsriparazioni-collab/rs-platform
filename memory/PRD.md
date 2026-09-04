@@ -42,6 +42,8 @@ Gestionale per utenze clienti con rinnovi a 10 mesi (utenza 12 mesi, attivazione
 Vedi /app/memory/test_credentials.md
 
 - Deploy readiness: pino aggiunto a whatsapp-service, [program:whatsapp] spostato in supervisord.conf, CORS da CORS_ORIGINS env, proiezioni MongoDB su list_clients/build_alerts/export — deployment_agent: PASS (2026-09-04)
+- Code Quality Report applicato (2026-09-04): auth migrata a cookie httpOnly gu_token (niente localStorage), paid_on inizializzato in effective_pagato, refactor seed_data/parsers/import in helper functions, Clienti.jsx diviso in ClientDetail.jsx, useMemo nav Layout, hook deps sistemati, console.warn craco in dev-only, test aggiornati (44/44 pass incluse 2 nuove verifiche cookie auth)
+- Security fix iterazione 2 (2026-09-04): escalation privilegi chiusa su POST /api/users (non-admin solo ruolo negozio, can_view_all forzato false, store_ids limitati ai propri), PATCH /clients con exclude_unset, CORS_ORIGINS esplicito, Utenti.jsx: non-admin senza tabella/select ruolo + info box, titolo a11y su Sheet dettaglio — test 53/53 pass
 - Test aggiornati per dati reali (conteggi dinamici RBAC/dashboard, ricerca multi-campo): 42/42 pass
 - INCIDENTE UTENTE: dominio ROOT rsriparazioni.com collegato all'app Emergent invece del sottodominio → il sito WordPress non è toccato, serve ripristino DNS (A record → 81.88.52.225) e custom domain su gestionale.rsriparazioni.com
 

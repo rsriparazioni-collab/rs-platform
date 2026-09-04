@@ -1,25 +1,17 @@
 import axios from "axios";
 
+// Auth via httpOnly cookie (gu_token) impostato dal backend - niente token in localStorage
 const api = axios.create({
   baseURL: `${process.env.REACT_APP_BACKEND_URL}/api`,
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("gu_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
+  withCredentials: true,
 });
 
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401 && !err.config.url.includes("/auth/login")) {
-      localStorage.removeItem("gu_token");
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
-      }
+    const url = err.config?.url || "";
+    if (err.response?.status === 401 && !url.includes("/auth/") && window.location.pathname !== "/login") {
+      window.location.href = "/login";
     }
     return Promise.reject(err);
   }

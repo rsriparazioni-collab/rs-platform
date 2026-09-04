@@ -82,11 +82,25 @@ class TestAuth:
         assert data["user"]["email"] == email
         assert "password_hash" not in data["user"]
 
+    def test_login_sets_httponly_cookie(self):
+        r = _login(*CREDS["admin"])
+        assert r.status_code == 200
+        cookie = r.cookies.get("gu_token")
+        assert cookie, "login deve impostare il cookie httpOnly gu_token"
+
     def test_me_matches_login(self, admin, admin_user):
         r = admin.get(f"{API}/auth/me", timeout=30)
         assert r.status_code == 200
         assert r.json()["email"] == admin_user["email"]
         assert r.json()["role"] == "admin"
+
+    def test_me_with_cookie_auth(self):
+        r = _login(*CREDS["deborah"])
+        s = requests.Session()
+        s.cookies.update(r.cookies)
+        me = s.get(f"{API}/auth/me", timeout=30)
+        assert me.status_code == 200
+        assert me.json()["email"] == CREDS["deborah"][0]
 
     def test_no_token_401(self):
         r = requests.get(f"{API}/auth/me", timeout=30)
@@ -122,7 +136,7 @@ class TestRBAC:
 
     def test_deborah_can_view_all(self, deborah, admin):
         s, u = deborah
-        assert u["can_view_all"] is True
+        assert u["can_view_all"]
         r = s.get(f"{API}/clients", timeout=30)
         assert r.status_code == 200
         assert len(r.json()) == len(admin.get(f"{API}/clients", timeout=30).json())
@@ -192,10 +206,10 @@ class TestBusinessLogic:
     def test_payment_reset_after_6_months(self, admin):
         clients = admin.get(f"{API}/clients", timeout=30).json()
         mario = next(c for c in clients if c["cognome"] == "Rossi" and c["nome"] == "Mario")
-        assert mario["pagato"] is True
-        assert mario["pagato_effettivo"] is False, "pagato 7 mesi fa deve resettare a non pagato"
+        assert mario["pagato"]
+        assert not mario["pagato_effettivo"], "pagato 7 mesi fa deve resettare a non pagato"
         giuseppe = next(c for c in clients if c["cognome"] == "Bianchi")
-        assert giuseppe["pagato_effettivo"] is True
+        assert giuseppe["pagato_effettivo"]
 
     def test_no_mongo_id_leak(self, admin):
         for path in ["/clients", "/stores", "/users", "/operators/stats", "/meta", "/dashboard/stats", "/alerts"]:
@@ -229,7 +243,7 @@ class TestClientsCRUD:
         cid = c["id"]
         TestClientsCRUD.created.append(cid)
         assert c["nome"] == "TEST_Nome"
-        assert c["pagato"] is False
+        assert not c["pagato"]
         assert c["data_attivazione"] == (date.today() + relativedelta(months=2)).isoformat()
 
         # GET verify persistence + history log
@@ -256,7 +270,7 @@ class TestClientsCRUD:
         p = admin.post(f"{API}/clients/{cid}/mark-paid", timeout=30)
         assert p.status_code == 200
         g3 = admin.get(f"{API}/clients/{cid}", timeout=30).json()
-        assert g3["pagato"] is True and g3["pagato_effettivo"] is True
+        assert g3["pagato"] and g3["pagato_effettivo"]
         assert g3["last_payment_date"] == date.today().isoformat()
 
         # DELETE
@@ -309,12 +323,12 @@ class TestStores:
         r = admin.post(f"{API}/stores/{target}/mark-paid", timeout=30)
         assert r.status_code == 200
         after = next(s for s in admin.get(f"{API}/stores", timeout=30).json() if s["id"] == target)
-        assert after["pagato"] is True and after["pagato_effettivo"] is True
+        assert after["pagato"] and after["pagato_effettivo"]
 
         c = admin.post(f"{API}/stores", json={"nome": "TEST_Negozio", "referente": "QA"}, timeout=30)
         assert c.status_code == 200, c.text[:300]
         new_id = c.json()["id"]
-        assert c.json()["pagato"] is False
+        assert not c.json()["pagato"]
         listed = admin.get(f"{API}/stores", timeout=30).json()
         assert any(s["id"] == new_id for s in listed)
 
@@ -354,7 +368,7 @@ class TestUsers:
 
         # deactivate -> login 403
         d = admin.patch(f"{API}/users/{uid}", json={"active": False}, timeout=30)
-        assert d.status_code == 200 and d.json()["active"] is False
+        assert d.status_code == 200 and not d.json()["active"]
         assert _login(email, "TestQa2026!").status_code == 403
 
         # reset password + reactivate
