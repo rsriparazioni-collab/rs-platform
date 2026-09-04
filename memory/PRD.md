@@ -28,21 +28,18 @@ Gestionale per utenze clienti con rinnovi a 10 mesi (utenza 12 mesi, attivazione
 - Login page brandizzata CambiaOra (logo in /app/frontend/public/cambiaora-logo.jpg, gradiente fuchsia/violet/blue)
 - IMPORT REALE ESEGUITO (2026-09-04) da foglio 19pEn41GLbJi6iI6BQ7v83idmro4GUoazUwdLGBUuksY: Tirano 14, Sondalo 26, Sondrio 413, Gravedona 17 → totale ~463 clienti
 - Email alert corretta: cambiaora.rs@gmail.com (digest verificato, email_id ricevuto)
-- DA FARE: tab "ipro" (gid 511510291, ~7 clienti sparsi Italia) non importato — in attesa conferma utente su negozio di destinazione
-- DA FARE: clienti di Devis dentro il tab Sondrio non distinguibili automaticamente (nessun marcatore nel foglio) — riassegnazione manuale da UI
+- Negozio "Ipro" creato (referente Deborah) + tab ipro importato: 8 clienti (2026-09-04)
+- Clienti di Devis restano nel negozio Sondrio, gestiti da Deborah (decisione utente); Deborah assegnata come operatrice su tutti i clienti Sondrio + Ipro (431 clienti)
 - Test: 42/42 pytest backend, E2E frontend verificato (testing agent iterazione 1)
 
 ## Credenziali
 Vedi /app/memory/test_credentials.md
 
 ## Backlog prioritizzato
-- P1: decidere import tab "ipro" (7 clienti) — serve conferma utente
-- P1: riassegnare i clienti di Devis dal tab Sondrio (manuale o con marcatore)
 - P1: notifiche email ai negozi quando viene registrato il loro compenso
 - P1: export clienti in Excel/CSV
 - P2: allegati documenti (bollette) via object storage
 - P2: statistiche avanzate per fornitore/periodo
 
 ## Prossimi task
-1. Conferma utente su tab "ipro"
-2. Eventuale riassegnazione clienti Devis
+1. Attendere feedback utente / nuove richieste
