@@ -42,7 +42,7 @@ export default function Login() {
             Il gestionale CambiaOra: clienti, contratti, rinnovi a 10 mesi e compensi dei negozi da un'unica postazione di comando.
           </p>
         </div>
-        <p className="text-xs text-fuchsia-200">Ci trovi a Sondrio e Sondalo · Accesso riservato al team autorizzato</p>
+        <p className="text-xs text-fuchsia-200">Accesso riservato al team autorizzato</p>
       </div>
       <div className="flex flex-1 items-center justify-center bg-slate-50 p-6">
         <div className="w-full max-w-sm">
