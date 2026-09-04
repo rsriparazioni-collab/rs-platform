@@ -1,0 +1,175 @@
+{
+  "app_name": "Gestione Utenze Luce & Gas CRM",
+  "app_type": "saas_app / dashboard",
+  "target_audience": "Italian utility brokers, agency managers, store owners, and processing operators",
+  "language": "it",
+  "persona_and_tone": {
+    "designer": "E1 Anti-AI Designer",
+    "emotional_archetype": "Swiss & High-Contrast Precision meets Italian Alpine Energy (Warm Slate, Electric Azure, Energy Gold, Emerald)",
+    "tone": "Ultra-efficient, authoritative, tactile, zero-slop utility management command center"
+  },
+  "roles_and_permissions": {
+    "admin": {
+      "name": "Devis",
+      "role_code": "admin",
+      "visibility": "Full access to all clients, all stores, financial margins, operator performance, and system settings."
+    },
+    "operator": {
+      "name": "Deborah",
+      "role_code": "operator",
+      "visibility": "Full access to all clients and processing workflows across all stores and suppliers."
+    },
+    "stores": [
+      {
+        "id": "store-tirano",
+        "name": "Michael",
+        "location": "Tirano",
+        "role_code": "store",
+        "visibility": "Restricted view: sees ONLY clients originating from Michael / Tirano store."
+      },
+      {
+        "id": "store-sondalo",
+        "name": "Lorenzo",
+        "location": "Sondalo",
+        "role_code": "store",
+        "visibility": "Restricted view: sees ONLY clients originating from Lorenzo / Sondalo store."
+      },
+      {
+        "id": "store-gravedona",
+        "name": "Kevin",
+        "location": "Gravedona",
+        "role_code": "store",
+        "visibility": "Restricted view: sees ONLY clients originating from Kevin / Gravedona store."
+      }
+    ]
+  },
+  "business_rules": {
+    "contract_duration_months": 12,
+    "activation_delay_months": 2,
+    "renewal_trigger_months": 10,
+    "payment_reset_cycle_months": 6,
+    "italian_free_market_suppliers": [
+      "Enel Energia",
+      "Eni Plenitude",
+      "Edison Steno",
+      "A2A Energia",
+      "Sorgenia",
+      "Hera Comm",
+      "Illumia",
+      "NeN",
+      "Octopus Energy",
+      "Iren Luce e Gas"
+    ],
+    "lavorazione_statuses": [
+      {"id": "cambiare", "label": "Da Cambiare", "color_badge": "bg-amber-500/15 text-amber-700 border-amber-300 dark:text-amber-400"},
+      {"id": "non_cambiare", "label": "Non Cambiare", "color_badge": "bg-slate-500/15 text-slate-700 border-slate-300 dark:text-slate-400"},
+      {"id": "cambio_effettuato", "label": "Cambio Effettuato", "color_badge": "bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:text-emerald-400"},
+      {"id": "in_quotazione", "label": "In Quotazione", "color_badge": "bg-sky-500/15 text-sky-700 border-sky-300 dark:text-sky-400"},
+      {"id": "richieste_bollette", "label": "Richieste Bollette", "color_badge": "bg-violet-500/15 text-violet-700 border-violet-300 dark:text-violet-400"},
+      {"id": "in_attesa_ok", "label": "In Attesa OK Cliente", "color_badge": "bg-indigo-500/15 text-indigo-700 border-indigo-300 dark:text-indigo-400"},
+      {"id": "problema_tecnico", "label": "Problema Tecnico", "color_badge": "bg-rose-500/15 text-rose-700 border-rose-300 dark:text-rose-400"},
+      {"id": "da_quotare", "label": "Da Quotare", "color_badge": "bg-cyan-500/15 text-cyan-700 border-cyan-300 dark:text-cyan-400"},
+      {"id": "contattare_cliente", "label": "Contattare Cliente", "color_badge": "bg-yellow-500/15 text-yellow-700 border-yellow-300 dark:text-yellow-400"},
+      {"id": "non_vuole_cambiare", "label": "Non Vuole Cambiare", "color_badge": "bg-zinc-500/15 text-zinc-700 border-zinc-300 dark:text-zinc-400"},
+      {"id": "passa_in_negozio", "label": "Passa in Negozio", "color_badge": "bg-teal-500/15 text-teal-700 border-teal-300 dark:text-teal-400"},
+      {"id": "attesa_documenti", "label": "Attesa Documenti", "color_badge": "bg-orange-500/15 text-orange-700 border-orange-300 dark:text-orange-400"},
+      {"id": "rinnovato", "label": "Rinnovato", "color_badge": "bg-green-600/15 text-green-800 border-green-300 dark:text-green-400"}
+    ]
+  },
+  "colors": {
+    "primary": "#0F172A",
+    "primary_light": "#1E293B",
+    "accent_azure": "#0284C7",
+    "accent_gold": "#D97706",
+    "accent_emerald": "#059669",
+    "accent_rose": "#E11D48",
+    "bg_slate": "#F8FAFC",
+    "card_bg": "#FFFFFF",
+    "border_subtle": "#E2E8F0",
+    "text_main": "#0F172A",
+    "text_muted": "#64748B",
+    "gradient_hero": "from-slate-900 via-slate-800 to-sky-950"
+  },
+  "typography": {
+    "heading_font": "Outfit, Plus Jakarta Sans, sans-serif",
+    "body_font": "Inter, system-ui, sans-serif",
+    "code_font": "JetBrains Mono, monospace",
+    "h1": "text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100",
+    "h2": "text-2xl font-semibold tracking-tight text-slate-800 dark:text-slate-200",
+    "h3": "text-lg font-medium text-slate-800 dark:text-slate-200",
+    "label_overline": "text-xs font-semibold uppercase tracking-widest text-slate-500"
+  },
+  "layout_and_bento": {
+    "sidebar_width": "w-64",
+    "container_padding": "p-6 sm:p-8 space-y-6",
+    "grid_kpi": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5",
+    "bento_dashboard": "grid grid-cols-1 lg:grid-cols-12 gap-6",
+    "table_container": "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden"
+  },
+  "key_views_to_implement": [
+    {
+      "id": "view-dashboard",
+      "title": "Dashboard KPI & Alert",
+      "description": "Executive overview showing total active clients, 10-month renewal alerts, pending 6-month store payment resets, energy type split (Luce vs Gas), and quick filter actions."
+    },
+    {
+      "id": "view-clienti",
+      "title": "Gestione Clienti (Tabella Avanzata)",
+      "description": "Searchable, multi-filterable table of clients (Privati & Business P.IVA). Filter by Lavorazione status, Negozio, Fornitore, Contratto Fisso/Variabile, and Pagato/Non Pagato."
+    },
+    {
+      "id": "view-nuovo-cliente",
+      "title": "Inserimento / Modifica Cliente",
+      "description": "Comprehensive modal/drawer form for registering utility contracts with full field validation (Codice Fiscale, P.IVA, POD 14 chars, PDR 14 digits, IBAN, costs per kW / smc)."
+    },
+    {
+      "id": "view-scheda-dettaglio",
+      "title": "Scheda Cliente Dettagliata",
+      "description": "Deep-dive detail sheet showing timeline (Contratto -> Attivazione 2m -> Rinnovo 10m -> Scadenza 12m), tariff comparison, note log, privacy status, payment status, and history."
+    },
+    {
+      "id": "view-negozi",
+      "title": "Venditori / Negozi & Commissioni",
+      "description": "Store performance view (Michael/Tirano, Lorenzo/Sondalo, Kevin/Gravedona). Status Pagato/Non Pagato with automatic 6-month payment reset counter and payment alert notifications."
+    },
+    {
+      "id": "view-operatori",
+      "title": "Operatori & Statistiche Lavorazioni",
+      "description": "Operator workload tracker (Deborah, Enrico...). Monthly processing counts, success rate, status breakdown, and task assignment queue."
+    },
+    {
+      "id": "view-scadenze-alert",
+      "title": "Centro Alert & Rinnovi 10 Mesi",
+      "description": "Dedicated alert inbox highlighting contracts reaching the 10-month window, stores pending payment reset at 6 months, and missing documents."
+    }
+  ],
+  "image_urls": [
+    {
+      "category": "team_avatars",
+      "url": "https://images.unsplash.com/photo-1758518731468-98e90ffd7430?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwzfHxJdGFsaWFuJTIwcHJvZmVzc2lvbmFsJTIwYnVzaW5lc3MlMjB0ZWFtJTIwc3RvcmUlMjBhdmF0YXJzfGVufDB8fHx8MTc4ODUwNzA1OXww&ixlib=rb-4.1.0&q=85",
+      "description": "Italian business team avatars for store operators and admin"
+    },
+    {
+      "category": "energy_solar_grid",
+      "url": "https://images.unsplash.com/photo-1558449028-b53a39d100fc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHxfHxncmVlbiUyMGVuZXJneSUyMGVsZWN0cmljJTIwZ3JpZCUyMHNvbGFyJTIwcG93ZXIlMjBwbGFudHxlbnwwfHx8fDE3ODg1MDcwNjV8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Solar energy panel grid header graphic for green utility management"
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Implement the Italian Utility CRM app with full compliance with the business logic.",
+    "Include a sticky Header with a prominent Role Switcher ('Ruolo Attivo Simulator') allowing instant switching between Admin (Devis), Operatrice (Deborah), Negozio Tirano (Michael), Negozio Sondalo (Lorenzo), and Negozio Gravedona (Kevin) to verify RBAC filtering.",
+    "Calculate contract timelines precisely: Activation = Contract Date + 2 months; 10-Month Renewal Alert = Contract Date + 10 months; Contract Expiry = Contract Date + 12 months.",
+    "In Negozi section, show 6-month payment reset countdowns with clear alert badges when payment status returns to 'Non Pagato' at 6 months.",
+    "Provide rich realistic sample Italian data (e.g. Mario Rossi, Giuseppe Bianchi, Valtellina Eco Srl, etc.) across all 13 tipologie di lavorazione and suppliers (Enel, Eni Plenitude, A2A, Sorgenia, Hera, etc.).",
+    "Ensure all buttons, inputs, tabs, tables, modals, and filters include data-testid attributes (e.g. data-testid='filter-status-select', data-testid='role-selector', data-testid='add-client-button', data-testid='client-row-1').",
+    "Use Sonner for toast notifications when updating client statuses, adding new contracts, or marking store payments.",
+    "Maintain high visual standard: crisp borders, distinct status badges, responsive mobile drawer navigation, dark/light theme compatibility."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Never center align the entire app container.",
+    "Do not use dark gradients or muddy full-screen dark gradients; use flat slate backgrounds with crisp 1px borders.",
+    "Never use raw AI emojis like 🤖🧠💭; use Lucide-react icons exclusively (Zap, Flame, Building2, User, RefreshCw, AlertTriangle, ShieldCheck, CheckCircle2, Clock, Filter, Search, Plus, FileText).",
+    "Ensure input forms have internal padding and clean focus rings.",
+    "All interactive elements MUST have data-testid attributes."
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "summary": "First full E2E test of Gestionale Utenze (FastAPI + React). Backend: 42 pytest cases across auth/lockout, RBAC scoping, clients CRUD+persistence, stores, users lifecycle, dashboard, alerts, meta, operators, cron -> 41 passed, 1 skipped (send-digest returns 502 because ALERT_EMAIL recipient is undeliverable, known env issue). Frontend: admin login, dashboard KPI+alert center, client create/edit/mark-paid/detail timeline, filters (search/lavorazione/tipo/negozio), negozi (paga + nuovo negozio), operatori stats, utenti (create/toggle/reset pwd), RBAC for michael/lorenzo/deborah, tablet+mobile layout. Core flows all work. Main defect found: no role-based route guard on the frontend - a 'negozio' user can open /negozi, /operatori and /utenti by URL (data is protected by backend 403 but pages render empty with action buttons and errors are silently swallowed). Test data created during testing was cleaned up (DB back to 10 clients / 7 stores / 5 users).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/alerts/send-digest", "issue": "Returns 502 'Invio email fallito' because ALERT_EMAIL=cmbiaora.rs@gmail.com is rejected by the email proxy (probable typo for cambiaora.rs@gmail.com). Expected per request, not counted as blocking."},
+      {"endpoint": "PATCH /api/clients/{id}", "issue": "PATCH accepts the full ClientInput model, so any field omitted by a caller is silently reset to its default (behaves like PUT). Frontend always sends the whole form so no visible bug, but partial updates via API would wipe data."},
+      {"endpoint": "POST /api/auth/login", "issue": "login_attempts.count is never reset when the 15-min lock expires; a single further failed attempt (count already >=5) re-locks the account immediately for another 15 minutes."},
+      {"endpoint": "/api/users", "issue": "No DELETE endpoint - test/obsolete users can only be deactivated, cleanup required direct DB access."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "App.js routes", "issue": "No role check on routes: user 'negozio' (michael) navigating to /negozi, /operatori or /utenti renders the full page (Utenti even shows 'Nuovo utente' and opens the create-user dialog) while the API returns 403 and the table stays empty. Sidebar hides the links but the routes are unprotected.", "selector": "/utenti, [data-testid=add-user-button], [data-testid=user-form-dialog]", "priority": "HIGH"},
+      {"component": "Utenti.jsx / Negozi.jsx / Operatori.jsx", "issue": "API errors swallowed with .catch(() => {}) - 403/500 produce a blank table/card list with no error state or message.", "selector": "[data-testid=users-table]", "priority": "MEDIUM"},
+      {"component": "lib/api.js apiError + Dashboard send-digest", "issue": "On 502 the toast shows the English Cloudflare boilerplate ('The origin web server returned an invalid or incomplete response to Cloudflare...') instead of the Italian fallback 'Invio email fallito'. apiError should ignore upstream detail for 5xx/gateway errors.", "selector": "[data-sonner-toast]", "priority": "MEDIUM"},
+      {"component": "Layout.jsx", "issue": "Desktop sidebar and mobile drawer reuse the same data-testid values (nav-clienti, logout-button, sidebar-user-name), so selectors resolve to 2 nodes and .first may point at the hidden desktop copy on mobile viewports.", "selector": "[data-testid=nav-clienti]", "priority": "LOW"},
+      {"component": "Negozi.jsx", "issue": "store-card testid is derived from the store name slug, so two stores with the same name produce duplicate data-testids (observed while creating TEST_Negozio twice). Prefer store id.", "selector": "[data-testid^=store-card-]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Top-right toast overlaps the 'Invia riepilogo email' button while visible (button momentarily covered)", "DialogContent missing aria-describedby -> React a11y warning in console for client/user dialogs"]},
+      {"screen": "Clienti (tablet 768px)", "issues": ["Table needs horizontal scroll and the 'Pagato' badge column is clipped at the right edge; acceptable but a card layout would read better on tablet"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/cleanup_test_data.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Add role-based route guards (admin-only /utenti, admin+operatore /negozi /operatori) and redirect unauthorized users to / with a toast.",
+    "Replace .catch(() => {}) in Utenti/Negozi/Operatori with real error state + toast so 403/500 is visible.",
+    "Make apiError return the Italian fallback for 5xx / non-API gateway errors instead of the Cloudflare HTML detail.",
+    "Fix ALERT_EMAIL typo (cmbiaora.rs@gmail.com -> likely cambiaora.rs@gmail.com) after confirming with the user; digest currently always 502.",
+    "Reset login_attempts.count once the lockout window expires; consider PATCH semantics (partial update) for /api/clients/{id}.",
+    "Use unique ids for store-card testids and distinct testids for mobile drawer nav items."
+  ],
+  "critical_code_review_comments": [
+    "App.js Protected() only checks authentication, not role - route-level RBAC is missing while the sidebar is the only gate.",
+    "PATCH /api/clients/{id} validates the complete ClientInput; omitted optional fields are overwritten with defaults (data-loss risk for API clients).",
+    "server.py is ~740 lines and mixes auth, email templating, business rules and seed data - consider splitting into routers/services modules.",
+    "GET /api/stores runs 2 count_documents per store inside a loop (N+1); use one aggregation as the store list grows."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/cleanup_test_data.py"
+  ],
+  "success_rate": {"backend": "98% (41/42 executed, 1 skipped by design)", "frontend": "90% (all core flows pass; route-level RBAC fails)"},
+  "seed_data_creation": "Temporary QA data (TEST_ clients/stores/users, client 'Test Verifica', store payments on Tirano/Sondalo) was created and then fully removed with /app/backend/tests/cleanup_test_data.py. DB verified back to 10 clients, 7 stores, 5 users.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "/app/memory/test_credentials.md is complete and all 5 accounts logged in successfully (admin, deborah, michael, lorenzo, kevin).",
+  "context_for_next_testing_agent": "Run `cd /app/backend && python -m pytest tests/backend_test.py -v` (42 cases, all green except send-digest skip). Always run `python tests/cleanup_test_data.py` afterwards to purge TEST_ artifacts and reset Tirano/Sondalo payment state. Container date is 2026-09-04, so seed renewal dates (Rossi/Colombo 0 gg, Fontana 30 gg) and the 6-month payment reset (Mario Rossi paid 7 months ago -> Non pagato) are date-dependent. Auth is JWT Bearer in localStorage key gu_token (no httpOnly cookies by design). Verify the route-guard fix by logging in as michael@cambiaora.local and hitting /utenti, /negozi, /operatori directly by URL. Note dropdown option matching: use exact=True (option 'Gas' otherwise matches 'Luce + Gas').",
+  "rca_of_the_issue": "Frontend RBAC is implemented only in Layout.jsx NAV filtering; App.js <Protected> checks the session but not user.role, so any authenticated user can render admin pages by URL. The empty tables/cards are a second-order effect of the pages swallowing the backend 403 with .catch(() => {}). Data itself is safe: /api/users, /api/operators/stats, /api/stores and /api/clients all enforce role/store scoping server-side (verified: 403 for negozio users, 5 own clients for michael, 2 for lorenzo, 10 for deborah)."
+}
