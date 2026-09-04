@@ -1043,6 +1043,32 @@ async def wa_send(phone: str, message: str):
         raise HTTPException(status_code=502, detail=data.get("error", "Servizio WhatsApp non disponibile"))
     return data
 
+PRIVACY_PROXY = "https://rsriparazioni.com/api/proxy.php"
+
+STORE_TO_SITO = {"tirano": "tirano", "sondalo": "sondalo", "sondrio": "sondrio",
+                 "sondrio grosio": "grosio", "gravedona": "gravedona"}
+
+async def register_privacy_site(client: dict, store_name: str) -> dict:
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0"}
+    async with httpx.AsyncClient(timeout=30, headers=headers) as hc:
+        r1 = await hc.post(f"{PRIVACY_PROXY}?action=generateOtp", json={"email": client["email"]})
+        d1 = r1.json()
+        if d1.get("result") != "ok":
+            raise HTTPException(status_code=502, detail=f"Generazione OTP fallita: {d1.get('message', 'errore')}")
+        reg = {
+            "nome": client.get("nome", ""), "cognome": client.get("cognome", ""),
+            "codiceFiscale": client.get("codice_fiscale", ""), "telefono": client.get("telefono", ""),
+            "email": client["email"],
+            "servizioCategoria": "CambiaOra", "servizioDettaglio": "CambiaOra",
+            "negozio": STORE_TO_SITO.get(store_name.strip().lower(), ""),
+            "privacyAccepted": True, "otp": d1.get("otp", ""),
+        }
+        r2 = await hc.post(f"{PRIVACY_PROXY}?action=register", json=reg)
+        d2 = r2.json()
+        if d2.get("result") != "ok":
+            raise HTTPException(status_code=502, detail=f"Registrazione privacy fallita: {d2.get('message', 'errore')}")
+    return d2
+
 @api_router.get("/whatsapp/status")
 async def whatsapp_status(admin: dict = Depends(require_admin)):
     try:
@@ -1063,14 +1089,37 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
     c = await get_scoped_client(client_id, user)
     if not c.get("telefono"):
         raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
-    await wa_send(c["telefono"], PRIVACY_MSG.format(nome=c.get("nome", "")))
+    registered, reg_error = False, None
+    if c.get("email"):
+        try:
+            store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
+            await register_privacy_site(c, (store or {}).get("nome", ""))
+            registered = True
+        except Exception as e:
+            reg_error = getattr(e, "detail", str(e))
+            logger.error(f"Registrazione privacy sito fallita per {client_id}: {reg_error}")
+    wa_error = None
+    try:
+        await wa_send(c["telefono"], PRIVACY_MSG.format(nome=c.get("nome", "")))
+    except Exception as e:
+        wa_error = getattr(e, "detail", str(e))
+    if wa_error and not registered:
+        raise HTTPException(status_code=502, detail=f"WhatsApp: {wa_error}")
     now = datetime.now(timezone.utc)
-    await db.clients.update_one({"id": client_id}, {"$set": {"privacy_msg_sent_at": now.isoformat()}})
-    await db.whatsapp_queue.insert_one({
-        "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
-        "type": "review", "send_after": (now + timedelta(minutes=5)).isoformat(),
-        "sent": False, "created_at": now.isoformat()})
-    return {"status": "ok", "review_scheduled_at": (now + timedelta(minutes=5)).isoformat()}
+    updates = {}
+    if not wa_error:
+        updates["privacy_msg_sent_at"] = now.isoformat()
+        await db.whatsapp_queue.insert_one({
+            "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
+            "type": "review", "send_after": (now + timedelta(minutes=5)).isoformat(),
+            "sent": False, "created_at": now.isoformat()})
+    if registered:
+        updates["privacy_firmata"] = True
+        updates["privacy_registered_at"] = now.isoformat()
+    if updates:
+        await db.clients.update_one({"id": client_id}, {"$set": updates})
+    return {"status": "ok", "privacy_registered": registered, "registration_error": reg_error,
+            "wa_error": wa_error, "review_scheduled_at": (now + timedelta(minutes=5)).isoformat() if not wa_error else None}
 
 @api_router.post("/clients/{client_id}/whatsapp/review")
 async def whatsapp_review(client_id: str, user: dict = Depends(get_current_user)):

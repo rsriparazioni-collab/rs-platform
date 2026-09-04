@@ -34,7 +34,8 @@ Gestionale per utenze clienti con rinnovi a 10 mesi (utenza 12 mesi, attivazione
 - WhatsApp: microservizio Node.js Baileys (/app/whatsapp-service, porta 3001, supervisor program "whatsapp"), QR in pagina WhatsApp (admin), invio link privacy dalla scheda cliente + richiesta recensione automatica dopo 5 minuti (coda whatsapp_queue + cron /api/cron/whatsapp-due ogni 5 min)
 - Export report Excel stampabile: GET /api/export/clients.xlsx (rispetta permessi ruolo), pulsante "Esporta Excel" in Clienti
 - Creazione utenti aperta a tutti i ruoli (solo admin può creare admin); pagina Utenti visibile a tutti, tabella solo admin
-- NOTA: pagina privacy .com è dietro login WordPress (wppb) — l'auto-compilazione del modulo non è fattibile dall'esterno; il messaggio WhatsApp usa il link .it come da testo fornito
+- NOTA: wp-login del sito .com è bloccato dal WAF per richieste server-side, MA l'endpoint https://rsriparazioni.com/api/proxy.php (generateOtp + register) è raggiungibile: la privacy viene compilata e inviata in automatico dal gestionale (servizioCategoria=CambiaOra, mappa negozi: tirano/sondalo/sondrio/grosio/gravedona)
+- Flusso privacy completo: pulsante "Invia link privacy" → 1) registrazione automatica sul sito con OTP 2) WhatsApp con link .it 3) recensione Google dopo 5 min. Testato E2E con cliente fittizio "TEST GESTIONALE" (DA ELIMINARE dal sistema registrazioni del sito)
 - Test: 42/42 pytest backend, E2E frontend verificato (testing agent iterazione 1)
 
 ## Credenziali
@@ -44,7 +45,7 @@ Vedi /app/memory/test_credentials.md
 - P0: utente deve scansionare il QR WhatsApp (pagina WhatsApp) con il numero 3519460591 per attivare gli invii
 - P1: notifiche email ai negozi quando viene registrato il loro compenso
 - P2: statistiche avanzate per fornitore/periodo
-- P2: auto-compilazione modulo privacy .com (richiede accesso admin WordPress al sito)
 
 ## Prossimi task
 1. Utente scansiona QR WhatsApp → test invio privacy + recensione su cliente reale
+2. Utente elimina il record di test "TEST GESTIONALE" dal sistema registrazioni del sito

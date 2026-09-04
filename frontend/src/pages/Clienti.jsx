@@ -80,10 +80,21 @@ export default function Clienti() {
   const sendWhatsApp = async (tipo) => {
     setWaLoading(tipo);
     try {
-      await api.post(`/clients/${detail.id}/whatsapp/${tipo}`);
-      toast.success(tipo === "privacy"
-        ? "Messaggio privacy inviato. La richiesta recensione partirà automaticamente tra 5 minuti."
-        : "Richiesta recensione inviata");
+      const res = await api.post(`/clients/${detail.id}/whatsapp/${tipo}`);
+      if (tipo === "privacy") {
+        if (res.data.privacy_registered) {
+          toast.success("Modulo privacy compilato e inviato in automatico sul sito");
+        } else if (res.data.registration_error) {
+          toast.warning(`Registrazione sito non riuscita: ${res.data.registration_error}`);
+        }
+        if (res.data.wa_error) {
+          toast.warning(`WhatsApp non inviato: ${res.data.wa_error}`);
+        } else {
+          toast.success("Messaggio privacy inviato. La richiesta recensione partirà automaticamente tra 5 minuti.");
+        }
+      } else {
+        toast.success("Richiesta recensione inviata");
+      }
       openDetail(detail);
     } catch (e) {
       toast.error(apiError(e, "Invio WhatsApp fallito"));
