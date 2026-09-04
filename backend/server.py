@@ -1120,9 +1120,12 @@ async def whatsapp_status(admin: dict = Depends(require_admin)):
 
 @api_router.get("/whatsapp/qr")
 async def whatsapp_qr(admin: dict = Depends(require_admin)):
-    async with httpx.AsyncClient(timeout=10) as http_client:
-        resp = await http_client.get(f"{WA_SERVICE}/qr")
-    return resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=10) as http_client:
+            resp = await http_client.get(f"{WA_SERVICE}/qr")
+        return resp.json()
+    except Exception:
+        return {"qr": None}
 
 @api_router.post("/clients/{client_id}/whatsapp/privacy")
 async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user)):

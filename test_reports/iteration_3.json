@@ -1,0 +1,31 @@
+{
+  "summary": "Frontend-only regression on the DEPLOYED domain https://utility-renewals.emergent.host. Admin login OK (rsriparazioni@gmail.com). The reported WhatsApp white-screen bug is NOT reproducible on the deploy: /whatsapp renders correctly both via nav-whatsapp click and via direct URL navigation (title 'WhatsApp', badge 'Non connesso', status card, info box, refresh button all visible; no JS pageerror). Sidebar shows exactly Dashboard, Clienti, Negozi, Operatori, WhatsApp, Utenti with correct readable labels. All pages (dashboard, clienti, negozi, operatori, utenti) render without blank screens. Clienti list shows 488 clients in PRODUCTION DB; client-row-0 opens the ClientDetail panel with timeline contratto, whatsapp-card and attachments-card visible.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/whatsapp/status and /api/whatsapp/qr", "issue": "Return HTTP 500 in production (WhatsApp microservice unreachable). Frontend handles it gracefully (service_down message), but the endpoints should return 200 with {connected:false, service_down:true} or 503 instead of 500 to avoid console error noise."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "White-screen on /whatsapp is NOT reproducible on the deploy -> almost certainly stale browser cache/old chunks on the user's browser. Recommend adding a build-hash/version check with auto-reload (or cache-busting headers on index.html) so users get new chunks after redeploy.",
+    "Optional: make /api/whatsapp/status return 200/503 with service_down flag instead of 500.",
+    "Optional testability: ClientDetail panel lacks data-testid=\"client-detail-panel\" and \"timeline\" (whatsapp-card and attachments-card exist)."
+  ],
+  "critical_code_review_comments": [
+    "WhatsApp.jsx correctly wraps the polling in try/catch and falls back to service_down state, so a failing microservice cannot blank the page - the reported issue is environmental (cached chunks), not code."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100% (all tested flows passed)"},
+  "seed_data_creation": "none",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin rsriparazioni@gmail.com / Devis2026! (works on deploy)",
+  "context_for_next_testing_agent": "Deploy domain https://utility-renewals.emergent.host tested. Production DB contains 488 clients (not empty; same data set as preview view). WhatsApp microservice is down in prod -> /api/whatsapp/status & /qr return 500, handled by UI. Only remaining suggestion: cache-busting / version check for redeploys.",
+  "rca_of_the_issue": "User's white screen on /whatsapp could not be reproduced with a clean browser session on the deployed domain (both SPA click navigation and hard direct load). No JS page errors were emitted. Root cause is therefore stale cached JS chunks in the user's browser after redeploy (index.html referencing new hashed chunk names not yet cached / old service-worker-like caching), not an application defect. Mitigation: no-cache headers on index.html plus a client-side build-version poll that forces window.location.reload() when a new build is detected."
+}
