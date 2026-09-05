@@ -36,7 +36,20 @@ function Field({ label, children, testid }) {
 export default function ClientForm({ open, onClose, client, meta, onSaved }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [baseline, setBaseline] = useState(EMPTY);
   const isEdit = Boolean(client);
+  const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (open && dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [open, dirty]);
 
   useEffect(() => {
     if (open) {
@@ -45,14 +58,24 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
         NUM_FIELDS.forEach((k) => { f[k] = f[k] ?? ""; });
         DATE_FIELDS.forEach((k) => { f[k] = f[k] ? f[k].slice(0, 10) : ""; });
         setForm(f);
+        setBaseline(f);
       } else {
-        setForm({ ...EMPTY, venditore_id: meta.stores[0]?.id || "" });
+        const f = { ...EMPTY, venditore_id: meta.stores[0]?.id || "" };
+        setForm(f);
+        setBaseline(f);
       }
     }
   }, [open, client, meta]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isLuce = form.tipo_bolletta === "luce";
+
+  const handleClose = () => {
+    if (dirty && !isEdit) {
+      if (!window.confirm("Ci sono dati non salvati. Vuoi uscire senza salvare?")) return;
+    }
+    onClose();
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -68,6 +91,8 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
         await api.post("/clients", payload);
         toast.success("Cliente inserito");
       }
+      setForm(EMPTY);
+      setBaseline(EMPTY);
       onSaved();
       onClose();
     } catch (err) {
@@ -78,7 +103,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto" data-testid="client-form-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-xl">
@@ -261,7 +286,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
           </section>
 
           <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
-            <Button type="button" variant="outline" onClick={onClose} data-testid="client-form-cancel">Annulla</Button>
+            <Button type="button" variant="outline" onClick={handleClose} data-testid="client-form-cancel">Annulla</Button>
             <Button type="submit" disabled={saving} className="bg-slate-900 hover:bg-slate-800" data-testid="client-form-submit">
               {saving ? "Salvataggio..." : isEdit ? "Salva modifiche" : "Inserisci cliente"}
             </Button>

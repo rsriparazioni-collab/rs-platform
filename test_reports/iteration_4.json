@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only regression on BOTH environments (preview https://utility-renewals.preview.emergentagent.com and deploy https://utility-renewals.emergent.host). Admin login OK on both. The reported white-screen bug during new-client creation with supplier selection is NOT reproducible on either environment: full flow (open form, fill nome/cognome, select-fornitore, select-nuovo-fornitore, toggle select-tipo-bolletta luce->gas->luce, submit) completes successfully, toast 'Cliente inserito' is shown, and the client row appears in the table. Verified on BOTH preview and deploy. Cleanup: both test clients ('AutoTest' on preview, 'AutoTestDeploy' on deploy) deleted via detail-delete-button. WhatsApp preview: QR container visible with 'Non connesso' badge (whatsapp-qr-container present). Sidebar labels correct in Italian on all pages (Dashboard, Clienti, Negozi, Operatori, WhatsApp, Utenti). BUG FOUND on unsaved-data guard: the 'Annulla' button (client-form-cancel) closes the form WITHOUT the confirmation dialog when there are unsaved changes; the ESC/outside-click path works correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ClientForm - Annulla button", "issue": "The 'Annulla' button bypasses the unsaved-data confirmation because its onClick calls onClose directly instead of handleClose. Result: user can lose unsaved data with a single click on Annulla, even though the task explicitly requires the confirm on client-form-cancel. ESC and click-outside paths correctly trigger the confirm via onOpenChange -> handleClose.", "selector": "[data-testid=\"client-form-cancel\"]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "In /app/frontend/src/components/ClientForm.jsx line 284: change onClick={onClose} to onClick={handleClose} on the client-form-cancel button so the beforeunload/confirm guard also fires when the user clicks Annulla (currently only ESC/outside-click trigger it).",
+    "Optional (already reported in iteration_3): add cache-busting / build-version poll to auto-reload the SPA after redeploys - the user's original 'schermata bianca dopo selezione fornitore' report was NOT reproducible in preview or deploy across multiple attempts, so it is almost certainly stale cached chunks in the user's browser."
+  ],
+  "critical_code_review_comments": [
+    "ClientForm.jsx: `dirty` is computed as JSON.stringify(form) !== JSON.stringify(EMPTY). In new-client mode this also becomes true simply because meta.stores[0].id is preselected into venditore_id, so 'dirty' can be true even if the user did not type anything. Consider comparing against the initial form snapshot (baseline set in the open effect) instead of the EMPTY constant to avoid unnecessary confirm prompts.",
+    "The reported UI 'corrupt labels' ('gravetta', 'bomba') are NOT code issues: grep in /app/frontend/src and /app/backend returns zero matches. The 'bomba' substring visible in the UI comes from a real client's surname 'RICCARDO BOMBACE' rendered in the dashboard/clienti list. No corruption present."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "5/6 scenarios PASS (Annulla-button confirm guard is broken)"},
+  "test_credentials": "admin rsriparazioni@gmail.com / Devis2026! (works on both preview and deploy)",
+  "seed_data_creation": "Created and DELETED two test clients: TESTQA AutoTest (preview), TESTQAD AutoTestDeploy (deploy). No residual test data.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "White-screen bug on new-client submit is NOT reproducible in either environment. Only remaining defect is the client-form-cancel button skipping the unsaved-data confirmation (one-line fix: use handleClose instead of onClose). Preview WhatsApp QR is available; deploy WhatsApp microservice is down as expected (not a bug). Client 'RICCARDO BOMBACE' exists in DB and is the source of the 'bomba' substring in innerText - not a corruption.",
+  "rca_of_the_issue": "1) WHITE SCREEN: could not be reproduced with clean browser sessions on preview or deploy across the full flow (fornitore select, tipo bolletta toggle, submit). Root cause is almost certainly stale cached JS chunks on the user's browser after redeploy. 2) UNSAVED-DATA GUARD BUG: In ClientForm.jsx, the Annulla button's onClick is wired to `onClose` (the raw prop) instead of the local `handleClose` wrapper that shows window.confirm when dirty && !isEdit. Consequently the guard only works via ESC / click-outside (routed through onOpenChange -> handleClose). Fix is a one-liner. 3) 'gravetta'/'bomba' corrupt labels: not corruptions - 'BOMBACE' is a real client surname in the production DB (RICCARDO BOMBACE); no source code contains these strings."
+}
