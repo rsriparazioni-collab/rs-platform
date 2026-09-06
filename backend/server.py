@@ -1527,9 +1527,9 @@ Basta un clic qui
 https://g.page/r/CaSv3O7luiBPEAE/review
 Grazie per il supporto"""
 
-async def wa_send(phone: str, message: str):
+async def wa_send(phone: str, message: str, session: str = "default"):
     async with httpx.AsyncClient(timeout=30) as http_client:
-        resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message}, headers=wa_headers())
+        resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message, "session": session}, headers=wa_headers())
     data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
     if resp.status_code != 200 or not data.get("success"):
         raise HTTPException(status_code=502, detail=data.get("error", "Servizio WhatsApp non disponibile"))
@@ -1571,13 +1571,30 @@ async def whatsapp_status(admin: dict = Depends(require_admin)):
         return {"connected": False, "user": None, "has_qr": False, "service_down": True}
 
 @api_router.get("/whatsapp/qr")
-async def whatsapp_qr(admin: dict = Depends(require_admin)):
+async def whatsapp_qr(session: str = "default", admin: dict = Depends(require_admin)):
     try:
         async with httpx.AsyncClient(timeout=10) as http_client:
-            resp = await http_client.get(f"{WA_SERVICE}/qr", headers=wa_headers())
+            resp = await http_client.get(f"{WA_SERVICE}/qr", params={"session": session}, headers=wa_headers())
         return resp.json()
     except Exception:
-        return {"qr": None}
+        return {"qr": None, "connected": False}
+
+class PairInput(BaseModel):
+    phone: str
+    session: str = "default"
+
+@api_router.post("/whatsapp/pair")
+async def whatsapp_pair(input: PairInput, admin: dict = Depends(require_admin)):
+    try:
+        async with httpx.AsyncClient(timeout=25) as http_client:
+            resp = await http_client.post(f"{WA_SERVICE}/pair", json={"phone": input.phone, "session": input.session}, headers=wa_headers())
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.json().get("error", "Pairing fallito"))
+        return resp.json()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503, detail="Servizio WhatsApp non raggiungibile")
 
 @api_router.post("/clients/{client_id}/whatsapp/privacy")
 async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user)):
@@ -1595,7 +1612,7 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
             logger.error(f"Registrazione privacy sito fallita per {client_id}: {reg_error}")
     wa_error = None
     try:
-        await wa_send(c["telefono"], PRIVACY_MSG.format(nome=c.get("nome", "")))
+        await wa_send(c["telefono"], PRIVACY_MSG.format(nome=c.get("nome", "")), session=c.get("venditore_id") or "default")
     except Exception as e:
         wa_error = getattr(e, "detail", str(e))
     if wa_error and not registered:
@@ -1607,6 +1624,7 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
         await db.whatsapp_queue.insert_one({
             "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
             "type": "review", "message": REVIEW_MSG, "send_after": (now + timedelta(minutes=5)).isoformat(),
+            "session": c.get("venditore_id") or "default",
             "sent": False, "created_at": now.isoformat()})
     if registered:
         updates["privacy_firmata"] = True
@@ -1621,7 +1639,7 @@ async def whatsapp_review(client_id: str, user: dict = Depends(get_current_user)
     c = await get_scoped_client(client_id, user)
     if not c.get("telefono"):
         raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
-    await wa_send(c["telefono"], REVIEW_MSG)
+    await wa_send(c["telefono"], REVIEW_MSG, session=c.get("venditore_id") or "default")
     await db.clients.update_one({"id": client_id},
                                 {"$set": {"review_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
     return {"status": "ok"}
@@ -1632,7 +1650,7 @@ async def process_whatsapp_queue():
     sent_count = 0
     for item in due:
         try:
-            await wa_send(item["phone"], item.get("message") or REVIEW_MSG)
+            await wa_send(item["phone"], item.get("message") or REVIEW_MSG, session=item.get("session", "default"))
             await db.whatsapp_queue.update_one({"id": item["id"]}, {"$set": {"sent": True, "sent_at": now}})
             await db.clients.update_one({"id": item["client_id"]}, {"$set": {"review_msg_sent_at": now}})
             sent_count += 1
@@ -1908,7 +1926,7 @@ async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_c
             logger.error(f"Registrazione privacy sito fallita per servizio {servizio_id}: {reg_error}")
     wa_error = None
     try:
-        await wa_send(client_doc["telefono"], PRIVACY_MSG.format(nome=client_doc.get("nome", "")))
+        await wa_send(client_doc["telefono"], PRIVACY_MSG.format(nome=client_doc.get("nome", "")), session=client_doc.get("venditore_id") or "default")
     except Exception as e:
         wa_error = getattr(e, "detail", str(e))
     if wa_error and not registered:
