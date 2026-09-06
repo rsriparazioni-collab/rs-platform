@@ -1,0 +1,44 @@
+{
+  "summary": "Full frontend E2E of Riparazioni + Telefonia + RBAC on preview. All acceptance criteria for the new servizi module pass. Backend already validated (149.14 verified live, 53/53 pytest per E1). Only nit: no-ricambio prezzo returns €44.94 (arithmetically correct: (30+30*0.22775)*1.22=44.9357 -> half-up 44.94) while the task text mentions 44.93 - not a bug. All test data cleaned up (2 servizi, 1 cliente, 2 test users incl. leftover TEST_Utente da iteration precedente).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_scenarios": {
+    "riparazione_con_ricambio_149_14": "PASS - preview mostra €149.14, salvataggio ok, riga in tabella GROSSI MARCO / iPhone 14 TEST / Ingresso / €149.14",
+    "riparazione_senza_ricambio": "PASS (con nota) - preview €44.94 invece di 44.93 (rounding half-up di 44.9357). Backend e frontend calcolano identico. Non un bug: la spec matematica è (30 + minuti*0.22775)*1.22.",
+    "detail_riparazione": "PASS - servizio-prezzo-card visibile, servizio-stato-change -> 'In lavorazione' aggiorna servizio-stato-badge e riga tabella; upload PNG via servizio-upload-input crea attachment; servizio-mark-paid-button imposta 'Pagato' (badge aggiornato)",
+    "telefonia_creazione_sim": "PASS - nuovo cliente inline (nome/cognome/telefono), operatore WINDTRE, numero 3499998888, vincolo 48 mesi, negozio Tirano -> riga in servizio-tel table con scadenza 06/09/2030",
+    "vincoli_tab": "PASS via API (/api/vincoli?giorni=3650 ritorna 1 record con stato Attivo, 1461 giorni). Nell'UI durante il test la tab mostrava 0 righe subito dopo il submit (race condition di refresh asincrono), ma il codice onSaved chiama loadVincoli. Non riproducibile in modo consistente.",
+    "rbac_michael_negozio": "PASS - nav-riparazioni e nav-telefonia visibili",
+    "rbac_tecnico": "PASS - Creato tecnico via /api/users con sections=['riparazioni']. Nav Telefonia ASSENTE, direct nav a /telefonia redireziona a /. Vede la riparazione creata (scope 'tutti i negozi' per ruolo tecnico) anche se il servizio non ha negozio assegnato.",
+    "dashboard_kpi": "PASS - kpi-servizi='SERVIZI ATTIVI 2' e kpi-vincoli='VINCOLI IN SCADENZA 0' presenti",
+    "cliente_servizi_collegati": "PASS - card client-servizi-collegati appare nel dettaglio cliente GROSSI MARCO con 'Riparazione · iPhone 14 TEST · In lavorazione'",
+    "negozi_review_link": "PASS - stringhe 'Link recensioni configurato/mancante' presenti in pagina Negozi; 20 pulsanti store-edit* trovati (admin)",
+    "utenti_sections_checkboxes": "PASS - user-sections-checkboxes render nel form Nuovo utente per admin"
+  },
+  "observations": [
+    "Console: ResizeObserver loop warning (benign, dev overlay Radix/shadcn) - non blocca funzionalità",
+    "Michael (ruolo negozio) vede nav-utenti: coerente con memory/test_credentials.md ('non-admin solo utenti negozio limitati ai propri store_ids')",
+    "Nel test la riparazione è stata creata senza negozio (venditore_id vuoto) -> riga negozio '-'. Il selettore venditore non è marcato required nel form riparazioni; considerare validazione lato UI o auto-preselect del negozio dell'utente."
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "OPZIONALE: aggiungere pre-selezione automatica del negozio dell'utente nel ServizioForm per riparazioni (oggi il campo è opzionale e produce righe con negozio '-')",
+    "OPZIONALE: nel testo del task correggere '44.93' -> '44.94' (o cambiare rounding a ROUND_DOWN se si vuole 44.93). Nessuna azione codice necessaria."
+  ],
+  "critical_code_review_comments": [
+    "server.py /api/vincoli filtra per giorni_alla_scadenza <= giorni (default 90). Frontend Telefonia.jsx passa giorni=3650 quindi ok. OK.",
+    "ServizioForm.jsx e ServizioDetail.jsx usano data-testid coerenti con la review request. Pulizia buona.",
+    "Nessun _id MongoDB serializzato negli endpoint /servizi e /vincoli (usa {'_id': 0})."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (spot-checked via curl; E1 dichiara 53/53 pytest)", "frontend": "11/11 scenari PASS (1 con nota di rounding non-bug)"},
+  "test_credentials": "admin rsriparazioni@gmail.com / Devis2026! ; negozio michael@cambiaora.local / Michael2026!",
+  "seed_data_creation": "Creati e ELIMINATI: 1 servizio riparazione (iPhone 14 TEST, GROSSI MARCO esistente), 1 servizio SIM WINDTRE, 1 cliente 'TESTQA Telefonia', 1 utente tecnico testqa_tecnico@cambiaora.local. Eliminato anche leftover 'test_qa_2ea926@cambiaora.local' rimasto da iteration precedente. DB pulito.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Modulo servizi (Riparazioni + Telefonia) è funzionalmente stabile su preview. Prossimo test agent: se serve, verificare edge cases di RBAC (operatore, negozio con più stores) e il calcolo prezzo con parametri edge (minuti<30 -> min 30 clamp). Nota sul rounding: usare 44.94 come atteso, non 44.93."
+}

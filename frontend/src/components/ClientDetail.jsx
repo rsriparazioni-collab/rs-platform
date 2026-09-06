@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
-import { lavorazioneLabel, lavorazioneBadge, fmtDate } from "../lib/constants";
+import { lavorazioneLabel, lavorazioneBadge, fmtDate, servizioTipoLabel, ripStatoLabel, ripStatoBadge } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 
@@ -10,6 +10,17 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
   const [detail, setDetail] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [waLoading, setWaLoading] = useState("");
+  const [servizi, setServizi] = useState([]);
+
+  const loadServizi = useCallback(async () => {
+    if (!client) return;
+    try {
+      const res = await api.get(`/clients/${client.id}/servizi`);
+      setServizi(res.data);
+    } catch {
+      setServizi([]);
+    }
+  }, [client]);
 
   const refresh = useCallback(async () => {
     if (!client) return;
@@ -37,8 +48,9 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
     if (client) {
       refresh();
       loadAttachments();
+      loadServizi();
     }
-  }, [client, refresh, loadAttachments]);
+  }, [client, refresh, loadAttachments, loadServizi]);
 
   const downloadBlob = async (url, filename) => {
     try {
@@ -213,6 +225,24 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   {(detail.history || []).length === 0 && <p className="text-xs text-slate-400">Nessuno storico</p>}
                 </div>
               </div>
+
+              {servizi.length > 0 && (
+                <div data-testid="client-servizi-collegati">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Servizi collegati (riparazioni, telefonia)</p>
+                  <div className="space-y-1.5">
+                    {servizi.map((s) => (
+                      <div key={s.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                        <span className="font-medium text-slate-800">
+                          {servizioTipoLabel(s.tipo)}{s.dispositivo ? ` · ${s.dispositivo}` : ""}{s.operatore_tel ? ` · ${s.operatore_tel}` : ""}
+                        </span>
+                        {s.tipo === "riparazione"
+                          ? <span className={`status-badge ${ripStatoBadge(s.stato)}`}>{ripStatoLabel(s.stato)}</span>
+                          : <span className={`status-badge ${s.pagato ? "bg-emerald-500/15 text-emerald-700 border-emerald-300" : "bg-rose-500/15 text-rose-700 border-rose-300"}`}>{s.pagato ? "Pagato" : "Non pagato"}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4" data-testid="whatsapp-card">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">WhatsApp automatico</p>

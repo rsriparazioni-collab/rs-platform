@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRight } from "lucide-react";
+import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRight, Wrench, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -74,6 +74,10 @@ export default function Dashboard() {
                sub="Incluso reset automatico a 6 mesi" color="bg-rose-100 text-rose-700" testid="kpi-non-pagati" />
           <Kpi icon={FileText} label="Luce / Gas" value={`${stats.luce} / ${stats.gas}`}
                sub="Divisione per tipo bolletta" color="bg-emerald-100 text-emerald-700" testid="kpi-tipo" />
+          <Kpi icon={Wrench} label="Servizi attivi" value={stats.servizi_attivi ?? 0}
+               sub="Riparazioni e telefonia aperte" color="bg-violet-100 text-violet-700" testid="kpi-servizi" />
+          <Kpi icon={Smartphone} label="Vincoli in scadenza" value={stats.vincoli_60gg ?? 0}
+               sub="Vincoli telefonia entro 60 giorni" color="bg-orange-100 text-orange-700" testid="kpi-vincoli" />
         </div>
       )}
 

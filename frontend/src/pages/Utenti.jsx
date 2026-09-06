@@ -18,7 +18,20 @@ export default function Utenti() {
   const [users, setUsers] = useState([]);
   const [stores, setStores] = useState([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "negozio", store_ids: [], can_view_all: false });
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "negozio", store_ids: [], can_view_all: false, sections: ["energia", "riparazioni", "telefonia"] });
+
+  const SECTIONS_LIST = [
+    { id: "energia", label: "Energia" },
+    { id: "riparazioni", label: "Riparazioni" },
+    { id: "telefonia", label: "Telefonia" },
+  ];
+
+  const toggleSection = (id) => {
+    setForm((f) => ({
+      ...f,
+      sections: f.sections.includes(id) ? f.sections.filter((s) => s !== id) : [...f.sections, id],
+    }));
+  };
 
   const load = useCallback(() => {
     if (isAdmin) {
@@ -44,7 +57,7 @@ export default function Utenti() {
       await api.post("/users", form);
       toast.success("Utente creato");
       setOpen(false);
-      setForm({ name: "", email: "", password: "", role: "negozio", store_ids: [], can_view_all: false });
+      setForm({ name: "", email: "", password: "", role: "negozio", store_ids: [], can_view_all: false, sections: ["energia", "riparazioni", "telefonia"] });
       load();
     } catch (err) {
       toast.error(apiError(err));
@@ -96,6 +109,7 @@ export default function Utenti() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Ruolo</th>
                 <th className="px-4 py-3">Negozi visibili</th>
+                <th className="px-4 py-3">Sezioni</th>
                 <th className="px-4 py-3">Vede tutto</th>
                 <th className="px-4 py-3">Stato</th>
                 <th className="px-4 py-3"></th>
@@ -113,6 +127,7 @@ export default function Utenti() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{storeNames(u.store_ids)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{(u.sections || ["energia", "riparazioni", "telefonia"]).join(", ")}</td>
                   <td className="px-4 py-3">{u.can_view_all ? "Sì" : "No"}</td>
                   <td className="px-4 py-3">
                     <span className={`status-badge ${u.active ? "bg-emerald-500/15 text-emerald-700 border-emerald-300" : "bg-rose-500/15 text-rose-700 border-rose-300"}`}>
@@ -162,6 +177,7 @@ export default function Utenti() {
                       <SelectItem value="admin">Amministratore</SelectItem>
                       <SelectItem value="operatore">Operatore</SelectItem>
                       <SelectItem value="negozio">Negozio</SelectItem>
+                      <SelectItem value="tecnico">Tecnico (vede tutte le riparazioni)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -184,6 +200,20 @@ export default function Utenti() {
                       <Checkbox checked={form.store_ids.includes(s.id)} onCheckedChange={() => toggleStore(s.id)}
                                 data-testid={`user-store-check-${s.id}`} />
                       {s.nome}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {isAdmin && (
+              <div className="space-y-2">
+                <Label>Sezioni visibili</Label>
+                <div className="flex gap-4 rounded-lg border border-slate-200 p-3" data-testid="user-sections-checkboxes">
+                  {SECTIONS_LIST.map((s) => (
+                    <label key={s.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox checked={form.sections.includes(s.id)} onCheckedChange={() => toggleSection(s.id)}
+                                data-testid={`user-section-check-${s.id}`} />
+                      {s.label}
                     </label>
                   ))}
                 </div>

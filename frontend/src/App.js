@@ -10,6 +10,8 @@ import Negozi from "./pages/Negozi";
 import Operatori from "./pages/Operatori";
 import Utenti from "./pages/Utenti";
 import WhatsApp from "./pages/WhatsApp";
+import Riparazioni from "./pages/Riparazioni";
+import Telefonia from "./pages/Telefonia";
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -27,9 +29,13 @@ function Protected({ children }) {
   return children;
 }
 
-function RequireRole({ roles, children }) {
+function RequireRole({ roles, section, children }) {
   const { user } = useAuth();
   if (!roles.includes(user.role)) {
+    return <Navigate to="/" replace />;
+  }
+  const sections = user.sections || ["energia", "riparazioni", "telefonia"];
+  if (section && !sections.includes(section)) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -43,7 +49,9 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<Protected><Layout /></Protected>}>
             <Route index element={<Dashboard />} />
-            <Route path="clienti" element={<Clienti />} />
+            <Route path="clienti" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="energia"><Clienti /></RequireRole>} />
+            <Route path="riparazioni" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="riparazioni"><Riparazioni /></RequireRole>} />
+            <Route path="telefonia" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="telefonia"><Telefonia /></RequireRole>} />
             <Route path="negozi" element={<RequireRole roles={["admin", "operatore"]}><Negozi /></RequireRole>} />
             <Route path="operatori" element={<RequireRole roles={["admin", "operatore"]}><Operatori /></RequireRole>} />
             <Route path="whatsapp" element={<RequireRole roles={["admin"]}><WhatsApp /></RequireRole>} />

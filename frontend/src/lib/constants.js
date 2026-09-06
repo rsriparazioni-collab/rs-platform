@@ -29,4 +29,42 @@ export const fmtDate = (d) => {
   }
 };
 
-export const RUOLI = { admin: "Amministratore", operatore: "Operatore", negozio: "Negozio" };
+export const RUOLI = { admin: "Amministratore", operatore: "Operatore", negozio: "Negozio", tecnico: "Tecnico" };
+
+export const SECTIONS = [
+  { id: "energia", label: "Energia" },
+  { id: "riparazioni", label: "Riparazioni" },
+  { id: "telefonia", label: "Telefonia" },
+];
+
+export const RIP_STATI = [
+  { id: "ingresso", label: "Ingresso", badge: "bg-sky-500/15 text-sky-700 border-sky-300" },
+  { id: "attesa_ricambio_cliente", label: "Attesa ricambio (disp. col cliente)", badge: "bg-amber-500/15 text-amber-700 border-amber-300" },
+  { id: "attesa_ricambio_carico", label: "Attesa ricambio (disp. in carico)", badge: "bg-orange-500/15 text-orange-700 border-orange-300" },
+  { id: "in_attesa_cliente", label: "In attesa cliente", badge: "bg-yellow-500/15 text-yellow-700 border-yellow-300" },
+  { id: "preventivo", label: "Preventivo", badge: "bg-violet-500/15 text-violet-700 border-violet-300" },
+  { id: "in_lavorazione", label: "In lavorazione", badge: "bg-cyan-500/15 text-cyan-700 border-cyan-300" },
+  { id: "pronto", label: "Pronto", badge: "bg-emerald-500/15 text-emerald-700 border-emerald-300" },
+  { id: "consegnato", label: "Consegnato", badge: "bg-green-600/15 text-green-800 border-green-300" },
+  { id: "non_riparabile", label: "Non riparabile", badge: "bg-rose-500/15 text-rose-700 border-rose-300" },
+];
+
+export const ripStatoLabel = (id) => RIP_STATI.find((s) => s.id === id)?.label || id || "-";
+export const ripStatoBadge = (id) => RIP_STATI.find((s) => s.id === id)?.badge || "bg-slate-500/15 text-slate-700 border-slate-300";
+
+export const SERVIZIO_TIPI = [
+  { id: "riparazione", label: "Riparazione", section: "riparazioni" },
+  { id: "accessori", label: "Accessori", section: "telefonia" },
+  { id: "vendita", label: "Vendita", section: "telefonia" },
+  { id: "sim", label: "SIM", section: "telefonia" },
+  { id: "internet", label: "Internet", section: "telefonia" },
+  { id: "fisso", label: "Fisso", section: "telefonia" },
+];
+
+export const servizioTipoLabel = (id) => SERVIZIO_TIPI.find((t) => t.id === id)?.label || id || "-";
+
+export const TEL_OPERATORS = {
+  sim: ["WINDTRE", "FASTWEB", "TIM", "VERY", "KENA", "HO", "DIGI", "ILIAD"],
+  internet: ["TIM", "WindTre", "Fastweb", "Vodafone", "Iliad", "Eolo", "Enel Fibra"],
+  fisso: ["TIM", "WindTre", "Fastweb", "Vodafone", "Iliad", "Eolo"],
+};

@@ -32,8 +32,12 @@ export default function Login() {
   return (
     <div className="flex min-h-screen" data-testid="login-page">
       <div className="hidden w-1/2 flex-col justify-between bg-gradient-to-br from-fuchsia-700 via-violet-700 to-blue-800 p-12 lg:flex">
-        <img src="/cambiaora-logo.jpg" alt="CambiaOra - Risparmia su energia e servizi"
-             className="w-72 rounded-2xl bg-white p-4 shadow-2xl" data-testid="login-logo" />
+        <div className="flex items-center gap-4">
+          <img src="/cambiaora-logo.jpg" alt="CambiaOra - Risparmia su energia e servizi"
+               className="w-60 rounded-2xl bg-white p-4 shadow-2xl" data-testid="login-logo" />
+          <img src="/rs-logo.png" alt="RS Riparazioni - Life of your device"
+               className="w-28 rounded-2xl bg-white p-3 shadow-2xl" data-testid="login-logo-rs" />
+        </div>
         <div>
           <h1 className="font-heading text-4xl font-bold leading-tight text-white lg:text-5xl">
             Rinnovi luce & gas,<br />sotto controllo.
@@ -46,8 +50,9 @@ export default function Login() {
       </div>
       <div className="flex flex-1 items-center justify-center bg-slate-50 p-6">
         <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden flex justify-center">
-            <img src="/cambiaora-logo.jpg" alt="CambiaOra" className="w-56 rounded-xl bg-white p-3 shadow-lg" data-testid="login-logo-mobile" />
+          <div className="mb-8 lg:hidden flex items-center justify-center gap-3">
+            <img src="/cambiaora-logo.jpg" alt="CambiaOra" className="w-44 rounded-xl bg-white p-3 shadow-lg" data-testid="login-logo-mobile" />
+            <img src="/rs-logo.png" alt="RS Riparazioni" className="w-20 rounded-xl bg-white p-2 shadow-lg" data-testid="login-logo-rs-mobile" />
           </div>
           <h2 className="font-heading text-2xl font-bold text-slate-900">Accedi</h2>
           <p className="mt-1 text-sm text-slate-500">Inserisci le tue credenziali per continuare</p>

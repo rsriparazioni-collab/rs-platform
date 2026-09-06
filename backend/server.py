@@ -74,7 +74,8 @@ def create_token(user_id: str) -> str:
 def serialize_user(u: dict) -> dict:
     return {"id": u["id"], "name": u["name"], "email": u["email"], "role": u["role"],
             "store_ids": u.get("store_ids", []), "can_view_all": u.get("can_view_all", False),
-            "active": u.get("active", True)}
+            "active": u.get("active", True),
+            "sections": u.get("sections") or ["energia", "riparazioni", "telefonia"]}
 
 async def get_current_user(request: Request, creds: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     token = request.cookies.get("gu_token") or (creds.credentials if creds else None)
@@ -331,6 +332,7 @@ class UserCreate(BaseModel):
     role: str = "negozio"
     store_ids: List[str] = []
     can_view_all: bool = False
+    sections: List[str] = []
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
@@ -339,6 +341,7 @@ class UserUpdate(BaseModel):
     can_view_all: Optional[bool] = None
     active: Optional[bool] = None
     password: Optional[str] = None
+    sections: Optional[List[str]] = None
 
 @api_router.get("/users")
 async def list_users(admin: dict = Depends(require_admin)):
@@ -354,14 +357,17 @@ async def create_user(input: UserCreate, user: dict = Depends(get_current_user))
         input.can_view_all = False
         own = user.get("store_ids", [])
         input.store_ids = [s for s in input.store_ids if s in own] or own[:1]
+        caller_sections = user.get("sections") or ["energia", "riparazioni", "telefonia"]
+        input.sections = [s for s in input.sections if s in caller_sections] or caller_sections
     email = input.email.strip().lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email già registrata")
-    if input.role not in ("admin", "operatore", "negozio"):
+    if input.role not in ("admin", "operatore", "negozio", "tecnico"):
         raise HTTPException(status_code=400, detail="Ruolo non valido")
     user = {"id": str(uuid.uuid4()), "name": input.name, "email": email,
             "password_hash": hash_password(input.password), "role": input.role,
             "store_ids": input.store_ids, "can_view_all": input.can_view_all,
+            "sections": input.sections or ["energia", "riparazioni", "telefonia"],
             "active": True, "created_at": datetime.now(timezone.utc).isoformat()}
     await db.users.insert_one(user)
     return serialize_user(user)
@@ -395,12 +401,14 @@ class StoreCreate(BaseModel):
     referente: str = ""
     tipo: str = "negozio"
     note: str = ""
+    review_link: str = ""
 
 class StoreUpdate(BaseModel):
     nome: Optional[str] = None
     referente: Optional[str] = None
     tipo: Optional[str] = None
     note: Optional[str] = None
+    review_link: Optional[str] = None
 
 @api_router.get("/stores")
 async def list_stores(user: dict = Depends(get_current_user)):
@@ -419,7 +427,8 @@ async def list_stores(user: dict = Depends(get_current_user)):
 @api_router.post("/stores")
 async def create_store(input: StoreCreate, admin: dict = Depends(require_admin)):
     store = {"id": str(uuid.uuid4()), "nome": input.nome, "referente": input.referente,
-             "tipo": input.tipo, "note": input.note, "pagato": False, "last_payment_date": None,
+             "tipo": input.tipo, "note": input.note, "review_link": input.review_link,
+             "pagato": False, "last_payment_date": None,
              "created_at": datetime.now(timezone.utc).isoformat()}
     await db.stores.insert_one(store)
     store.pop("_id", None)
@@ -577,6 +586,8 @@ async def get_meta(user: dict = Depends(get_current_user)):
     operators = await db.users.find({"role": {"$in": ["operatore", "admin"]}, "active": True},
                                     {"_id": 0, "password_hash": 0}).to_list(200)
     return {"suppliers": SUPPLIERS, "lavorazioni": LAVORAZIONI,
+            "tel_operators": {"sim": SIM_OPERATORS, "internet": INTERNET_OPERATORS, "fisso": FISSO_OPERATORS},
+            "rip_stati": RIP_STATI, "servizio_tipi": SERVIZIO_TIPI,
             "stores": [{"id": s["id"], "nome": s["nome"], "referente": s.get("referente", "")} for s in stores],
             "operators": [{"id": o["id"], "name": o["name"]} for o in operators]}
 
@@ -605,6 +616,20 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
             stats["non_pagati"] += 1
         lav = c.get("lavorazione", "da_quotare")
         stats["per_lavorazione"][lav] = stats["per_lavorazione"].get(lav, 0) + 1
+    svc_scope = servizio_scope(user)
+    stats["servizi_attivi"] = await db.servizi.count_documents(
+        {**svc_scope, "stato": {"$nin": ["consegnato", "non_riparabile"]}})
+    vinc = await db.servizi.find({**svc_scope, "vincolo_mesi": {"$nin": [None, 0]},
+                                  "data_attivazione": {"$ne": None}},
+                                 {"_id": 0, "data_attivazione": 1, "vincolo_mesi": 1}).to_list(5000)
+    stats["vincoli_60gg"] = 0
+    for v in vinc:
+        try:
+            scad = date.fromisoformat(str(v["data_attivazione"])[:10]) + relativedelta(months=int(v["vincolo_mesi"]))
+            if 0 <= (scad - date.today()).days <= 60:
+                stats["vincoli_60gg"] += 1
+        except (ValueError, TypeError):
+            pass
     return stats
 
 @api_router.get("/alerts")
@@ -1015,12 +1040,18 @@ async def list_attachments(client_id: str, user: dict = Depends(get_current_user
     await get_scoped_client(client_id, user)
     return await db.attachments.find({"client_id": client_id, "is_deleted": False}, {"_id": 0}).to_list(200)
 
+async def _check_attachment_scope(rec: dict, user: dict):
+    if rec.get("client_id"):
+        await get_scoped_client(rec["client_id"], user)
+    else:
+        await get_scoped_servizio(rec["servizio_id"], user)
+
 @api_router.get("/attachments/{att_id}/download")
 async def download_attachment(att_id: str, user: dict = Depends(get_current_user)):
     rec = await db.attachments.find_one({"id": att_id, "is_deleted": False}, {"_id": 0})
     if not rec:
         raise HTTPException(status_code=404, detail="Allegato non trovato")
-    await get_scoped_client(rec["client_id"], user)
+    await _check_attachment_scope(rec, user)
     data, content_type = get_object(rec["storage_path"])
     return Response(content=data, media_type=rec.get("content_type", content_type),
                     headers={"Content-Disposition": f'attachment; filename="{rec["original_filename"]}"'})
@@ -1030,7 +1061,7 @@ async def delete_attachment(att_id: str, user: dict = Depends(get_current_user))
     rec = await db.attachments.find_one({"id": att_id, "is_deleted": False}, {"_id": 0})
     if not rec:
         raise HTTPException(status_code=404, detail="Allegato non trovato")
-    await get_scoped_client(rec["client_id"], user)
+    await _check_attachment_scope(rec, user)
     await db.attachments.update_one({"id": att_id}, {"$set": {"is_deleted": True}})
     return {"status": "ok"}
 
@@ -1088,7 +1119,7 @@ PRIVACY_PROXY = "https://rsriparazioni.com/api/proxy.php"
 STORE_TO_SITO = {"tirano": "tirano", "sondalo": "sondalo", "sondrio": "sondrio",
                  "sondrio grosio": "grosio", "gravedona": "gravedona"}
 
-async def register_privacy_site(client: dict, store_name: str) -> dict:
+async def register_privacy_site(client: dict, store_name: str, categoria: str = "CambiaOra", dettaglio: str = "CambiaOra") -> dict:
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0"}
     async with httpx.AsyncClient(timeout=30, headers=headers) as hc:
         r1 = await hc.post(f"{PRIVACY_PROXY}?action=generateOtp", json={"email": client["email"]})
@@ -1099,7 +1130,7 @@ async def register_privacy_site(client: dict, store_name: str) -> dict:
             "nome": client.get("nome", ""), "cognome": client.get("cognome", ""),
             "codiceFiscale": client.get("codice_fiscale", ""), "telefono": client.get("telefono", ""),
             "email": client["email"],
-            "servizioCategoria": "CambiaOra", "servizioDettaglio": "CambiaOra",
+            "servizioCategoria": categoria, "servizioDettaglio": dettaglio,
             "negozio": STORE_TO_SITO.get(store_name.strip().lower(), ""),
             "privacyAccepted": True, "otp": d1.get("otp", ""),
         }
@@ -1154,7 +1185,7 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
         updates["privacy_msg_sent_at"] = now.isoformat()
         await db.whatsapp_queue.insert_one({
             "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
-            "type": "review", "send_after": (now + timedelta(minutes=5)).isoformat(),
+            "type": "review", "message": REVIEW_MSG, "send_after": (now + timedelta(minutes=5)).isoformat(),
             "sent": False, "created_at": now.isoformat()})
     if registered:
         updates["privacy_firmata"] = True
@@ -1180,7 +1211,7 @@ async def process_whatsapp_queue():
     sent_count = 0
     for item in due:
         try:
-            await wa_send(item["phone"], REVIEW_MSG)
+            await wa_send(item["phone"], item.get("message") or REVIEW_MSG)
             await db.whatsapp_queue.update_one({"id": item["id"]}, {"$set": {"sent": True, "sent_at": now}})
             await db.clients.update_one({"id": item["client_id"]}, {"$set": {"review_msg_sent_at": now}})
             sent_count += 1
@@ -1238,6 +1269,291 @@ async def export_clients(user: dict = Depends(get_current_user)):
     return StreamingResponse(buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+# ---------------- Servizi (riparazioni / telefonia) ----------------
+
+RIP_STATI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "in_attesa_cliente",
+             "preventivo", "in_lavorazione", "pronto", "consegnato", "non_riparabile"]
+
+SERVIZIO_TIPI = ["riparazione", "accessori", "vendita", "sim", "internet", "fisso"]
+
+TIPO_TO_SECTION = {"riparazione": "riparazioni", "accessori": "telefonia", "vendita": "telefonia",
+                   "sim": "telefonia", "internet": "telefonia", "fisso": "telefonia"}
+
+SIM_OPERATORS = ["WINDTRE", "FASTWEB", "TIM", "VERY", "KENA", "HO", "DIGI", "ILIAD"]
+FISSO_OPERATORS = ["TIM", "WindTre", "Fastweb", "Vodafone", "Iliad", "Eolo"]
+INTERNET_OPERATORS = ["WINDTRE", "ENELFIBRA", "EOLO", "FASTWEB", "ILIAD", "TIM", "Vodafone"]
+
+ALL_SECTIONS = ["energia", "riparazioni", "telefonia"]
+
+def user_sections(user: dict) -> list:
+    secs = user.get("sections")
+    return secs if secs else ALL_SECTIONS
+
+def servizio_scope(user: dict, tipo: str = "") -> dict:
+    sections = user_sections(user)
+    if user["role"] == "tecnico":
+        allowed = ["riparazione"] if "riparazioni" in sections else []
+        base = {}
+    else:
+        allowed = [t for t, sec in TIPO_TO_SECTION.items() if sec in sections]
+        if user["role"] == "admin" or user.get("can_view_all"):
+            base = {}
+        else:
+            base = {"venditore_id": {"$in": user.get("store_ids", [])}}
+    if tipo:
+        if tipo not in allowed:
+            raise HTTPException(status_code=403, detail="Sezione non abilitata per questo utente")
+        base["tipo"] = tipo
+    else:
+        base["tipo"] = {"$in": allowed} if allowed else "__nessuno__"
+    return base
+
+def calcola_prezzo_riparazione(s: dict) -> Optional[float]:
+    if s.get("tipo") != "riparazione":
+        return None
+    minuti = max(int(s.get("minuti_lavoro") or 0), 30)
+    lavoro = minuti * 0.22775
+    if s.get("con_ricambio"):
+        base = float(s.get("costo_componente") or 0) + 2.0 + lavoro + 60.0
+    else:
+        base = 30.0 + lavoro
+    return round(base * 1.22, 2)
+
+def serialize_servizio(s: dict, client_name: str = "") -> dict:
+    out = {k: v for k, v in s.items() if k != "_id"}
+    out["client_name"] = client_name
+    if s.get("data_attivazione") and s.get("vincolo_mesi"):
+        try:
+            scad = date.fromisoformat(str(s["data_attivazione"])[:10]) + relativedelta(months=int(s["vincolo_mesi"]))
+            out["scadenza_vincolo"] = scad.isoformat()
+            out["giorni_alla_scadenza"] = (scad - date.today()).days
+        except (ValueError, TypeError):
+            pass
+    out["prezzo_consigliato"] = calcola_prezzo_riparazione(s)
+    return out
+
+async def get_scoped_servizio(servizio_id: str, user: dict) -> dict:
+    scope = servizio_scope(user)
+    scope["id"] = servizio_id
+    s = await db.servizi.find_one(scope, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Servizio non trovato")
+    return s
+
+async def clients_name_map(client_ids: list) -> dict:
+    if not client_ids:
+        return {}
+    docs = await db.clients.find({"id": {"$in": client_ids}}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1}).to_list(10000)
+    return {d["id"]: f"{d.get('cognome', '')} {d.get('nome', '')}".strip() for d in docs}
+
+class ServizioInput(BaseModel):
+    client_id: str
+    tipo: str
+    venditore_id: str = ""
+    operatore_id: str = ""
+    stato: str = "ingresso"
+    dispositivo: str = ""
+    problema: str = ""
+    con_ricambio: bool = False
+    costo_componente: Optional[float] = None
+    minuti_lavoro: Optional[int] = None
+    prodotto: str = ""
+    operatore_tel: str = ""
+    numero: str = ""
+    iccid: str = ""
+    data_attivazione: Optional[str] = None
+    vincolo_mesi: Optional[int] = None
+    importo: Optional[float] = None
+    pagato: bool = False
+    note: str = ""
+
+@api_router.get("/servizi")
+async def list_servizi(user: dict = Depends(get_current_user), tipo: str = "", stato: str = "",
+                       venditore_id: str = "", q: str = ""):
+    scope = servizio_scope(user, tipo)
+    if stato:
+        scope["stato"] = stato
+    if venditore_id and (user["role"] == "admin" or user.get("can_view_all")):
+        scope["venditore_id"] = venditore_id
+    servizi = await db.servizi.find(scope, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    names = await clients_name_map(list({s["client_id"] for s in servizi}))
+    if q:
+        ql = q.lower()
+        servizi = [s for s in servizi if ql in names.get(s["client_id"], "").lower()
+                   or ql in s.get("dispositivo", "").lower() or ql in s.get("numero", "").lower()
+                   or ql in s.get("operatore_tel", "").lower() or ql in s.get("prodotto", "").lower()]
+    return [serialize_servizio(s, names.get(s["client_id"], "")) for s in servizi]
+
+@api_router.post("/servizi")
+async def create_servizio(input: ServizioInput, user: dict = Depends(get_current_user)):
+    if input.tipo not in SERVIZIO_TIPI:
+        raise HTTPException(status_code=400, detail="Tipo servizio non valido")
+    servizio_scope(user, input.tipo)  # gate sezione
+    client_doc = await db.clients.find_one({"id": input.client_id}, {"_id": 0})
+    if not client_doc:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    data = input.model_dump()
+    if user["role"] in ("negozio",) and user.get("store_ids"):
+        data["venditore_id"] = user["store_ids"][0]
+    if data["tipo"] == "riparazione" and data["stato"] not in RIP_STATI:
+        data["stato"] = "ingresso"
+    now = datetime.now(timezone.utc).isoformat()
+    data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_at": now, "updated_at": now,
+                 "last_payment_date": date.today().isoformat() if data.get("pagato") else None,
+                 "privacy_firmata": False, "privacy_msg_sent_at": None, "review_msg_sent_at": None})
+    await db.servizi.insert_one(data)
+    data.pop("_id", None)
+    return serialize_servizio(data, f"{client_doc.get('cognome', '')} {client_doc.get('nome', '')}".strip())
+
+@api_router.get("/servizi/{servizio_id}")
+async def get_servizio(servizio_id: str, user: dict = Depends(get_current_user)):
+    s = await get_scoped_servizio(servizio_id, user)
+    names = await clients_name_map([s["client_id"]])
+    client_doc = await db.clients.find_one({"id": s["client_id"]}, {"_id": 0, "telefono": 1, "email": 1})
+    out = serialize_servizio(s, names.get(s["client_id"], ""))
+    out["client_contacts"] = client_doc or {}
+    return out
+
+@api_router.patch("/servizi/{servizio_id}")
+async def update_servizio(servizio_id: str, input: ServizioInput, user: dict = Depends(get_current_user)):
+    old = await get_scoped_servizio(servizio_id, user)
+    data = input.model_dump(exclude_unset=True)
+    if user["role"] == "negozio":
+        data.pop("venditore_id", None)
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if data.get("pagato") and not old.get("pagato"):
+        data["last_payment_date"] = date.today().isoformat()
+    await db.servizi.update_one({"id": servizio_id}, {"$set": data})
+    updated = await db.servizi.find_one({"id": servizio_id}, {"_id": 0})
+    names = await clients_name_map([updated["client_id"]])
+    return serialize_servizio(updated, names.get(updated["client_id"], ""))
+
+@api_router.delete("/servizi/{servizio_id}")
+async def delete_servizio(servizio_id: str, admin: dict = Depends(require_admin)):
+    res = await db.servizi.delete_one({"id": servizio_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Servizio non trovato")
+    await db.attachments.update_many({"servizio_id": servizio_id}, {"$set": {"is_deleted": True}})
+    return {"status": "ok"}
+
+@api_router.post("/servizi/{servizio_id}/mark-paid")
+async def mark_servizio_paid(servizio_id: str, user: dict = Depends(get_current_user)):
+    await get_scoped_servizio(servizio_id, user)
+    await db.servizi.update_one({"id": servizio_id},
+                                {"$set": {"pagato": True, "last_payment_date": date.today().isoformat()}})
+    return {"status": "ok"}
+
+SVC_CATEGORIA = {"riparazione": ("TELEFONIA", "Riparazione"), "accessori": ("TELEFONIA", "Accessori"),
+                 "vendita": ("TELEFONIA", "Vendita"), "sim": ("SIM", None),
+                 "internet": ("INTERNET", None), "fisso": ("INTERNET", None)}
+
+async def register_privacy_servizio(client: dict, svc: dict, store_name: str) -> dict:
+    cat, det = SVC_CATEGORIA.get(svc["tipo"], ("CambiaOra", "CambiaOra"))
+    if det is None:
+        op = (svc.get("operatore_tel") or "").strip().upper()
+        allowed = SIM_OPERATORS if svc["tipo"] == "sim" else [o.upper() for o in INTERNET_OPERATORS]
+        det = op if op in allowed else allowed[0]
+    return await register_privacy_site(client, store_name, categoria=cat, dettaglio=det)
+
+def review_message_for_store(store: Optional[dict]) -> Optional[str]:
+    if not store or not store.get("review_link"):
+        return None
+    return (f"Ciao!\nGrazie per aver scelto RS Riparazioni {store['nome']}\n"
+            "Se ti sei trovato bene, ci farebbe davvero piacere una tua recensione\n"
+            f"Basta un clic qui\n{store['review_link']}\nGrazie per il supporto")
+
+@api_router.post("/servizi/{servizio_id}/whatsapp/privacy")
+async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_current_user)):
+    svc = await get_scoped_servizio(servizio_id, user)
+    client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0})
+    if not client_doc or not client_doc.get("telefono"):
+        raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
+    store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
+    registered, reg_error = False, None
+    if client_doc.get("email"):
+        try:
+            await register_privacy_servizio(client_doc, svc, (store or {}).get("nome", ""))
+            registered = True
+        except Exception as e:
+            reg_error = getattr(e, "detail", str(e))
+            logger.error(f"Registrazione privacy sito fallita per servizio {servizio_id}: {reg_error}")
+    wa_error = None
+    try:
+        await wa_send(client_doc["telefono"], PRIVACY_MSG.format(nome=client_doc.get("nome", "")))
+    except Exception as e:
+        wa_error = getattr(e, "detail", str(e))
+    if wa_error and not registered:
+        raise HTTPException(status_code=502, detail=f"WhatsApp: {wa_error}")
+    now = datetime.now(timezone.utc)
+    updates = {}
+    review_queued = False
+    if not wa_error:
+        updates["privacy_msg_sent_at"] = now.isoformat()
+        review_msg = review_message_for_store(store)
+        if review_msg:
+            await db.whatsapp_queue.insert_one({
+                "id": str(uuid.uuid4()), "client_id": svc["client_id"], "servizio_id": servizio_id,
+                "phone": client_doc["telefono"], "type": "review", "message": review_msg,
+                "send_after": (now + timedelta(minutes=5)).isoformat(), "sent": False,
+                "created_at": now.isoformat()})
+            review_queued = True
+    if registered:
+        updates["privacy_firmata"] = True
+        updates["privacy_registered_at"] = now.isoformat()
+    if updates:
+        await db.servizi.update_one({"id": servizio_id}, {"$set": updates})
+        await db.clients.update_one({"id": svc["client_id"]},
+                                    {"$set": {"privacy_firmata": True}} if registered else {"$set": {}})
+    return {"status": "ok", "privacy_registered": registered, "registration_error": reg_error,
+            "wa_error": wa_error, "review_queued": review_queued}
+
+@api_router.post("/servizi/{servizio_id}/attachments")
+async def upload_servizio_attachment(servizio_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    await get_scoped_servizio(servizio_id, user)
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
+    if ext not in ("pdf", "jpg", "jpeg", "png", "webp"):
+        raise HTTPException(status_code=400, detail="Formato non supportato (PDF, JPG, PNG, WEBP)")
+    data = await file.read()
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File troppo grande (max 15 MB)")
+    path = f"{APP_NAME}/servizi/{servizio_id}/{uuid.uuid4()}.{ext}"
+    result = put_object(path, data, file.content_type or "application/octet-stream")
+    doc = {"id": str(uuid.uuid4()), "servizio_id": servizio_id, "storage_path": result["path"],
+           "original_filename": file.filename, "content_type": file.content_type,
+           "size": result["size"], "is_deleted": False, "uploaded_by": user["id"],
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.attachments.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api_router.get("/servizi/{servizio_id}/attachments")
+async def list_servizio_attachments(servizio_id: str, user: dict = Depends(get_current_user)):
+    await get_scoped_servizio(servizio_id, user)
+    return await db.attachments.find({"servizio_id": servizio_id, "is_deleted": False}, {"_id": 0}).to_list(200)
+
+@api_router.get("/clients/{client_id}/servizi")
+async def client_servizi(client_id: str, user: dict = Depends(get_current_user)):
+    await get_scoped_client(client_id, user)
+    servizi = await db.servizi.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return [serialize_servizio(s) for s in servizi]
+
+@api_router.get("/vincoli")
+async def report_vincoli(user: dict = Depends(get_current_user), giorni: int = 90):
+    if "telefonia" not in user_sections(user):
+        raise HTTPException(status_code=403, detail="Sezione non abilitata")
+    scope = servizio_scope(user)
+    scope["vincolo_mesi"] = {"$nin": [None, 0]}
+    scope["data_attivazione"] = {"$ne": None}
+    servizi = await db.servizi.find(scope, {"_id": 0}).to_list(5000)
+    names = await clients_name_map(list({s["client_id"] for s in servizi}))
+    out = []
+    for s in servizi:
+        ser = serialize_servizio(s, names.get(s["client_id"], ""))
+        if ser.get("giorni_alla_scadenza") is not None and ser["giorni_alla_scadenza"] <= giorni:
+            out.append(ser)
+    out.sort(key=lambda x: x["giorni_alla_scadenza"])
+    return out
 
 # ---------------- Cron ----------------
 
@@ -1381,12 +1697,32 @@ async def _seed_clients():
             "operatore_name": "Deborah", "status": lav, "note": "Cliente inserito",
             "created_at": now})
 
+async def _seed_stores_v2():
+    if not await db.stores.find_one({"nome": "Morbegno"}):
+        await db.stores.insert_one({"id": str(uuid.uuid4()), "nome": "Morbegno", "referente": "",
+                                    "tipo": "negozio", "note": "", "review_link": "", "pagato": False,
+                                    "last_payment_date": None,
+                                    "created_at": datetime.now(timezone.utc).isoformat()})
+    review_links = {"Tirano": "https://g.page/r/CQedddebLpxpEAE/review",
+                    "Sondrio": "https://g.page/r/CeQBdxW0AtlqEAE/review",
+                    "Gravedona": "https://g.page/r/CWOpR0o29GE-EAE/review",
+                    "Morbegno": "https://g.page/r/CT15UUSXSQoCEAE/review"}
+    for nome, link in review_links.items():
+        await db.stores.update_one({"nome": nome, "$or": [{"review_link": {"$exists": False}}, {"review_link": ""}]},
+                                   {"$set": {"review_link": link}})
+
+async def _seed_user_sections():
+    await db.users.update_many({"sections": {"$exists": False}},
+                               {"$set": {"sections": ["energia", "riparazioni", "telefonia"]}})
+
 async def seed_data():
     await _seed_indexes()
     await _seed_admin()
     await _seed_stores()
     await _seed_users()
     await _seed_clients()
+    await _seed_stores_v2()
+    await _seed_user_sections()
 
 @app.on_event("startup")
 async def startup():

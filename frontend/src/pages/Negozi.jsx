@@ -14,7 +14,8 @@ export default function Negozi() {
   const { user } = useAuth();
   const [stores, setStores] = useState([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ nome: "", referente: "", tipo: "negozio", note: "" });
+  const [form, setForm] = useState({ nome: "", referente: "", tipo: "negozio", note: "", review_link: "" });
+  const [editing, setEditing] = useState(null);
   const isAdmin = user.role === "admin";
 
   const load = useCallback(() => {
@@ -35,10 +36,16 @@ export default function Negozi() {
   const create = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/stores", form);
-      toast.success("Negozio aggiunto");
+      if (editing) {
+        await api.patch(`/stores/${editing.id}`, form);
+        toast.success("Negozio aggiornato");
+      } else {
+        await api.post("/stores", form);
+        toast.success("Negozio aggiunto");
+      }
       setOpen(false);
-      setForm({ nome: "", referente: "", tipo: "negozio", note: "" });
+      setEditing(null);
+      setForm({ nome: "", referente: "", tipo: "negozio", note: "", review_link: "" });
       load();
     } catch (err) {
       toast.error(apiError(err));
@@ -104,6 +111,17 @@ export default function Negozi() {
               )}
             </div>
             {s.note && <p className="mt-3 text-xs text-slate-500">{s.note}</p>}
+            <div className="mt-3 flex items-center justify-between">
+              {s.review_link
+                ? <span className="text-xs font-medium text-emerald-700" data-testid={`store-review-ok-${s.id}`}>✓ Link recensioni configurato</span>
+                : <span className="text-xs font-medium text-amber-600" data-testid={`store-review-missing-${s.id}`}>Link recensioni mancante</span>}
+              {isAdmin && (
+                <Button variant="ghost" size="sm" data-testid={`store-edit-${s.id}`}
+                        onClick={() => { setEditing(s); setForm({ nome: s.nome, referente: s.referente || "", tipo: s.tipo, note: s.note || "", review_link: s.review_link || "" }); setOpen(true); }}>
+                  Modifica
+                </Button>
+              )}
+            </div>
           </div>
         ))}
         {stores.length === 0 && (
@@ -113,7 +131,7 @@ export default function Negozi() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent data-testid="store-form-dialog">
-          <DialogHeader><DialogTitle className="font-heading text-xl">Nuovo negozio / venditore</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="font-heading text-xl">{editing ? `Modifica ${editing.nome}` : "Nuovo negozio / venditore"}</DialogTitle></DialogHeader>
           <form onSubmit={create} className="space-y-4" data-testid="store-form">
             <div className="space-y-1.5">
               <Label>Nome negozio *</Label>
@@ -137,9 +155,15 @@ export default function Negozi() {
               <Label>Note</Label>
               <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} data-testid="store-input-note" />
             </div>
+            <div className="space-y-1.5">
+              <Label>Link recensioni Google (RS Riparazioni)</Label>
+              <Input value={form.review_link} onChange={(e) => setForm({ ...form, review_link: e.target.value })}
+                     placeholder="https://g.page/r/.../review" data-testid="store-input-review-link" />
+              <p className="text-xs text-slate-500">Usato nel messaggio recensione WhatsApp per riparazioni/SIM/internet di questo negozio.</p>
+            </div>
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} data-testid="store-form-cancel">Annulla</Button>
-              <Button type="submit" className="bg-slate-900 hover:bg-slate-800" data-testid="store-form-submit">Aggiungi</Button>
+              <Button type="submit" className="bg-slate-900 hover:bg-slate-800" data-testid="store-form-submit">{editing ? "Salva" : "Aggiungi"}</Button>
             </div>
           </form>
         </DialogContent>

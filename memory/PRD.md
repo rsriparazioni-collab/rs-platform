@@ -50,6 +50,20 @@ Vedi /app/memory/test_credentials.md
 - Test aggiornati per dati reali (conteggi dinamici RBAC/dashboard, ricerca multi-campo): 42/42 pass
 - INCIDENTE UTENTE: dominio ROOT rsriparazioni.com collegato all'app Emergent invece del sottodominio → il sito WordPress non è toccato, serve ripristino DNS (A record → 81.88.52.225) e custom domain su gestionale.rsriparazioni.com
 
+## Moduli servizi (2026-09-06)
+- Nuova collezione `servizi`: riparazione / accessori / vendita / sim / internet / fisso, collegati a client_id (cliente unico multi-servizio)
+- Riparazioni: 9 stati lavorazione, foto allegati, prezzo consigliato automatico = (componente + 2€ trasporto + max(minuti,30)×0,22775 + 60€ margine) × 1.22 con ricambio; (30€ + minuti×0,22775) × 1.22 senza ricambio — verificato 149.14 su test
+- Telefonia: operatori SIM/Internet/Fisso, ICCID, attivazione, vincolo mesi, scadenza calcolata, report /api/vincoli con countdown
+- Permessi: user.sections (energia/riparazioni/telefonia) con gate server-side; ruolo tecnico = tutte le riparazioni; negozio = solo propri store
+- Review WhatsApp per negozio: stores.review_link (seed: Tirano, Sondrio, Gravedona, Morbegno — Sondalo/Grosio senza link, refuso utente); coda con message salvato; admin edita link in pagina Negozi
+- Privacy automatica anche per servizi (mappa su categorie sito: riparazione→TELEFONIA/Riparazione, sim→SIM, internet/fisso→INTERNET)
+- Pagine nuove: Riparazioni.jsx, Telefonia.jsx (tab Servizi+Vincoli), ServizioForm.jsx (picker cliente esistente/nuovo), ServizioDetail.jsx (stato, foto, prezzo, WA); ClientDetail mostra servizi collegati; Dashboard +2 KPI (servizi attivi, vincoli 60gg); Utenti con sezioni + ruolo tecnico; Negozi con review_link editabile
+- Verifiche: 53/53 pytest, tecnico vede tutte riparazioni + 403 su sim, vincoli ok, prezzo ok, UI navigabile
+
+## Aggiornamenti (2026-09-06, sessione 2)
+- Login con doppio logo: CambiaOra + RS Riparazioni (/app/frontend/public/rs-logo.png), desktop e mobile — verificato con screenshot
+- Risposta supporto Emergent su microservizio WhatsApp in produzione: processi supervisor custom NON supportati nel deploy standard; soluzione consigliata = hosting esterno (Railway/Render/VPS) con comunicazione HTTP verso il backend FastAPI, oppure contattare support@emergent.sh con job ID per soluzioni future. QR per ora scansionabile solo dalla preview
+
 ## Backlog prioritizzato
 - P0: utente deve scansionare il QR WhatsApp (pagina WhatsApp) con il numero 3519460591 per attivare gli invii
 - P1: notifiche email ai negozi quando viene registrato il loro compenso
