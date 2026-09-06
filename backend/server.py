@@ -1241,7 +1241,7 @@ async def disponibilita_magazzino(user: dict = Depends(get_current_user), q: str
                             "store_name": smap.get(i.get("store_id", ""), "-"),
                             "quantita": i.get("quantita", 0),
                             "prezzo_vendita": i.get("prezzo_vendita") if can_price else None})
-    return sorted(grouped.values(), key=lambda g: g["nome"])
+    return sorted(grouped.values(), key=lambda x: x["nome"])
 
 @api_router.post("/magazzino")
 async def create_magazzino(input: MagazzinoInput, user: dict = Depends(get_current_user)):

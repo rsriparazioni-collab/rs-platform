@@ -167,7 +167,7 @@ export default function WhatsApp() {
           </div>
           <div className="divide-y divide-slate-100">
             {waLog.slice(0, 10).map((l, i) => (
-              <div key={i} className="flex items-center justify-between px-5 py-2.5 text-sm" data-testid={`wa-log-${i}`}>
+              <div key={`${l.at}-${l.phone}-${l.session}`} className="flex items-center justify-between px-5 py-2.5 text-sm" data-testid={`wa-log-${i}`}>
                 <div className="flex items-center gap-3">
                   <span className={`status-badge ${l.ok ? "bg-emerald-500/15 text-emerald-700 border-emerald-300" : "bg-rose-500/15 text-rose-700 border-rose-300"}`}>
                     {l.ok ? "Inviato" : "Fallito"}

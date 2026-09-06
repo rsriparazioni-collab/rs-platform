@@ -299,7 +299,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     </p>
                     <div className="space-y-1.5" data-testid="servizio-ricambi-list">
                       {(detail.ricambi_usati || []).map((u, idx) => (
-                        <div key={idx} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                        <div key={`${u.item_id}-${u.at || idx}`} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
                           <span>{u.nome} <span className="text-xs text-slate-500">x{u.quantita}</span></span>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeRicambio(idx)} data-testid={`servizio-ricambio-del-${idx}`}>
                             <Trash2 className="h-3.5 w-3.5 text-rose-500" />
@@ -311,8 +311,8 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     {compatibili.length > 0 && (
                       <div className="mb-2 rounded-lg border border-sky-200 bg-sky-50 p-3" data-testid="ricambi-compatibili">
                         <p className="text-xs font-semibold uppercase tracking-wide text-sky-800">Compatibili con {detail.dispositivo}</p>
-                        {compatibili.map((g, gi) => (
-                          <div key={gi} className="mt-1.5 flex flex-wrap items-center gap-1">
+                        {compatibili.map((g) => (
+                          <div key={`${g.nome}|${g.categoria}`} className="mt-1.5 flex flex-wrap items-center gap-1">
                             <span className="text-xs font-medium text-slate-800">{g.nome}</span>
                             {g.stores.map((s) => (
                               <span key={s.item_id} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${s.store_id === detail.venditore_id && s.quantita > 0 ? "bg-emerald-100 text-emerald-800" : s.quantita > 0 ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"}`}>
@@ -332,7 +332,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                           const own = g.stores.find((s) => s.store_id === detail.venditore_id);
                           const others = g.stores.filter((s) => s.store_id !== detail.venditore_id && s.quantita > 0);
                           return (
-                            <div key={gi} className="rounded-lg border border-slate-200 p-2.5" data-testid={`servizio-ricambio-risultato-${gi}`}>
+                            <div key={`${g.nome}|${g.categoria}`} className="rounded-lg border border-slate-200 p-2.5" data-testid={`servizio-ricambio-risultato-${gi}`}>
                               <div className="flex flex-wrap items-center gap-1">
                                 <span className="text-sm font-medium text-slate-900">{g.nome}</span>
                                 <span className="text-xs text-slate-400">({magazzinoCategoriaLabel(g.categoria)})</span>

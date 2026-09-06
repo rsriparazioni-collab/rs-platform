@@ -21,8 +21,8 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       await api.post("/auth/logout");
-    } catch {
-      // cookie già scaduto lato server
+    } catch (e) {
+      console.warn("Logout: sessione già scaduta lato server", e);
     }
     setUser(false);
   };

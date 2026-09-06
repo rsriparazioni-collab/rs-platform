@@ -1,0 +1,30 @@
+{
+  "summary": "Regression verification of 4 code-quality fixes (lambda rename in disponibilita, AuthContext logout console.warn, ServizioDetail stable React keys, WhatsApp log stable keys) + login page new logos/title. All checks PASS. Backend pytest 53/53 green. GET /api/magazzino/disponibilita?q=display returns correctly grouped results (verified with a temporary TEST_ item, then deleted). UI: RM109 detail opens without React key warnings, ricambi search input present and functional. WhatsApp page renders 'Ultimi invii' log with zero React key warnings. Login -> logout -> re-login flow works (logout catch fix does not break anything). Login page shows both logos (CambiaOra + RS Riparazioni) and title 'Gestionale RS & CambiaOra: tutto sotto controllo.'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_scenarios": {
+    "backend_pytest_regression": "PASS - 53/53 in 16.05s",
+    "magazzino_disponibilita_lambda_fix": "PASS - endpoint returns grouped structure {nome, categoria, stores:[{item_id,store_id,store_name,quantita,prezzo_vendita}]}, sorted by nome. Verified by seeding a TEST_ item categoria=display then deleting.",
+    "login_page_logos_title": "PASS - CambiaOra logo (con tagline RISPARMIA SU ENERGIA E SERVIZI) e RS Riparazioni logo (con sedi) visibili in alto a sinistra; titolo 'Gestionale RS & CambiaOra: tutto sotto controllo.' visibile (spezzato su 2 righe come da design)",
+    "riparazioni_RM109_ricambi_no_key_warnings": "PASS - card 'Ricambi dal magazzino' renderizzata, input servizio-ricambio-search presente, digitato 'display' senza React key warnings",
+    "whatsapp_ultimi_invii_no_key_warnings": "PASS - data-testid whatsapp-log presente, zero React key warnings",
+    "auth_logout_relogin_flow": "PASS - login (rsriparazioni@gmail.com) -> logout redirige a /login -> re-login -> Dashboard visibile con menu completo. Solo 2 errori 401 attesi dovuti a richieste stale durante il logout (nessun regresso dovuto al catch console.warn)"
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/iter8.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix 1244 (lambda x): coerente e sicuro, elimina shadowing con parametro esterno.",
+    "AuthContext logout catch console.warn: appropriato per errori non-fatali di rete durante il POST /api/auth/logout.",
+    "ServizioDetail keys (item_id+at, nome|categoria): stabili e uniche - buon fix.",
+    "WhatsApp log key (at-phone-session): stabile - buon fix.",
+    "I 35 warning 'missing hook dependencies' scartati dal team sono effettivamente falsi positivi (module import + promise callback params non sono deps di useEffect/useCallback)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (53/53 pytest + endpoint spot check)", "frontend": "6/6 scenari"},
+  "test_credentials": "admin rsriparazioni@gmail.com/Devis2026! (da /app/memory/test_credentials.md)",
+  "seed_data_creation": "Creato e SUBITO eliminato un TEST_Display iPhone 12 (categoria=display, store=Tirano) per verificare il grouping dell'endpoint disponibilita. DB pulito allo stato precedente.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Progetto pronto per deploy: backend 53/53 verde, tutti i fix code-quality verificati senza regressioni. Il servizio WhatsApp su Railway resta con connessi=0/12 (pairing utente in sospeso, atteso). Preservato cliente Enrico Mangani (dad9dbe8-28d0-4a3a-a993-463363685560, RM109).",
+  "rca of the issue": "Nessun bug. Tutti i 4 fix minori verificati come corretti e privi di regressioni."
+}
