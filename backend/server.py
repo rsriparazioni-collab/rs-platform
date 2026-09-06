@@ -2166,7 +2166,8 @@ async def seed_data():
     await _seed_admin()
     await _seed_stores()
     await _seed_users()
-    await _seed_clients()
+    if os.environ.get("ENVIRONMENT", "production") == "development":
+        await _seed_clients()
     await _seed_stores_v2()
     await _seed_user_sections()
 
