@@ -553,6 +553,15 @@ async def get_client(client_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Cliente non trovato")
     history = await db.lavorazioni_log.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
     c["history"] = history
+    tipi = {s["tipo"] async for s in db.servizi.find({"client_id": client_id}, {"_id": 0, "tipo": 1})}
+    cats = set()
+    if c.get("data_contratto"):
+        cats.add("energia")
+    if tipi & {"sim", "internet", "fisso"}:
+        cats.add("telefonia")
+    if tipi & {"riparazione", "accessori", "vendita"}:
+        cats.add("riparazioni")
+    c["premium_step"] = len(cats)
     return compute_dates(c)
 
 @api_router.patch("/clients/{client_id}")

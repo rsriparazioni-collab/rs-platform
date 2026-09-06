@@ -1,0 +1,47 @@
+{
+  "summary": "E2E completo del flusso richiesto sul cliente reale Enrico Mangani (id dad9dbe8-...): backend pytest 53/53 PASS, endpoint WhatsApp verificati, tutte le pagine UI critiche viste con dati reali. Pair-code Railway generato correttamente (8 caratteri, '5W7SPVFP') e visibile in wa-pair-code-default. Un solo rilievo minore: non esiste una route /clienti/:id nel frontend, la navigazione diretta redireziona al Dashboard; i 4 servizi di Enrico restano comunque visibili nelle pagine Riparazioni (RM109 iPhone 12 Pro) e Telefonia (Iliad, Sky Wifi, TIM + tab Vincoli con scadenze 01/09/2028 e 01/09/2030).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/clients/{id}", "issue": "La risposta del singolo cliente NON include il campo 'premium_step' (invece la lista GET /api/clients lo include). Non blocca il test corrente (badge Premium letto da /api/clients) ma se in futuro una pagina di dettaglio consumasse questo endpoint mancherebbe il campo."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Dettaglio cliente via URL", "issue": "Nessuna route /clienti/:id definita in App.js: la navigazione diretta https://.../clienti/dad9dbe8-... torna al Dashboard. Il requisito 'nel dettaglio si legge Cliente contattato: Si' non e' quindi verificabile via URL; i dati esistono a livello API (fisso TIM cliente_contattato=true, internet Sky Wifi cliente_contattato=true).", "affected_selectors": ["/clienti/:id route missing"]}
+    ],
+    "design_issues": []
+  },
+  "test_scenarios": {
+    "backend_pytest_regression": "PASS - 53/53 in 16.26s (backend/tests, incluso test_alerts con chiave sotto_scorta)",
+    "sessions_summary_endpoint": "PASS - GET /api/whatsapp/sessions-summary -> {connessi:0, totale:17}",
+    "wa_log_endpoint": "PASS - GET /api/whatsapp/log -> 1 entry {phone:'3478190825', ok:false, error:'Nessuna sessione WhatsApp connessa', session_used:null}",
+    "client_enrico_data": "PASS - premium_step=3, privacy_firmata=true, 4 servizi (fisso TIM 0342123456 cliente_contattato=true, internet Sky Wifi 2026-09-01 vincolo 48m cliente_contattato=true, sim Iliad 3478190825 vincolo 24m, riparazione iPhone 12 Pro)",
+    "clienti_page_premium_badge": "PASS - riga 'mangani privato enrico 3478190825' mostra badge oro 'Premium' con data-testid client-premium-0. Le altre righe di Enrico (azienda) mostrano Step 1",
+    "riparazioni_page_RM109": "PASS - tabella riparazioni contiene RM109 / mangani privato enrico / iPhone 12 Pro / Ingresso / Morbegno, colonna N° presente",
+    "telefonia_servizi": "PASS - pagina Telefonia mostra i servizi di Enrico (Iliad, Sky Wifi, TIM)",
+    "telefonia_vincoli_tab": "PASS - tab 'Vincoli (2)' mostra: SIM Iliad scadenza 01/09/2028 Attivo(726 gg); Internet Sky Wifi scadenza 01/09/2030 Attivo(1456 gg)",
+    "whatsapp_page_layout": "PASS - card per ogni negozio (Principale, Tirano, Sondalo, Sondrio, Sondrio Grosio, Deriu, Gravedona, Devis Freelance, Ipro, Morbegno, TEST_Negozio x2) tutte 'Non connesso', pulsanti Mostra QR e Genera codice presenti",
+    "whatsapp_ultimi_invii": "PASS - sezione 'Ultimi invii' visibile con data-testid whatsapp-log, contiene l'entry fallita al numero 3478190825 con errore 'Nessuna sessione WhatsApp connessa'",
+    "whatsapp_pair_code_default": "PASS - riempito input wa-pair-phone-default con 393478190825, click wa-pair-button-default, response 200 da POST /api/whatsapp/pair -> {code:'5W7SPVFP'}, testid wa-pair-code-default mostra '5W7SPVFP' (8 caratteri, real Railway). Pairing NON completato (come richiesto)."
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/iter7.xml"],
+  "action_items": [
+    "OPZIONALE: aggiungere 'premium_step' al modello ritornato da GET /api/clients/{id} per coerenza con GET /api/clients.",
+    "OPZIONALE: implementare una pagina/route /clienti/:id (React Router) se l'utente si aspetta un dettaglio cliente navigabile via URL; al momento non esiste e il campo 'Cliente contattato: Si' e' visibile solo via API o filtri Telefonia/Riparazioni. In alternativa, se il dettaglio e' gia' via modal dalla tabella, va allineata la documentazione."
+  ],
+  "critical_code_review_comments": [
+    "WhatsApp.jsx: data-testid del bottone di pairing e' wa-pair-button-{tid} (non wa-pair-btn-* come indicato nella review_request). Attenzione futura per gli agent testing.",
+    "Server: /api/clients (list) espone premium_step correttamente; /api/clients/{id} (get_by_id) non lo restituisce -> possibile drift tra Pydantic model list vs detail.",
+    "Nessuna route dettaglio cliente in App.js -> feature ambigua nella richiesta utente; comunque i 4 servizi sono accessibili e verificabili dalle liste Riparazioni/Telefonia."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (53/53 pytest + 4/4 endpoint spot check)", "frontend": "10/11 scenari (unico gap: dettaglio cliente via URL non instradato)"},
+  "test_credentials": "admin rsriparazioni@gmail.com/Devis2026! usato per tutti i test; credenziali complete in /app/memory/test_credentials.md",
+  "seed_data_creation": "Nessuna nuova seed creata. Preservati come da istruzioni: cliente Enrico Mangani (dad9dbe8-28d0-4a3a-a993-463363685560) e i suoi 4 servizi. Nel wa_log resta l'entry ok=false generata dall'invio privacy fallito. Il pair code generato (5W7SPVFP) e' effimero (scade con la sessione lato Railway).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Il servizio Railway WhatsApp risponde correttamente per /api/whatsapp/pair (code 200). connessi=0/17 finche' l'utente non completa il pairing dal telefono. Attenzione: (1) route /clienti/:id NON esiste, non riprovare navigazione diretta; (2) testid pair button e' wa-pair-button-* NON wa-pair-btn-*; (3) GET /api/clients/{id} non include premium_step, usare GET /api/clients per il badge Premium; (4) 171 servizi totali nel DB, filtrare client-side per client_id (l'API /api/servizi non supporta ?client_id).",
+  "rca of the issue": "Non ci sono bug bloccanti. Il redirect /clienti/{id} -> / e' semplicemente una route non definita (App.js non ha <Route path=\"clienti/:id\">), fallback SPA torna al Dashboard. Se e' funzionalita' attesa, main agent deve implementarla; se e' out-of-scope, va rimossa dalla lista requisiti."
+}
