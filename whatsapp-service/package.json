@@ -1,7 +1,10 @@
 {
   "name": "whatsapp-service",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "service.js",
+  "scripts": {
+    "start": "node service.js"
+  },
   "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",
