@@ -1,0 +1,47 @@
+{
+  "summary": "E2E frontend + backend regression di Magazzino, Ricambi in Riparazione, Scheda PDF, Ritiri usato + numerazione, Premium badge, RBAC negozio. Backend pytest 53/53 PASS. UI: trovato e RISOLTO un bug bloccante nella pagina /clienti (PREMIUM_STEPS non importato -> pagina crashava con ReferenceError). Segnalato issue non bloccante: contatore Ritiri Morbegno ha prodotto M806 invece del M8 previsto dal task (probabile counter monotonico persistente incrementato da precedenti E2E, non un bug logico ma valore di seed disallineato rispetto a Google Sheet).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/ritiri", "issue": "Numero generato per Morbegno = M806 al posto di M8 atteso dal task/Google Sheet (M7). Il contatore risulta molto piu alto del seed; probabile che precedenti iterazioni abbiano incrementato il contatore. Da valutare reset a M7 se richiesto."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Clienti.jsx", "issue": "RISOLTO in questa iterazione: mancavano gli import PREMIUM_STEPS (da lib/constants) e Crown (da lucide-react). L'errore React 'PREMIUM_STEPS is not defined' faceva crashare l'intera pagina Clienti sotto l'overlay error. Import aggiunti alla riga 2 e 6.", "selector": "[data-testid^='client-premium-']", "priority": "HIGH-RISOLTO"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_scenarios": {
+    "magazzino_create_and_movimento": "PASS - creato 'Display Test QA' Morbegno cat=Display giac=5 prezzo=89.90, -1 -> 4pz, +1 -> 5pz, edit dialog carica dati, filtro categoria+negozio funzionanti",
+    "riparazione_nuova_con_numerazione": "PASS - creata riparazione (CLERICI LUCA/iPhone 14 QA6, PIN 1234, account email/pwd, operazioni), numero RIP1 mostrato in servizio-numero-badge e in tabella riparazione-numero-0",
+    "dettaglio_riparazione_campi_nuovi": "PASS - servizio-sblocco-info=pin: 1234, servizio-account-info=test@icloud.com · pass123, servizio-operazioni-info='Sostituito display, testato touch'",
+    "ricambio_dal_magazzino_scala_e_ripristina": "PASS - assegnato Display Test QA x1 -> giacenza 5->4, rimosso -> 4->5. Prezzo riparazione ricalcolato correttamente.",
+    "scheda_pdf": "PASS - GET /api/servizi/{id}/scheda ritorna application/pdf, magic bytes %PDF, 27034 bytes",
+    "ritiro_morbegno_e_pdf": "PASS funzionale (bolla generata, PDF scaricato content-type application/pdf, 26976 bytes) ma numero=M806 invece di M8 atteso (vedi backend_issues.minor)",
+    "clienti_premium_badge": "INIZIALMENTE FAIL (pagina crash PREMIUM_STEPS undefined) -> DOPO FIX: PASS, 450 badge 'Step 1' renderizzati (client-premium-i data-testid)",
+    "rbac_negozio_lorenzo_sondalo": "PASS - filtro negozio Magazzino nascosto, filtro negozio Ritiri nascosto, select negozio nel form Magazzino disabilitato, articolo creato -> store_name='Sondalo' forzato lato backend, DELETE magazzino da negozio -> 403 (corretto: solo admin)",
+    "backend_pytest": "PASS - 53/53 in 15.06s (backend/tests)"
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/iter6.xml"],
+  "action_items": [
+    "OPZIONALE: valutare se resettare il contatore ritiri Morbegno a 7 in DB per riallinearsi al seed Google Sheet (attuale M806). Non blocca funzionalita.",
+    "OPZIONALE: aggiungere una descrizione (Description) nei DialogContent Radix per rimuovere il warning a11y 'Missing Description or aria-describedby' nei dialog magazzino/ritiro/servizio."
+  ],
+  "critical_code_review_comments": [
+    "Clienti.jsx usava PREMIUM_STEPS e Crown senza importarli -> pagina completamente non funzionante in produzione. Copertura di test automatici andrebbe estesa alla pagina Clienti (dashboard di test attuale non intercettava questo crash perche il test agent precedente non ha navigato /clienti).",
+    "Magazzino.jsx: bottone submit disabilitato correttamente se manca store_id ma per role='negozio' lo store_id viene preselezionato lato backend; controllo lato UI ok.",
+    "Ritiri.jsx: cleanup dei ritiri di test possibile solo da admin (data-testid ritiro-del-i). Non c'e endpoint per ritiro numero seed reset.",
+    "server.py counter ritiri: verificare che il seed (RITIRO_SEEDS) sia consultato solo quando counter=0 e non superato dal max esistente; se persiste come counter puro dovrebbe iniziare da seed+1.",
+    "Backend /api/magazzino/{id}/movimento e /api/servizi/{id}/ricambi funzionano con controllo giacenza (verificato 5->4->5)."
+  ],
+  "updated_files": ["/app/frontend/src/pages/Clienti.jsx"],
+  "success_rate": {"backend": "100% (53/53 pytest + curl spot check)", "frontend": "10/10 scenari (1 bug bloccante trovato e risolto in-loop)"},
+  "test_credentials": "admin rsriparazioni@gmail.com/Devis2026!; negozio lorenzo@cambiaora.local/Lorenzo2026!",
+  "seed_data_creation": "Creati e ELIMINATI tutti: 1 magazzino 'Display Test QA' (Morbegno), 1 riparazione RIP1 (CLERICI LUCA/iPhone 14 QA6), 1 ritiro M806 Morbegno, 1 magazzino 'QA Sondalo Test' (Lorenzo/Sondalo). Verifica finale: 0 servizi, 0 residui in magazzino/ritiri con q di test. Attenzione: contatore ritiri Morbegno ora a M806 (bruciato di 1 unita durante test) -> se serve va ripristinato manualmente da main agent.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Espansione completa (magazzino/ricambi/ritiri/premium/scheda PDF) e stabile su preview dopo fix imports Clienti.jsx. Il contatore ritiri Morbegno e' avanzato a M806 durante i cicli di test - se il valore atteso resta M8 va allineato in DB (collection contatori/sequenze o campo store).",
+  "rca of the issue": "Bug 'PREMIUM_STEPS is not defined' su /clienti: durante l'aggiunta del badge Step/Premium nella tabella clienti, sono stati usati due simboli (PREMIUM_STEPS da ../lib/constants e Crown da lucide-react) senza aggiornare le rispettive import statements in cima al file. Effetto: al rendering della prima riga con premium_step>0 React solleva ReferenceError, che l'error boundary di dev intercetta mostrando l'overlay rosso a schermo intero e impedendo qualsiasi interazione. Riproduzione: login admin -> /clienti (crash immediato). Mitigazione applicata: aggiunto 'Crown' alla import di lucide-react (riga 2) e 'PREMIUM_STEPS' alla import di ../lib/constants (riga 6). Retest: 450 badge Step 1 renderizzati correttamente."
+}

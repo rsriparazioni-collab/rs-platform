@@ -505,7 +505,23 @@ async def list_clients(user: dict = Depends(get_current_user),
             "data_contratto": 1, "venditore_id": 1, "pagato": 1, "last_payment_date": 1,
             "privacy_firmata": 1, "created_at": 1}
     clients = await db.clients.find(scope, proj).sort("created_at", -1).to_list(5000)
-    return [compute_dates(c) for c in clients]
+    tipi_per_client = {}
+    async for row in db.servizi.aggregate([{"$group": {"_id": "$client_id", "tipi": {"$addToSet": "$tipo"}}}]):
+        tipi_per_client[row["_id"]] = row["tipi"]
+    out = []
+    for c in clients:
+        compute_dates(c)
+        tipi = set(tipi_per_client.get(c["id"], []))
+        cats = set()
+        if c.get("data_contratto"):
+            cats.add("energia")
+        if tipi & {"sim", "internet", "fisso"}:
+            cats.add("telefonia")
+        if tipi & {"riparazione", "accessori", "vendita"}:
+            cats.add("riparazioni")
+        c["premium_step"] = len(cats)
+        out.append(c)
+    return out
 
 @api_router.post("/clients")
 async def create_client(input: ClientInput, user: dict = Depends(get_current_user)):
@@ -1131,6 +1147,362 @@ async def merged_pdf(client_id: str, user: dict = Depends(get_current_user)):
     return StreamingResponse(buf, media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
+# ---------------- Numerazione automatica, Magazzino, Ritiri, PDF ----------------
+
+RITIRO_SEEDS = {"morbegno": ("M", 8), "grosio": ("GR", 1), "sondrio": ("SO", 7),
+                "gravedona": ("G", 3), "tirano": ("T", 1), "sondalo": ("SA", 1)}
+
+async def next_numero(kind: str, store_id: str, default_prefix: str = "RIP") -> str:
+    store = await db.stores.find_one({"id": store_id}, {"_id": 0, "nome": 1})
+    sname = (store or {}).get("nome", "").lower()
+    prefix, start = default_prefix, 1
+    if kind == "ritiro":
+        for key, (p, s) in RITIRO_SEEDS.items():
+            if key in sname:
+                prefix, start = p, s
+                break
+    ckey = f"{kind}:{store_id}"
+    existing = await db.counters.find_one({"_id": ckey})
+    if not existing:
+        await db.counters.insert_one({"_id": ckey, "prefix": prefix, "seq": start})
+        existing = {"prefix": prefix, "seq": start}
+    seq = existing["seq"]
+    await db.counters.update_one({"_id": ckey}, {"$inc": {"seq": 1}})
+    return f"{existing.get('prefix', prefix)}{seq}"
+
+MAGAZZINO_CATEGORIE = ["display", "ricambi", "accessori", "sim", "rigenerati", "altro"]
+
+class MagazzinoInput(BaseModel):
+    nome: str
+    categoria: str = "altro"
+    store_id: str = ""
+    quantita: int = 0
+    prezzo_acquisto: Optional[float] = None
+    prezzo_vendita: Optional[float] = None
+    note: str = ""
+
+def magazzino_scope(user: dict) -> dict:
+    if user["role"] in ("admin", "tecnico") or user.get("can_view_all"):
+        return {}
+    return {"store_id": {"$in": user.get("store_ids", [])}}
+
+@api_router.get("/magazzino")
+async def list_magazzino(user: dict = Depends(get_current_user), categoria: str = "",
+                         venditore_id: str = "", q: str = ""):
+    scope = magazzino_scope(user)
+    if categoria:
+        scope["categoria"] = categoria
+    if venditore_id and (user["role"] in ("admin", "tecnico") or user.get("can_view_all")):
+        scope["store_id"] = venditore_id
+    if q:
+        scope["nome"] = {"$regex": re.escape(q), "$options": "i"}
+    items = await db.magazzino.find(scope, {"_id": 0}).sort("nome", 1).to_list(5000)
+    store_ids = list({i.get("store_id", "") for i in items if i.get("store_id")})
+    stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)
+    smap = {s["id"]: s["nome"] for s in stores}
+    for i in items:
+        i["store_name"] = smap.get(i.get("store_id", ""), "-")
+    return items
+
+@api_router.get("/magazzino/disponibilita")
+async def disponibilita_magazzino(user: dict = Depends(get_current_user), q: str = "", categoria: str = ""):
+    scope = {}
+    if q:
+        scope["nome"] = {"$regex": re.escape(q), "$options": "i"}
+    if categoria:
+        scope["categoria"] = categoria
+    items = await db.magazzino.find(scope, {"_id": 0}).to_list(5000)
+    store_ids = list({i.get("store_id", "") for i in items if i.get("store_id")})
+    stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)
+    smap = {s["id"]: s["nome"] for s in stores}
+    grouped = {}
+    for i in items:
+        key = (i.get("nome", "").strip().lower(), i.get("categoria", ""))
+        g = grouped.setdefault(key, {"nome": i.get("nome", ""), "categoria": i.get("categoria", ""), "stores": []})
+        can_price = user["role"] in ("admin", "tecnico") or user.get("can_view_all") \
+            or i.get("store_id") in user.get("store_ids", [])
+        g["stores"].append({"item_id": i["id"], "store_id": i.get("store_id", ""),
+                            "store_name": smap.get(i.get("store_id", ""), "-"),
+                            "quantita": i.get("quantita", 0),
+                            "prezzo_vendita": i.get("prezzo_vendita") if can_price else None})
+    return sorted(grouped.values(), key=lambda g: g["nome"])
+
+@api_router.post("/magazzino")
+async def create_magazzino(input: MagazzinoInput, user: dict = Depends(get_current_user)):
+    data = input.model_dump()
+    if data["categoria"] not in MAGAZZINO_CATEGORIE:
+        raise HTTPException(status_code=400, detail="Categoria non valida")
+    if user["role"] == "negozio" and user.get("store_ids"):
+        data["store_id"] = user["store_ids"][0]
+    if not data["store_id"]:
+        raise HTTPException(status_code=400, detail="Negozio obbligatorio")
+    now = datetime.now(timezone.utc).isoformat()
+    data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_at": now, "updated_at": now})
+    await db.magazzino.insert_one(data)
+    data.pop("_id", None)
+    return data
+
+@api_router.patch("/magazzino/{item_id}")
+async def update_magazzino(item_id: str, input: MagazzinoInput, user: dict = Depends(get_current_user)):
+    scope = magazzino_scope(user)
+    scope["id"] = item_id
+    old = await db.magazzino.find_one(scope, {"_id": 0})
+    if not old:
+        raise HTTPException(status_code=404, detail="Articolo non trovato")
+    data = input.model_dump(exclude_unset=True)
+    if user["role"] == "negozio":
+        data.pop("store_id", None)
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.magazzino.update_one({"id": item_id}, {"$set": data})
+    return await db.magazzino.find_one({"id": item_id}, {"_id": 0})
+
+@api_router.delete("/magazzino/{item_id}")
+async def delete_magazzino(item_id: str, admin: dict = Depends(require_admin)):
+    res = await db.magazzino.delete_one({"id": item_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Articolo non trovato")
+    return {"status": "ok"}
+
+class MovimentoInput(BaseModel):
+    delta: int
+    motivo: str = ""
+
+@api_router.post("/magazzino/{item_id}/movimento")
+async def movimento_magazzino(item_id: str, input: MovimentoInput, user: dict = Depends(get_current_user)):
+    scope = magazzino_scope(user)
+    scope["id"] = item_id
+    item = await db.magazzino.find_one(scope, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Articolo non trovato")
+    new_q = (item.get("quantita") or 0) + input.delta
+    if new_q < 0:
+        raise HTTPException(status_code=400, detail="Giacenza insufficiente")
+    await db.magazzino.update_one({"id": item_id},
+                                  {"$set": {"quantita": new_q, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return {"status": "ok", "quantita": new_q}
+
+class RicambioUsoInput(BaseModel):
+    magazzino_id: str
+    quantita: int = 1
+    prezzo_manuale: Optional[float] = None
+
+@api_router.post("/servizi/{servizio_id}/ricambi")
+async def usa_ricambio(servizio_id: str, input: RicambioUsoInput, user: dict = Depends(get_current_user)):
+    svc = await get_scoped_servizio(servizio_id, user)
+    if svc.get("tipo") != "riparazione":
+        raise HTTPException(status_code=400, detail="Ricambi solo per riparazioni")
+    item = await db.magazzino.find_one({"id": input.magazzino_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Articolo non trovato in magazzino")
+    if item.get("store_id") != svc.get("venditore_id"):
+        raise HTTPException(status_code=400, detail="Ricambio di un altro negozio: fai prima uno spostamento di giacenza")
+    if input.quantita < 1:
+        raise HTTPException(status_code=400, detail="Quantità non valida")
+    if (item.get("quantita") or 0) < input.quantita:
+        raise HTTPException(status_code=400, detail="Giacenza insufficiente")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.magazzino.update_one({"id": item["id"]},
+                                  {"$inc": {"quantita": -input.quantita}, "$set": {"updated_at": now}})
+    prezzo = input.prezzo_manuale if input.prezzo_manuale is not None else item.get("prezzo_vendita")
+    uso = {"item_id": item["id"], "nome": item["nome"], "quantita": input.quantita,
+           "prezzo_vendita": prezzo, "at": now}
+    await db.servizi.update_one({"id": servizio_id},
+                                {"$push": {"ricambi_usati": uso}, "$set": {"updated_at": now}})
+    return {"status": "ok", "giacenza": (item.get("quantita") or 0) - input.quantita}
+
+@api_router.delete("/servizi/{servizio_id}/ricambi/{index}")
+async def annulla_ricambio(servizio_id: str, index: int, user: dict = Depends(get_current_user)):
+    svc = await get_scoped_servizio(servizio_id, user)
+    usati = list(svc.get("ricambi_usati") or [])
+    if index < 0 or index >= len(usati):
+        raise HTTPException(status_code=404, detail="Ricambio non trovato")
+    uso = usati[index]
+    await db.magazzino.update_one({"id": uso["item_id"]},
+                                  {"$inc": {"quantita": uso["quantita"]},
+                                   "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}})
+    usati.pop(index)
+    await db.servizi.update_one({"id": servizio_id},
+                                {"$set": {"ricambi_usati": usati,
+                                          "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return {"status": "ok"}
+
+def _fmt_it(iso: str) -> str:
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).strftime("%d/%m/%Y")
+    except (ValueError, TypeError):
+        return str(iso or "-")
+
+def _new_pdf(title: str, subtitle: str = ""):
+    from fpdf import FPDF
+    pdf = FPDF(format="A4", unit="mm")
+    pdf.add_page()
+    logo = "/app/frontend/public/rs-logo.png"
+    if os.path.exists(logo):
+        pdf.image(logo, x=(210 - 34) / 2, w=34)
+        pdf.ln(2)
+    pdf.set_font("helvetica", "B", 17)
+    pdf.cell(0, 10, title, align="C", new_x="LMARGIN", new_y="NEXT")
+    if subtitle:
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 7, subtitle, align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+    return pdf
+
+def _pdf_field(pdf, label: str, value: str):
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(55, 9, label)
+    pdf.set_font("helvetica", "", 11)
+    pdf.cell(0, 9, str(value or "-"), new_x="LMARGIN", new_y="NEXT")
+
+def _pdf_multiline(pdf, label: str, value: str):
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(0, 8, label, new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("helvetica", "", 11)
+    pdf.multi_cell(0, 7, str(value or "-"))
+    pdf.ln(1)
+
+def _build_scheda_pdf(svc: dict, client_doc: dict) -> bytes:
+    pdf = _new_pdf("Scheda riparazione",
+                   f"N. {svc.get('numero_riparazione') or '-'}  -  Data: {_fmt_it(svc.get('created_at'))}")
+    tel = (client_doc or {}).get("telefono", "")
+    _pdf_field(pdf, "Cliente", svc.get("client_name") or f"{(client_doc or {}).get('cognome', '')} {(client_doc or {}).get('nome', '')}".strip())
+    _pdf_field(pdf, "Telefono", tel)
+    _pdf_field(pdf, "Dispositivo", svc.get("dispositivo"))
+    sblocco = ""
+    if svc.get("codice_sblocco_tipo") and svc.get("codice_sblocco_tipo") != "nessuno":
+        sblocco = f"{svc['codice_sblocco_tipo']}: {svc.get('codice_sblocco') or '-'}"
+    _pdf_field(pdf, "Codice sblocco", sblocco or "Nessuno")
+    pdf.ln(2)
+    _pdf_multiline(pdf, "Problema riscontrato", svc.get("problema"))
+    _pdf_multiline(pdf, "Operazioni svolte", svc.get("operazioni"))
+    usati = svc.get("ricambi_usati") or []
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(0, 8, "Ricambi utilizzati", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("helvetica", "", 11)
+    if usati:
+        for u in usati:
+            pdf.cell(0, 7, f"- {u.get('nome', '')} x{u.get('quantita', 1)}", new_x="LMARGIN", new_y="NEXT")
+    else:
+        pdf.cell(0, 7, "Nessun ricambio", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+    if svc.get("prezzo_consigliato") is not None:
+        _pdf_field(pdf, "Prezzo", f"EUR {svc['prezzo_consigliato']:.2f} (IVA inclusa)")
+    pdf.ln(12)
+    pdf.set_font("helvetica", "", 11)
+    pdf.cell(95, 8, "Firma tecnico: ______________________")
+    pdf.cell(0, 8, "Firma cliente: ______________________", new_x="LMARGIN", new_y="NEXT")
+    return bytes(pdf.output())
+
+@api_router.get("/servizi/{servizio_id}/scheda")
+async def scheda_riparazione(servizio_id: str, user: dict = Depends(get_current_user)):
+    svc = await get_scoped_servizio(servizio_id, user)
+    if svc.get("tipo") != "riparazione":
+        raise HTTPException(status_code=400, detail="Scheda disponibile solo per riparazioni")
+    client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0})
+    names = await clients_name_map([svc["client_id"]])
+    svc["client_name"] = names.get(svc["client_id"], "")
+    svc["prezzo_consigliato"] = calcola_prezzo_riparazione(svc)
+    buf = io.BytesIO(_build_scheda_pdf(svc, client_doc or {}))
+    fname = f"scheda_{svc.get('numero_riparazione') or servizio_id}.pdf".replace(" ", "_")
+    return StreamingResponse(buf, media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+def _build_bolla_pdf(r: dict) -> bytes:
+    pdf = _new_pdf("Bolla di ritiro articoli usati",
+                   f"N. {r.get('numero', '-')}  -  Data ritiro: {_fmt_it(r.get('data_ritiro'))}")
+    pdf.ln(4)
+    _pdf_field(pdf, "Nome", r.get("nome"))
+    _pdf_field(pdf, "Cognome", r.get("cognome"))
+    _pdf_field(pdf, "Codice Fiscale", r.get("codice_fiscale"))
+    _pdf_field(pdf, "Articolo", r.get("articolo"))
+    _pdf_field(pdf, "IMEI", r.get("imei"))
+    prezzo = f"EUR {r['prezzo_ritiro']:.2f}" if r.get("prezzo_ritiro") is not None else "-"
+    _pdf_field(pdf, "Prezzo ritiro", prezzo)
+    _pdf_field(pdf, "Numero documento", r.get("numero_documento"))
+    _pdf_field(pdf, "Si allegano documenti n.", str(r.get("n_allegati", 2)))
+    pdf.ln(14)
+    pdf.set_font("helvetica", "", 11)
+    pdf.cell(95, 8, "Firma negozio: ______________________")
+    pdf.cell(0, 8, "Firma cliente: ______________________", new_x="LMARGIN", new_y="NEXT")
+    return bytes(pdf.output())
+
+class RitiroInput(BaseModel):
+    store_id: str = ""
+    client_id: str = ""
+    nome: str
+    cognome: str
+    codice_fiscale: str = ""
+    articolo: str
+    imei: str = ""
+    prezzo_ritiro: Optional[float] = None
+    numero_documento: str = ""
+    n_allegati: int = 2
+    data_ritiro: Optional[str] = None
+
+def ritiri_scope(user: dict) -> dict:
+    if "riparazioni" not in user_sections(user):
+        raise HTTPException(status_code=403, detail="Sezione non abilitata per questo utente")
+    if user["role"] == "admin" or user.get("can_view_all"):
+        return {}
+    return {"store_id": {"$in": user.get("store_ids", [])}}
+
+@api_router.get("/ritiri")
+async def list_ritiri(user: dict = Depends(get_current_user), venditore_id: str = "", q: str = ""):
+    scope = ritiri_scope(user)
+    if venditore_id and (user["role"] == "admin" or user.get("can_view_all")):
+        scope["store_id"] = venditore_id
+    ritiri = await db.ritiri.find(scope, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    if q:
+        ql = q.lower()
+        ritiri = [r for r in ritiri if ql in f"{r.get('cognome', '')} {r.get('nome', '')}".lower()
+                  or ql in r.get("articolo", "").lower() or ql in r.get("numero", "").lower()]
+    store_ids = list({r.get("store_id", "") for r in ritiri if r.get("store_id")})
+    stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)
+    smap = {s["id"]: s["nome"] for s in stores}
+    for r in ritiri:
+        r["store_name"] = smap.get(r.get("store_id", ""), "-")
+    return ritiri
+
+@api_router.post("/ritiri")
+async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_user)):
+    ritiri_scope(user)
+    data = input.model_dump()
+    if user["role"] == "negozio" and user.get("store_ids"):
+        data["store_id"] = user["store_ids"][0]
+    if not data["store_id"]:
+        raise HTTPException(status_code=400, detail="Negozio obbligatorio")
+    if not data["nome"].strip() or not data["cognome"].strip() or not data["articolo"].strip():
+        raise HTTPException(status_code=400, detail="Nome, cognome e articolo sono obbligatori")
+    data["numero"] = await next_numero("ritiro", data["store_id"])
+    if not data.get("data_ritiro"):
+        data["data_ritiro"] = date.today().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+    data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_at": now})
+    pdf_bytes = _build_bolla_pdf(data)
+    result = put_object(f"{APP_NAME}/ritiri/{data['numero']}.pdf", pdf_bytes, "application/pdf")
+    data["storage_path"] = result["path"]
+    await db.ritiri.insert_one(data)
+    data.pop("_id", None)
+    return data
+
+@api_router.get("/ritiri/{ritiro_id}/pdf")
+async def download_bolla(ritiro_id: str, user: dict = Depends(get_current_user)):
+    scope = ritiri_scope(user)
+    scope["id"] = ritiro_id
+    r = await db.ritiri.find_one(scope, {"_id": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Ritiro non trovato")
+    data, _ = get_object(r["storage_path"])
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{r["numero"]}.pdf"'})
+
+@api_router.delete("/ritiri/{ritiro_id}")
+async def delete_ritiro(ritiro_id: str, admin: dict = Depends(require_admin)):
+    res = await db.ritiri.delete_one({"id": ritiro_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Ritiro non trovato")
+    return {"status": "ok"}
+
 # ---------------- WhatsApp (Baileys service) ----------------
 
 WA_SERVICE = os.environ.get("WA_SERVICE_URL", "http://127.0.0.1:3001")
@@ -1416,6 +1788,11 @@ class ServizioInput(BaseModel):
     importo: Optional[float] = None
     pagato: bool = False
     note: str = ""
+    codice_sblocco_tipo: str = ""
+    codice_sblocco: str = ""
+    account_email: str = ""
+    account_password: str = ""
+    operazioni: str = ""
 
 @api_router.get("/servizi")
 async def list_servizi(user: dict = Depends(get_current_user), tipo: str = "", stato: str = "",
@@ -1447,6 +1824,8 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
         data["venditore_id"] = user["store_ids"][0]
     if data["tipo"] == "riparazione" and data["stato"] not in RIP_STATI:
         data["stato"] = "ingresso"
+    if data["tipo"] == "riparazione":
+        data["numero_riparazione"] = await next_numero("riparazione", data.get("venditore_id") or "")
     now = datetime.now(timezone.utc).isoformat()
     data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_at": now, "updated_at": now,
                  "last_payment_date": date.today().isoformat() if data.get("pagato") else None,

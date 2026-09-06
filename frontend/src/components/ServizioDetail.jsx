@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera } from "lucide-react";
+import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
-import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI } from "../lib/constants";
+import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI, magazzinoCategoriaLabel } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -36,6 +36,11 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
   const [detail, setDetail] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [waLoading, setWaLoading] = useState(false);
+  const [ricercaRic, setRicercaRic] = useState("");
+  const [risultatiRic, setRisultatiRic] = useState([]);
+  const [compatibili, setCompatibili] = useState([]);
+  const [ricQty, setRicQty] = useState(1);
+  const [ricPrezzo, setRicPrezzo] = useState("");
 
   const refresh = useCallback(async () => {
     if (!servizio) return;
@@ -87,6 +92,59 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
     try {
       await api.delete(`/attachments/${att.id}`);
       toast.success("Allegato eliminato");
+      refresh();
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+  };
+
+  useEffect(() => {
+    if (detail?.tipo === "riparazione" && detail?.dispositivo) {
+      const q = detail.dispositivo.split(/\s+/).slice(0, 2).join(" ");
+      if (q.length >= 3) {
+        api.get("/magazzino/disponibilita", { params: { q } })
+          .then((r) => setCompatibili(r.data))
+          .catch(() => {});
+      }
+    }
+  }, [detail?.id, detail?.tipo, detail?.dispositivo]);
+
+  useEffect(() => {
+    if (ricercaRic.trim().length < 2) {
+      setRisultatiRic([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      api.get("/magazzino/disponibilita", { params: { q: ricercaRic.trim() } })
+        .then((r) => setRisultatiRic(r.data))
+        .catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+  }, [ricercaRic]);
+
+  const usaRicambio = async (storeEntry, categoria) => {
+    if (!detail) return;
+    try {
+      const payload = { magazzino_id: storeEntry.item_id, quantita: ricQty };
+      if (categoria === "rigenerati" && ricPrezzo !== "") {
+        payload.prezzo_manuale = parseFloat(ricPrezzo);
+      }
+      await api.post(`/servizi/${detail.id}/ricambi`, payload);
+      toast.success("Ricambio assegnato e scalato dal magazzino");
+      setRicQty(1);
+      setRicPrezzo("");
+      setRicercaRic("");
+      setRisultatiRic([]);
+      refresh();
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+  };
+
+  const removeRicambio = async (idx) => {
+    try {
+      await api.delete(`/servizi/${detail.id}/ricambi/${idx}`);
+      toast.success("Ricambio rimosso, giacenza ripristinata");
       refresh();
     } catch (e) {
       toast.error(apiError(e));
@@ -160,6 +218,9 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
             </SheetHeader>
             <div className="mt-6 space-y-6">
               <div className="flex flex-wrap gap-2">
+                {isRip && detail.numero_riparazione && (
+                  <span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300" data-testid="servizio-numero-badge">N° {detail.numero_riparazione}</span>
+                )}
                 {isRip && <span className={`status-badge ${ripStatoBadge(detail.stato)}`} data-testid="servizio-stato-badge">{ripStatoLabel(detail.stato)}</span>}
                 {detail.pagato
                   ? <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300">Pagato</span>
@@ -179,6 +240,13 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     <div><p className="text-xs text-slate-500">Dispositivo</p><p className="font-medium">{detail.dispositivo || "-"}</p></div>
                     <div><p className="text-xs text-slate-500">Ricambio</p><p className="font-medium">{detail.con_ricambio ? "Da ordinare" : "Non necessario"}</p></div>
                     {detail.problema && <div className="col-span-2"><p className="text-xs text-slate-500">Problema</p><p className="font-medium whitespace-pre-wrap">{detail.problema}</p></div>}
+                    {detail.codice_sblocco_tipo && detail.codice_sblocco_tipo !== "nessuno" && (
+                      <div><p className="text-xs text-slate-500">Codice sblocco</p><p className="font-medium" data-testid="servizio-sblocco-info">{detail.codice_sblocco_tipo}: {detail.codice_sblocco || "-"}</p></div>
+                    )}
+                    {detail.account_email && (
+                      <div><p className="text-xs text-slate-500">Account dispositivo</p><p className="font-medium" data-testid="servizio-account-info">{detail.account_email}{detail.account_password ? ` · ${detail.account_password}` : ""}</p></div>
+                    )}
+                    {detail.operazioni && <div className="col-span-2"><p className="text-xs text-slate-500">Operazioni svolte</p><p className="font-medium whitespace-pre-wrap" data-testid="servizio-operazioni-info">{detail.operazioni}</p></div>}
                   </>
                 )}
                 {["sim", "internet", "fisso"].includes(detail.tipo) && (
@@ -218,6 +286,78 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     </Select>
                   </div>
                   <PrezzoBreakdown s={detail} />
+                  <div className="rounded-xl border border-slate-200 p-4" data-testid="servizio-ricambi-card">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
+                      <Package className="mr-1 inline h-3.5 w-3.5" /> Ricambi dal magazzino
+                    </p>
+                    <div className="space-y-1.5" data-testid="servizio-ricambi-list">
+                      {(detail.ricambi_usati || []).map((u, idx) => (
+                        <div key={idx} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                          <span>{u.nome} <span className="text-xs text-slate-500">x{u.quantita}</span></span>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeRicambio(idx)} data-testid={`servizio-ricambio-del-${idx}`}>
+                            <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                          </Button>
+                        </div>
+                      ))}
+                      {(detail.ricambi_usati || []).length === 0 && <p className="text-xs text-slate-400">Nessun ricambio assegnato</p>}
+                    </div>
+                    {compatibili.length > 0 && (
+                      <div className="mb-2 rounded-lg border border-sky-200 bg-sky-50 p-3" data-testid="ricambi-compatibili">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-sky-800">Compatibili con {detail.dispositivo}</p>
+                        {compatibili.map((g, gi) => (
+                          <div key={gi} className="mt-1.5 flex flex-wrap items-center gap-1">
+                            <span className="text-xs font-medium text-slate-800">{g.nome}</span>
+                            {g.stores.map((s) => (
+                              <span key={s.item_id} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${s.store_id === detail.venditore_id && s.quantita > 0 ? "bg-emerald-100 text-emerald-800" : s.quantita > 0 ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"}`}>
+                                {s.store_name}: {s.quantita}
+                              </span>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <input placeholder="Cerca ricambio in tutti i magazzini (es. batteria iPhone 12)..." value={ricercaRic}
+                           onChange={(e) => setRicercaRic(e.target.value)}
+                           className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm" data-testid="servizio-ricambio-search" />
+                    {risultatiRic.length > 0 && (
+                      <div className="mt-2 space-y-2" data-testid="servizio-ricambi-risultati">
+                        {risultatiRic.map((g, gi) => {
+                          const own = g.stores.find((s) => s.store_id === detail.venditore_id);
+                          const others = g.stores.filter((s) => s.store_id !== detail.venditore_id && s.quantita > 0);
+                          return (
+                            <div key={gi} className="rounded-lg border border-slate-200 p-2.5" data-testid={`servizio-ricambio-risultato-${gi}`}>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span className="text-sm font-medium text-slate-900">{g.nome}</span>
+                                <span className="text-xs text-slate-400">({magazzinoCategoriaLabel(g.categoria)})</span>
+                                {g.stores.map((s) => (
+                                  <span key={s.item_id} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${s.store_id === detail.venditore_id && s.quantita > 0 ? "bg-emerald-100 text-emerald-800" : s.quantita > 0 ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-400"}`}>
+                                    {s.store_name}: {s.quantita}
+                                  </span>
+                                ))}
+                              </div>
+                              {own && own.quantita > 0 ? (
+                                <div className="mt-2 flex items-center gap-2">
+                                  <input type="number" min="1" max={own.quantita} value={ricQty}
+                                         onChange={(e) => setRicQty(Math.max(parseInt(e.target.value) || 1, 1))}
+                                         className="w-16 rounded-md border border-slate-300 px-2 py-1.5 text-sm" data-testid={`servizio-ricambio-qty-${gi}`} />
+                                  {g.categoria === "rigenerati" && (
+                                    <input type="number" step="0.01" min="0" placeholder="Prezzo € a mano" value={ricPrezzo}
+                                           onChange={(e) => setRicPrezzo(e.target.value)}
+                                           className="w-36 rounded-md border border-amber-300 px-2 py-1.5 text-sm" data-testid={`servizio-ricambio-prezzo-${gi}`} />
+                                  )}
+                                  <Button type="button" size="sm" variant="outline" onClick={() => usaRicambio(own, g.categoria)} data-testid={`servizio-ricambio-usa-${gi}`}>Usa</Button>
+                                </div>
+                              ) : others.length > 0 ? (
+                                <p className="mt-1.5 text-xs text-amber-600">Non in questo negozio — disponibile presso: {others.map((o) => `${o.store_name} (${o.quantita} pz)`).join(", ")}</p>
+                              ) : (
+                                <p className="mt-1.5 text-xs text-slate-400">Esaurito in tutti i negozi</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
@@ -261,6 +401,13 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                 {!detail.pagato && (
                   <Button size="sm" variant="outline" onClick={markPaid} data-testid="servizio-mark-paid-button">
                     <Wallet className="mr-2 h-4 w-4" /> Segna pagato
+                  </Button>
+                )}
+                {isRip && (
+                  <Button size="sm" variant="outline"
+                          onClick={() => downloadBlob(`/servizi/${detail.id}/scheda`, `scheda_${detail.numero_riparazione || detail.id}.pdf`)}
+                          data-testid="servizio-scheda-button">
+                    <Printer className="mr-2 h-4 w-4" /> Scheda
                   </Button>
                 )}
                 <Button size="sm" variant="outline" onClick={() => onEdit(detail)} data-testid="servizio-edit-button">

@@ -80,6 +80,7 @@ export default function Riparazioni() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-4 py-3">N°</th>
                 <th className="px-4 py-3">Cliente</th>
                 <th className="px-4 py-3">Dispositivo</th>
                 <th className="px-4 py-3">Stato</th>
@@ -93,6 +94,7 @@ export default function Riparazioni() {
               {servizi.map((s, i) => (
                 <tr key={s.id} className="cursor-pointer transition-colors hover:bg-slate-50"
                     onClick={() => setDetailRow(s)} data-testid={`riparazione-row-${i}`}>
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-600" data-testid={`riparazione-numero-${i}`}>{s.numero_riparazione || "-"}</td>
                   <td className="px-4 py-3 font-medium text-slate-900">{s.client_name || "-"}</td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5">

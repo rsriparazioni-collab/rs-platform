@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download } from "lucide-react";
+import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate } from "../lib/constants";
+import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate, PREMIUM_STEPS } from "../lib/constants";
 import ClientForm from "../components/ClientForm";
 import ClientDetail from "../components/ClientDetail";
 import { Button } from "../components/ui/button";
@@ -161,7 +161,15 @@ export default function Clienti() {
                 <tr key={c.id} className="cursor-pointer transition-colors hover:bg-slate-50"
                     onClick={() => setDetailRow(c)} data-testid={`client-row-${i}`}>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-900">{c.cognome} {c.nome}</p>
+                    <p className="font-medium text-slate-900">
+                      {c.cognome} {c.nome}
+                      {c.premium_step > 0 && (
+                        <span className={`ml-2 status-badge ${PREMIUM_STEPS[c.premium_step]?.badge}`} data-testid={`client-premium-${i}`}>
+                          {c.premium_step === 3 && <Crown className="h-3 w-3" />}
+                          {PREMIUM_STEPS[c.premium_step]?.label}
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-slate-500">{c.tipo_cliente === "business" ? `P.IVA ${c.p_iva || "-"}` : c.telefono}</p>
                   </td>
                   <td className="px-4 py-3">

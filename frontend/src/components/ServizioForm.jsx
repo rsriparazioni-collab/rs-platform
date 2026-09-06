@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
-import { SERVIZIO_TIPI, RIP_STATI, TEL_OPERATORS } from "../lib/constants";
+import { SERVIZIO_TIPI, RIP_STATI, TEL_OPERATORS, SBLOCCO_TIPI } from "../lib/constants";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -196,6 +196,35 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
               <div className="col-span-full space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Problema</Label>
                 <Textarea rows={2} value={form.problema || ""} onChange={(e) => set("problema", e.target.value)} data-testid="servizio-problema" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Codice sblocco dispositivo</Label>
+                <Select value={form.codice_sblocco_tipo || "nessuno"} onValueChange={(v) => set("codice_sblocco_tipo", v)}>
+                  <SelectTrigger data-testid="servizio-sblocco-tipo"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {SBLOCCO_TIPI.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.codice_sblocco_tipo && form.codice_sblocco_tipo !== "nessuno" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {form.codice_sblocco_tipo === "simbolo" ? "Sequenza (es. 1-5-9-6)" : form.codice_sblocco_tipo === "pin" ? "PIN" : "Password"}
+                  </Label>
+                  <Input value={form.codice_sblocco || ""} onChange={(e) => set("codice_sblocco", e.target.value)} data-testid="servizio-sblocco" />
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email account dispositivo</Label>
+                <Input placeholder="es. account Google / Apple ID" value={form.account_email || ""} onChange={(e) => set("account_email", e.target.value)} data-testid="servizio-account-email" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Password account dispositivo</Label>
+                <Input value={form.account_password || ""} onChange={(e) => set("account_password", e.target.value)} data-testid="servizio-account-password" />
+              </div>
+              <div className="col-span-full space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Operazioni svolte</Label>
+                <Textarea rows={2} placeholder="es. Sostituito display, testato touch e batteria..." value={form.operazioni || ""} onChange={(e) => set("operazioni", e.target.value)} data-testid="servizio-operazioni" />
               </div>
               <div className="flex items-center gap-3 pt-5">
                 <Switch checked={Boolean(form.con_ricambio)} onCheckedChange={(v) => set("con_ricambio", v)} data-testid="servizio-ricambio-switch" />

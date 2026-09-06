@@ -12,6 +12,8 @@ import Utenti from "./pages/Utenti";
 import WhatsApp from "./pages/WhatsApp";
 import Riparazioni from "./pages/Riparazioni";
 import Telefonia from "./pages/Telefonia";
+import Magazzino from "./pages/Magazzino";
+import Ritiri from "./pages/Ritiri";
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -52,6 +54,8 @@ function App() {
             <Route path="clienti" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="energia"><Clienti /></RequireRole>} />
             <Route path="riparazioni" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="riparazioni"><Riparazioni /></RequireRole>} />
             <Route path="telefonia" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="telefonia"><Telefonia /></RequireRole>} />
+            <Route path="magazzino" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><Magazzino /></RequireRole>} />
+            <Route path="ritiri" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="riparazioni"><Ritiri /></RequireRole>} />
             <Route path="negozi" element={<RequireRole roles={["admin", "operatore"]}><Negozi /></RequireRole>} />
             <Route path="operatori" element={<RequireRole roles={["admin", "operatore"]}><Operatori /></RequireRole>} />
             <Route path="whatsapp" element={<RequireRole roles={["admin"]}><WhatsApp /></RequireRole>} />

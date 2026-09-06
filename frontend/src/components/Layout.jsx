@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle, Wrench, Smartphone } from "lucide-react";
+import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { RUOLI } from "../lib/constants";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -13,6 +13,8 @@ const NAV = [
   { to: "/clienti", label: "Clienti", icon: Users, roles: ["admin", "operatore", "negozio", "tecnico"], section: "energia", testid: "nav-clienti" },
   { to: "/riparazioni", label: "Riparazioni", icon: Wrench, roles: ["admin", "operatore", "negozio", "tecnico"], section: "riparazioni", testid: "nav-riparazioni" },
   { to: "/telefonia", label: "Telefonia", icon: Smartphone, roles: ["admin", "operatore", "negozio", "tecnico"], section: "telefonia", testid: "nav-telefonia" },
+  { to: "/magazzino", label: "Magazzino", icon: Package, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-magazzino" },
+  { to: "/ritiri", label: "Ritiri usato", icon: Recycle, roles: ["admin", "operatore", "negozio", "tecnico"], section: "riparazioni", testid: "nav-ritiri" },
   { to: "/negozi", label: "Negozi", icon: Building2, roles: ["admin", "operatore"], testid: "nav-negozi" },
   { to: "/operatori", label: "Operatori", icon: UserCog, roles: ["admin", "operatore"], testid: "nav-operatori" },
   { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: ["admin"], testid: "nav-whatsapp" },

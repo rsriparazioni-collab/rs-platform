@@ -68,3 +68,29 @@ export const TEL_OPERATORS = {
   internet: ["TIM", "WindTre", "Fastweb", "Vodafone", "Iliad", "Eolo", "Enel Fibra"],
   fisso: ["TIM", "WindTre", "Fastweb", "Vodafone", "Iliad", "Eolo"],
 };
+
+
+export const SBLOCCO_TIPI = [
+  { id: "nessuno", label: "Nessun blocco" },
+  { id: "simbolo", label: "Simbolo (sequenza)" },
+  { id: "pin", label: "PIN numerico" },
+  { id: "password", label: "Password" },
+];
+
+export const MAGAZZINO_CATEGORIE = [
+  { id: "display", label: "Display" },
+  { id: "ricambi", label: "Ricambi" },
+  { id: "accessori", label: "Accessori" },
+  { id: "sim", label: "SIM" },
+  { id: "rigenerati", label: "Rigenerati / Usati" },
+  { id: "altro", label: "Altro" },
+];
+
+export const magazzinoCategoriaLabel = (id) =>
+  MAGAZZINO_CATEGORIE.find((c) => c.id === id)?.label || id || "-";
+
+export const PREMIUM_STEPS = {
+  1: { label: "Step 1", badge: "bg-slate-500/15 text-slate-700 border-slate-300" },
+  2: { label: "Step 2", badge: "bg-sky-500/15 text-sky-700 border-sky-300" },
+  3: { label: "Premium", badge: "bg-amber-500/20 text-amber-800 border-amber-400" },
+};
