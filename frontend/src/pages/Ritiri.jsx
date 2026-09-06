@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Search, Recycle, FileDown, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import api, { apiError } from "../lib/api";
+import api, { apiError, downloadBlob } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { fmtDate } from "../lib/constants";
 import { Button } from "../components/ui/button";
@@ -114,9 +114,14 @@ export default function Ritiri() {
           <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">Ritiri usato</h1>
           <p className="mt-1 text-sm text-slate-500">{ritiri.length} bolle di ritiro generate</p>
         </div>
-        <Button onClick={openNew} data-testid="add-ritiro-button" className="gap-2 bg-slate-900 hover:bg-slate-800">
-          <Plus className="h-4 w-4" /> Nuovo ritiro
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => downloadBlob("/ritiri/export", `ritiri_usato_${new Date().toISOString().slice(0, 10)}.xlsx`)} data-testid="ritiri-export-button" className="gap-2">
+            <FileDown className="h-4 w-4" /> Excel
+          </Button>
+          <Button onClick={openNew} data-testid="add-ritiro-button" className="gap-2 bg-slate-900 hover:bg-slate-800">
+            <Plus className="h-4 w-4" /> Nuovo ritiro
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="ritiri-filters">

@@ -26,4 +26,14 @@ export function apiError(e, fallback = "Si è verificato un errore") {
   return fallback;
 }
 
+export const downloadBlob = async (path, filename) => {
+  const res = await api.get(path, { responseType: "blob" });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
 export default api;

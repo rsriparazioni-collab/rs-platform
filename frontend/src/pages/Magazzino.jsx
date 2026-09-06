@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Package, Pencil, Trash2, Minus, PlusCircle } from "lucide-react";
+import { Plus, Search, Package, Pencil, Trash2, Minus, PlusCircle, FileDown } from "lucide-react";
 import { toast } from "sonner";
-import api, { apiError } from "../lib/api";
+import api, { apiError, downloadBlob } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { MAGAZZINO_CATEGORIE, magazzinoCategoriaLabel } from "../lib/constants";
 import { Button } from "../components/ui/button";
@@ -107,9 +107,14 @@ export default function Magazzino() {
             {items.length} articoli {canSeeAll ? "in tutti i negozi" : "del tuo negozio"}
           </p>
         </div>
-        <Button onClick={openNew} data-testid="add-articolo-button" className="gap-2 bg-slate-900 hover:bg-slate-800">
-          <Plus className="h-4 w-4" /> Nuovo articolo
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => downloadBlob("/magazzino/export", `magazzino_${new Date().toISOString().slice(0, 10)}.xlsx`)} data-testid="magazzino-export-button" className="gap-2">
+            <FileDown className="h-4 w-4" /> Excel
+          </Button>
+          <Button onClick={openNew} data-testid="add-articolo-button" className="gap-2 bg-slate-900 hover:bg-slate-800">
+            <Plus className="h-4 w-4" /> Nuovo articolo
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="magazzino-filters">

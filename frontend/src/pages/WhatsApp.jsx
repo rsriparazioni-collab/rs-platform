@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { MessageCircle, CheckCircle2, XCircle, RefreshCw, Store, QrCode } from "lucide-react";
 import api from "../lib/api";
+import { fmtDateTime } from "../lib/constants";
 import { Button } from "../components/ui/button";
 
 export default function WhatsApp() {
@@ -11,12 +12,19 @@ export default function WhatsApp() {
   const [qrValue, setQrValue] = useState(null);
   const [pair, setPair] = useState({});
   const [down, setDown] = useState(false);
+  const [waLog, setWaLog] = useState([]);
+
+  const storeName = (sid) => {
+    if (sid === "default") return "Principale";
+    return stores.find((s) => s.id === sid)?.nome || (sid ? sid.slice(0, 8) : "-");
+  };
 
   const poll = useCallback(async () => {
     try {
       const res = await api.get("/whatsapp/status");
       setSessions(res.data.sessions || []);
       setDown(false);
+      api.get("/whatsapp/log").then((r) => setWaLog(r.data)).catch(() => {});
       if (openQr) {
         const qrRes = await api.get("/whatsapp/qr", { params: { session: openQr } });
         setQrValue(qrRes.data.qr || null);
@@ -151,6 +159,30 @@ export default function WhatsApp() {
           );
         })}
       </div>
+
+      {waLog.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="whatsapp-log">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <h2 className="font-heading text-lg font-semibold text-slate-800">Ultimi invii</h2>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {waLog.slice(0, 10).map((l, i) => (
+              <div key={i} className="flex items-center justify-between px-5 py-2.5 text-sm" data-testid={`wa-log-${i}`}>
+                <div className="flex items-center gap-3">
+                  <span className={`status-badge ${l.ok ? "bg-emerald-500/15 text-emerald-700 border-emerald-300" : "bg-rose-500/15 text-rose-700 border-rose-300"}`}>
+                    {l.ok ? "Inviato" : "Fallito"}
+                  </span>
+                  <div>
+                    <p className="font-medium text-slate-900">+{l.phone} · {storeName(l.session)}</p>
+                    <p className="max-w-md truncate text-xs text-slate-500">{l.error || l.message}</p>
+                  </div>
+                </div>
+                <span className="text-xs text-slate-400">{fmtDateTime(l.at)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex justify-center">
         <Button variant="outline" size="sm" onClick={poll} className="gap-2" data-testid="whatsapp-refresh-button">

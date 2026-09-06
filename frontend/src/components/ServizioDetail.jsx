@@ -264,6 +264,13 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                       </div>
                     )}
                     {detail.importo != null && <div><p className="text-xs text-slate-500">Importo</p><p className="font-medium">€ {detail.importo}/mese</p></div>}
+                    {(detail.tipo === "internet" || detail.tipo === "fisso") && (
+                      <div><p className="text-xs text-slate-500">Cliente contattato</p>
+                        <p className={`font-medium ${detail.cliente_contattato ? "text-emerald-700" : "text-slate-400"}`} data-testid="servizio-contattato-info">
+                          {detail.cliente_contattato ? "Sì" : "No"}
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
                 {["accessori", "vendita"].includes(detail.tipo) && (

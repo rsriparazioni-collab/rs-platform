@@ -400,7 +400,7 @@ class TestDashboardAlerts:
 
     def test_alerts(self, admin):
         a = admin.get(f"{API}/alerts", timeout=30).json()
-        assert set(a.keys()) == {"rinnovi", "pagamenti_clienti", "pagamenti_negozi"}
+        assert set(a.keys()) == {"rinnovi", "pagamenti_clienti", "pagamenti_negozi", "sotto_scorta"}
         assert any(p["nome"] == "Mario" for p in a["pagamenti_clienti"])
         if len(a["rinnovi"]) > 1:
             assert a["rinnovi"] == sorted(a["rinnovi"], key=lambda x: x["giorni"])

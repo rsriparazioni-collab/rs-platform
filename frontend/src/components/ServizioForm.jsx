@@ -286,6 +286,12 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Importo €/mese</Label>
                 <Input type="number" step="0.01" value={form.importo ?? ""} onChange={(e) => set("importo", e.target.value)} data-testid="servizio-importo" />
               </div>
+              {(tipo === "internet" || tipo === "fisso") && (
+                <div className="flex items-center gap-3 pt-5">
+                  <Switch checked={Boolean(form.cliente_contattato)} onCheckedChange={(v) => set("cliente_contattato", v)} data-testid="servizio-contattato-switch" />
+                  <Label className="text-sm">Cliente contattato</Label>
+                </div>
+              )}
             </div>
           )}
 

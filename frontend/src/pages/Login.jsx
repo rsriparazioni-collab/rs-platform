@@ -32,27 +32,39 @@ export default function Login() {
   return (
     <div className="flex min-h-screen" data-testid="login-page">
       <div className="hidden w-1/2 flex-col justify-between bg-gradient-to-br from-fuchsia-700 via-violet-700 to-blue-800 p-12 lg:flex">
-        <div className="flex items-center gap-4">
-          <img src="/cambiaora-logo.jpg" alt="CambiaOra - Risparmia su energia e servizi"
-               className="w-60 rounded-2xl bg-white p-4 shadow-2xl" data-testid="login-logo" />
-          <img src="/rs-logo.png" alt="RS Riparazioni - Life of your device"
-               className="w-28 rounded-2xl bg-white p-3 shadow-2xl" data-testid="login-logo-rs" />
+        <div className="relative">
+          <div className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-emerald-400/40 via-teal-300/30 to-sky-400/40 blur-2xl" />
+          <div className="relative flex items-center gap-5">
+            <div className="flex h-44 w-44 items-center justify-center rounded-3xl bg-white/95 p-5 shadow-2xl ring-1 ring-white/60">
+              <img src="/cambiaora-logo.jpg" alt="CambiaOra - Risparmia su energia e servizi"
+                   className="max-h-full max-w-full object-contain" data-testid="login-logo" />
+            </div>
+            <div className="flex h-44 w-44 items-center justify-center rounded-3xl bg-white/95 p-5 shadow-2xl ring-1 ring-white/60">
+              <img src="/rs-logo.png" alt="RS Riparazioni - Life of your device"
+                   className="max-h-full max-w-full object-contain" data-testid="login-logo-rs" />
+            </div>
+          </div>
         </div>
         <div>
           <h1 className="font-heading text-4xl font-bold leading-tight text-white lg:text-5xl">
-            Rinnovi luce & gas,<br />sotto controllo.
+            Gestionale RS & CambiaOra:<br />tutto sotto controllo.
           </h1>
           <p className="mt-4 max-w-md text-base text-fuchsia-100">
-            Il gestionale CambiaOra: clienti, contratti, rinnovi a 10 mesi e compensi dei negozi da un'unica postazione di comando.
+            Clienti, rinnovi energia, riparazioni, telefonia, magazzino e ritiri usato — con WhatsApp dei negozi integrato. Un'unica postazione di comando per tutti i punti vendita.
           </p>
         </div>
         <p className="text-xs text-fuchsia-200">Accesso riservato al team autorizzato</p>
       </div>
       <div className="flex flex-1 items-center justify-center bg-slate-50 p-6">
         <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden flex items-center justify-center gap-3">
-            <img src="/cambiaora-logo.jpg" alt="CambiaOra" className="w-44 rounded-xl bg-white p-3 shadow-lg" data-testid="login-logo-mobile" />
-            <img src="/rs-logo.png" alt="RS Riparazioni" className="w-20 rounded-xl bg-white p-2 shadow-lg" data-testid="login-logo-rs-mobile" />
+          <div className="mb-8 lg:hidden relative flex items-center justify-center gap-4">
+            <div className="absolute -inset-3 rounded-3xl bg-gradient-to-br from-emerald-400/40 to-sky-400/40 blur-xl" />
+            <div className="relative flex h-28 w-28 items-center justify-center rounded-2xl bg-white p-3 shadow-lg">
+              <img src="/cambiaora-logo.jpg" alt="CambiaOra" className="max-h-full max-w-full object-contain" data-testid="login-logo-mobile" />
+            </div>
+            <div className="relative flex h-28 w-28 items-center justify-center rounded-2xl bg-white p-3 shadow-lg">
+              <img src="/rs-logo.png" alt="RS Riparazioni" className="max-h-full max-w-full object-contain" data-testid="login-logo-rs-mobile" />
+            </div>
           </div>
           <h2 className="font-heading text-2xl font-bold text-slate-900">Accedi</h2>
           <p className="mt-1 text-sm text-slate-500">Inserisci le tue credenziali per continuare</p>

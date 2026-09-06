@@ -156,7 +156,14 @@ async def build_alerts(user: dict) -> dict:
             pagamenti_negozi.append({"store_id": s["id"], "nome": s.get("nome", ""),
                                      "referente": s.get("referente", ""), "last_payment_date": s.get("last_payment_date")})
     rinnovi.sort(key=lambda x: x["giorni"])
-    return {"rinnovi": rinnovi, "pagamenti_clienti": pagamenti_clienti, "pagamenti_negozi": pagamenti_negozi}
+    mscope = magazzino_scope(user)
+    mscope["quantita"] = {"$lte": 2}
+    low = await db.magazzino.find(mscope, {"_id": 0, "id": 1, "nome": 1, "categoria": 1, "quantita": 1, "store_id": 1}).to_list(500)
+    smap = {s["id"]: s.get("nome", "") for s in stores}
+    sotto_scorta = [{"id": i["id"], "nome": i["nome"], "categoria": i.get("categoria", ""),
+                     "quantita": i.get("quantita", 0), "store_name": smap.get(i.get("store_id", ""), "-")} for i in low]
+    return {"rinnovi": rinnovi, "pagamenti_clienti": pagamenti_clienti, "pagamenti_negozi": pagamenti_negozi,
+            "sotto_scorta": sotto_scorta}
 
 # ---------------- Email (managed Resend) ----------------
 
@@ -1281,6 +1288,49 @@ async def movimento_magazzino(item_id: str, input: MovimentoInput, user: dict = 
                                   {"$set": {"quantita": new_q, "updated_at": datetime.now(timezone.utc).isoformat()}})
     return {"status": "ok", "quantita": new_q}
 
+def _xlsx_response(ws_title: str, headers: list, rows: list, fname: str):
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = ws_title
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    for col in ws.columns:
+        width = max(len(str(c.value or "")) for c in col) + 3
+        ws.column_dimensions[col[0].column_letter].width = min(width, 45)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(buf,
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+@api_router.get("/magazzino/export")
+async def export_magazzino(user: dict = Depends(get_current_user)):
+    items = await db.magazzino.find(magazzino_scope(user), {"_id": 0}).sort("nome", 1).to_list(5000)
+    store_ids = list({i.get("store_id", "") for i in items if i.get("store_id")})
+    stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)
+    smap = {s["id"]: s["nome"] for s in stores}
+    rows = [[i.get("nome", ""), i.get("categoria", ""), smap.get(i.get("store_id", ""), "-"),
+             i.get("quantita", 0), i.get("prezzo_acquisto"), i.get("prezzo_vendita"), i.get("note", "")] for i in items]
+    return _xlsx_response("Magazzino", ["Articolo", "Categoria", "Negozio", "Giacenza", "Prezzo acquisto", "Prezzo vendita", "Note"],
+                          rows, f"magazzino_{date.today().isoformat()}.xlsx")
+
+@api_router.get("/ritiri/export")
+async def export_ritiri(user: dict = Depends(get_current_user)):
+    scope = ritiri_scope(user)
+    ritiri = await db.ritiri.find(scope, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    store_ids = list({r.get("store_id", "") for r in ritiri if r.get("store_id")})
+    stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)
+    smap = {s["id"]: s["nome"] for s in stores}
+    rows = [[r.get("numero", ""), _fmt_it(r.get("data_ritiro")), r.get("cognome", ""), r.get("nome", ""),
+             r.get("codice_fiscale", ""), r.get("articolo", ""), r.get("imei", ""), r.get("prezzo_ritiro"),
+             r.get("numero_documento", ""), r.get("n_allegati", ""), smap.get(r.get("store_id", ""), "-")] for r in ritiri]
+    return _xlsx_response("Ritiri", ["N. ritiro", "Data", "Cognome", "Nome", "Codice fiscale", "Articolo", "IMEI",
+                                     "Prezzo ritiro", "N. documento", "Allegati", "Negozio"],
+                          rows, f"ritiri_usato_{date.today().isoformat()}.xlsx")
+
 class RicambioUsoInput(BaseModel):
     magazzino_id: str
     quantita: int = 1
@@ -1528,12 +1578,26 @@ https://g.page/r/CaSv3O7luiBPEAE/review
 Grazie per il supporto"""
 
 async def wa_send(phone: str, message: str, session: str = "default"):
-    async with httpx.AsyncClient(timeout=30) as http_client:
-        resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message, "session": session}, headers=wa_headers())
-    data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-    if resp.status_code != 200 or not data.get("success"):
-        raise HTTPException(status_code=502, detail=data.get("error", "Servizio WhatsApp non disponibile"))
-    return data
+    log = {"phone": phone, "session": session, "message": message[:120],
+           "at": datetime.now(timezone.utc).isoformat(), "ok": False, "error": None, "session_used": None}
+    try:
+        async with httpx.AsyncClient(timeout=30) as http_client:
+            resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message, "session": session}, headers=wa_headers())
+        data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        log["ok"] = resp.status_code == 200 and bool(data.get("success"))
+        log["session_used"] = data.get("session")
+        if not log["ok"]:
+            log["error"] = data.get("error", "Servizio WhatsApp non disponibile")
+            raise HTTPException(status_code=502, detail=log["error"])
+        return data
+    except HTTPException as e:
+        log["error"] = log["error"] or str(e.detail)
+        raise
+    except Exception as e:
+        log["error"] = str(e)
+        raise HTTPException(status_code=502, detail=f"Servizio WhatsApp non raggiungibile: {e}")
+    finally:
+        await db.wa_log.insert_one(log)
 
 PRIVACY_PROXY = "https://rsriparazioni.com/api/proxy.php"
 
@@ -1560,6 +1624,22 @@ async def register_privacy_site(client: dict, store_name: str, categoria: str = 
         if d2.get("result") != "ok":
             raise HTTPException(status_code=502, detail=f"Registrazione privacy fallita: {d2.get('message', 'errore')}")
     return d2
+
+@api_router.get("/whatsapp/log")
+async def whatsapp_log(admin: dict = Depends(require_admin)):
+    return await db.wa_log.find({}, {"_id": 0}).sort("at", -1).to_list(50)
+
+@api_router.get("/whatsapp/sessions-summary")
+async def whatsapp_sessions_summary(admin: dict = Depends(require_admin)):
+    totale = await db.stores.count_documents({}) + 1
+    try:
+        async with httpx.AsyncClient(timeout=5) as http_client:
+            resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
+        sessions = resp.json().get("sessions", [])
+        connessi = len([s for s in sessions if s.get("connected")])
+        return {"connessi": connessi, "totale": totale}
+    except Exception:
+        return {"connessi": None, "totale": totale}
 
 @api_router.get("/whatsapp/status")
 async def whatsapp_status(admin: dict = Depends(require_admin)):
@@ -1811,6 +1891,7 @@ class ServizioInput(BaseModel):
     account_email: str = ""
     account_password: str = ""
     operazioni: str = ""
+    cliente_contattato: bool = False
 
 @api_router.get("/servizi")
 async def list_servizi(user: dict = Depends(get_current_user), tipo: str = "", stato: str = "",
