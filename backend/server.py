@@ -1133,7 +1133,11 @@ async def merged_pdf(client_id: str, user: dict = Depends(get_current_user)):
 
 # ---------------- WhatsApp (Baileys service) ----------------
 
-WA_SERVICE = "http://127.0.0.1:3001"
+WA_SERVICE = os.environ.get("WA_SERVICE_URL", "http://127.0.0.1:3001")
+WA_SERVICE_KEY = os.environ.get("WA_SERVICE_KEY", "")
+
+def wa_headers() -> dict:
+    return {"X-API-Key": WA_SERVICE_KEY} if WA_SERVICE_KEY else {}
 
 PRIVACY_MSG = """RS Group – Grazie per averci scelto!
 Ciao {nome}
@@ -1153,7 +1157,7 @@ Grazie per il supporto"""
 
 async def wa_send(phone: str, message: str):
     async with httpx.AsyncClient(timeout=30) as http_client:
-        resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message})
+        resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message}, headers=wa_headers())
     data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
     if resp.status_code != 200 or not data.get("success"):
         raise HTTPException(status_code=502, detail=data.get("error", "Servizio WhatsApp non disponibile"))
@@ -1189,7 +1193,7 @@ async def register_privacy_site(client: dict, store_name: str, categoria: str = 
 async def whatsapp_status(admin: dict = Depends(require_admin)):
     try:
         async with httpx.AsyncClient(timeout=10) as http_client:
-            resp = await http_client.get(f"{WA_SERVICE}/status")
+            resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
         return resp.json()
     except Exception:
         return {"connected": False, "user": None, "has_qr": False, "service_down": True}
@@ -1198,7 +1202,7 @@ async def whatsapp_status(admin: dict = Depends(require_admin)):
 async def whatsapp_qr(admin: dict = Depends(require_admin)):
     try:
         async with httpx.AsyncClient(timeout=10) as http_client:
-            resp = await http_client.get(f"{WA_SERVICE}/qr")
+            resp = await http_client.get(f"{WA_SERVICE}/qr", headers=wa_headers())
         return resp.json()
     except Exception:
         return {"qr": None}

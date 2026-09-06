@@ -7,6 +7,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const API_KEY = process.env.WA_API_KEY || '';
+app.use((req, res, next) => {
+  if (!API_KEY) return next();
+  if (req.headers['x-api-key'] !== API_KEY) return res.status(401).json({ error: 'unauthorized' });
+  next();
+});
+
 const logger = pino({ level: 'warn' });
 let sock = null;
 let currentQr = null;
@@ -14,7 +21,7 @@ let connected = false;
 let connectedUser = null;
 
 async function initWhatsApp() {
-  const { state, saveCreds } = await useMultiFileAuthState('/app/whatsapp-service/auth_info');
+  const { state, saveCreds } = await useMultiFileAuthState(process.env.AUTH_INFO_PATH || require('path').join(__dirname, 'auth_info'));
   const { version } = await fetchLatestBaileysVersion();
   sock = makeWASocket({
     auth: state,
@@ -74,8 +81,8 @@ app.post('/send', async (req, res) => {
   }
 });
 
-const PORT = 3001;
-app.listen(PORT, '127.0.0.1', () => {
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`WhatsApp service in ascolto su porta ${PORT}`);
   initWhatsApp().catch((e) => console.error('Init error:', e));
 });
