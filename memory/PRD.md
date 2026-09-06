@@ -67,6 +67,7 @@ Vedi /app/memory/test_credentials.md
 - Microservizio WhatsApp pronto per hosting esterno: PORT/bind da env (0.0.0.0), AUTH_INFO_PATH configurabile, API key opzionale (WA_API_KEY, header X-API-Key), Dockerfile + guida /app/whatsapp-service/DEPLOY.md (Railway con volume /data). Backend: WA_SERVICE_URL e WA_SERVICE_KEY da env (default locale in .env). Verificato: servizio riavviato, QR disponibile, status proxato OK
 - Record "TEST GESTIONALE": NON presente nel DB del gestionale (cercato in clients/servizi/whatsapp_queue) — esiste solo nel sistema di registrazione del sito rsriparazioni.com, dove il proxy espone solo generateOtp/register (nessuna delete): eliminazione manuale dal pannello admin del sito (utente: "lo facciamo dopo")
 - Baileys aggiornato a 7.0.0-rc14 (errore utente "impossibile collegare nuovi dispositivi" con QR valido = protocollo WA rifiutava la vecchia versione). WA_SERVICE_KEY generata (in backend/.env) per futura autenticazione servizio Railway. Account Railway creato dall'utente (2026-09-06), setup da completare insieme
+- WHATSAPP COLLEGATO (2026-09-06): account "Cambia Ora Sondrio" (393519460591), messaggio di test inviato e ricevuto dall'utente — canale di invio verificato E2E in preview
 
 ## Backlog prioritizzato
 - P0: utente deve scansionare il QR WhatsApp (pagina WhatsApp) con il numero 3519460591 per attivare gli invii
