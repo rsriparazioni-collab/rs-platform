@@ -63,6 +63,7 @@ Vedi /app/memory/test_credentials.md
 ## Aggiornamenti (2026-09-06, sessione 2)
 - Login con doppio logo: CambiaOra + RS Riparazioni (/app/frontend/public/rs-logo.png), desktop e mobile — verificato con screenshot
 - Risposta supporto Emergent su microservizio WhatsApp in produzione: processi supervisor custom NON supportati nel deploy standard; soluzione consigliata = hosting esterno (Railway/Render/VPS) con comunicazione HTTP verso il backend FastAPI, oppure contattare support@emergent.sh con job ID per soluzioni future. QR per ora scansionabile solo dalla preview
+- Widget "Scadenze della settimana" in Dashboard: endpoint GET /api/scadenze-settimana (rinnovi energia ≤7gg, vincoli telefonia ≤7gg, riparazioni in stato "pronto"), rispetta sezioni e scoping per ruolo; pannello a 3 colonne con link a Clienti/Telefonia/Riparazioni. Verificato: admin vede 9 rinnovi reali, utente negozio Sondalo correttamente a 0, 53/53 pytest pass
 
 ## Backlog prioritizzato
 - P0: utente deve scansionare il QR WhatsApp (pagina WhatsApp) con il numero 3519460591 per attivare gli invii

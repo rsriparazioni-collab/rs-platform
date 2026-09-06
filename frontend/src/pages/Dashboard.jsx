@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRight, Wrench, Smartphone } from "lucide-react";
+import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRight, Wrench, Smartphone, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -26,11 +26,13 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [alerts, setAlerts] = useState(null);
+  const [scadenze, setScadenze] = useState(null);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
     api.get("/dashboard/stats").then((r) => setStats(r.data)).catch(() => {});
     api.get("/alerts").then((r) => setAlerts(r.data)).catch(() => {});
+    api.get("/scadenze-settimana").then((r) => setScadenze(r.data)).catch(() => {});
   }, []);
 
   const sendDigest = async () => {
@@ -78,6 +80,90 @@ export default function Dashboard() {
                sub="Riparazioni e telefonia aperte" color="bg-violet-100 text-violet-700" testid="kpi-servizi" />
           <Kpi icon={Smartphone} label="Vincoli in scadenza" value={stats.vincoli_60gg ?? 0}
                sub="Vincoli telefonia entro 60 giorni" color="bg-orange-100 text-orange-700" testid="kpi-vincoli" />
+        </div>
+      )}
+
+      {scadenze && (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="scadenze-panel">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-sky-600" />
+              <h2 className="font-heading text-lg font-semibold text-slate-800">Scadenze della settimana</h2>
+            </div>
+            <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-bold text-sky-800" data-testid="scadenze-count">
+              {scadenze.totale}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 divide-y divide-slate-100 md:grid-cols-3 md:divide-x md:divide-y-0">
+            <div className="p-4" data-testid="scadenze-rinnovi-section">
+              <div className="mb-3 flex items-center gap-2">
+                <Zap className="h-4 w-4 text-amber-600" />
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Rinnovi energia</p>
+              </div>
+              {scadenze.rinnovi.length === 0 && (
+                <p className="py-3 text-center text-xs text-slate-400" data-testid="scadenze-rinnovi-empty">Nessun rinnovo entro 7 giorni</p>
+              )}
+              <div className="space-y-1">
+                {scadenze.rinnovi.map((r) => (
+                  <Link to="/clienti" key={r.client_id} data-testid={`scadenza-rinnovo-${r.client_id}`}
+                        className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-50">
+                    <div className="flex items-center gap-2">
+                      {r.tipo_bolletta === "gas"
+                        ? <Flame className="h-3.5 w-3.5 text-orange-500" />
+                        : <Zap className="h-3.5 w-3.5 text-sky-500" />}
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">{r.cognome} {r.nome}</p>
+                        <p className="text-xs text-slate-500">Rinnovo: {fmtDate(r.data_rinnovo)}</p>
+                      </div>
+                    </div>
+                    <span className={`text-xs font-bold ${r.giorni <= 2 ? "text-rose-600" : "text-amber-600"}`}>{r.giorni} gg</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+            <div className="p-4" data-testid="scadenze-vincoli-section">
+              <div className="mb-3 flex items-center gap-2">
+                <Smartphone className="h-4 w-4 text-orange-600" />
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Vincoli telefonia</p>
+              </div>
+              {scadenze.vincoli.length === 0 && (
+                <p className="py-3 text-center text-xs text-slate-400" data-testid="scadenze-vincoli-empty">Nessun vincolo in scadenza entro 7 giorni</p>
+              )}
+              <div className="space-y-1">
+                {scadenze.vincoli.map((v) => (
+                  <Link to="/telefonia" key={v.id} data-testid={`scadenza-vincolo-${v.id}`}
+                        className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-50">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{v.client_name}</p>
+                      <p className="text-xs text-slate-500">{v.operatore_tel}{v.numero ? ` · ${v.numero}` : ""} · scade {fmtDate(v.scadenza_vincolo)}</p>
+                    </div>
+                    <span className={`text-xs font-bold ${v.giorni <= 2 ? "text-rose-600" : "text-orange-600"}`}>{v.giorni} gg</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+            <div className="p-4" data-testid="scadenze-riparazioni-section">
+              <div className="mb-3 flex items-center gap-2">
+                <Wrench className="h-4 w-4 text-emerald-600" />
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Riparazioni da consegnare</p>
+              </div>
+              {scadenze.riparazioni_pronte.length === 0 && (
+                <p className="py-3 text-center text-xs text-slate-400" data-testid="scadenze-riparazioni-empty">Nessuna riparazione pronta</p>
+              )}
+              <div className="space-y-1">
+                {scadenze.riparazioni_pronte.map((r) => (
+                  <Link to="/riparazioni" key={r.id} data-testid={`scadenza-riparazione-${r.id}`}
+                        className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-50">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{r.client_name}</p>
+                      <p className="text-xs text-slate-500">{r.dispositivo}{r.problema ? ` · ${r.problema}` : ""}</p>
+                    </div>
+                    <span className="rounded-full border border-emerald-300 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Pronto</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

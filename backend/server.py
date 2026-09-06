@@ -636,6 +636,51 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
 async def get_alerts(user: dict = Depends(get_current_user)):
     return await build_alerts(user)
 
+@api_router.get("/scadenze-settimana")
+async def scadenze_settimana(user: dict = Depends(get_current_user)):
+    sections = user_sections(user)
+    out = {"rinnovi": [], "vincoli": [], "riparazioni_pronte": []}
+    if "energia" in sections:
+        scope = client_scope_filter(user)
+        projection = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "data_contratto": 1,
+                      "lavorazione": 1, "tipo_bolletta": 1, "pagato": 1, "last_payment_date": 1}
+        clients = await db.clients.find(scope, projection).to_list(5000)
+        for c in clients:
+            compute_dates(c)
+            gr = c.get("giorni_al_rinnovo")
+            if gr is not None and 0 <= gr <= 7 and c.get("lavorazione") != "rinnovato":
+                out["rinnovi"].append({"client_id": c["id"], "nome": c.get("nome", ""), "cognome": c.get("cognome", ""),
+                                       "data_rinnovo": c["data_rinnovo"], "giorni": gr,
+                                       "tipo_bolletta": c.get("tipo_bolletta", "")})
+        out["rinnovi"].sort(key=lambda x: x["giorni"])
+    if "telefonia" in sections:
+        svc_scope = servizio_scope(user)
+        svc_scope.update({"vincolo_mesi": {"$nin": [None, 0]}, "data_attivazione": {"$ne": None}})
+        vinc = await db.servizi.find(svc_scope, {"_id": 0}).to_list(5000)
+        names = await clients_name_map(list({s["client_id"] for s in vinc}))
+        for s in vinc:
+            ser = serialize_servizio(s, names.get(s["client_id"], ""))
+            g = ser.get("giorni_alla_scadenza")
+            if g is not None and 0 <= g <= 7:
+                out["vincoli"].append({"id": s["id"], "client_name": ser["client_name"], "tipo": s["tipo"],
+                                       "operatore_tel": s.get("operatore_tel", ""), "numero": s.get("numero", ""),
+                                       "scadenza_vincolo": ser["scadenza_vincolo"], "giorni": g})
+        out["vincoli"].sort(key=lambda x: x["giorni"])
+    if "riparazioni" in sections:
+        svc_scope = servizio_scope(user)
+        svc_scope["tipo"] = "riparazione"
+        svc_scope["stato"] = "pronto"
+        rips = await db.servizi.find(svc_scope, {"_id": 0, "id": 1, "client_id": 1, "dispositivo": 1,
+                                                 "problema": 1, "updated_at": 1}).to_list(1000)
+        names = await clients_name_map(list({s["client_id"] for s in rips}))
+        out["riparazioni_pronte"] = [
+            {"id": s["id"], "client_name": names.get(s["client_id"], ""),
+             "dispositivo": s.get("dispositivo", ""), "problema": s.get("problema", "")}
+            for s in rips]
+    out["totale"] = len(out["rinnovi"]) + len(out["vincoli"]) + len(out["riparazioni_pronte"])
+    return out
+
+
 @api_router.post("/alerts/send-digest")
 async def send_digest_now(admin: dict = Depends(require_admin)):
     email_id = await send_digest_email()
