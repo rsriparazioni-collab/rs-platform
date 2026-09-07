@@ -156,11 +156,27 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
   const changeStato = async (stato) => {
     try {
       await api.patch(`/servizi/${detail.id}`, { client_id: detail.client_id, tipo: detail.tipo, stato });
-      toast.success(`Stato aggiornato: ${ripStatoLabel(stato)}`);
+      toast.success(stato === "pronto" && !detail.pronto_msg_sent_at
+        ? "Stato aggiornato: Pronto. Avviso WhatsApp al cliente in invio..."
+        : `Stato aggiornato: ${ripStatoLabel(stato)}`);
+      setTimeout(refresh, 2500);
       refresh();
       onChanged();
     } catch (e) {
       toast.error(apiError(e));
+    }
+  };
+
+  const sendPronto = async () => {
+    setWaLoading(true);
+    try {
+      await api.post(`/servizi/${detail.id}/whatsapp/pronto`);
+      toast.success("Avviso 'pronto per il ritiro' inviato al cliente");
+      refresh();
+    } catch (e) {
+      toast.error(apiError(e, "Invio fallito"));
+    } finally {
+      setWaLoading(false);
     }
   };
 
@@ -227,6 +243,16 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                 {isRip && detail.ritiro_numero && (
                   <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300" data-testid="servizio-ritiro-badge">
                     <Recycle className="h-3 w-3" /> Ritiro {detail.ritiro_numero}
+                  </span>
+                )}
+                {isRip && detail.pronto_msg_sent_at && (
+                  <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300" data-testid="servizio-pronto-sent-badge">
+                    <MessageCircle className="h-3 w-3" /> Cliente avvisato {fmtDate(detail.pronto_msg_sent_at)}
+                  </span>
+                )}
+                {isRip && !detail.pronto_msg_sent_at && detail.pronto_msg_error && (
+                  <span className="status-badge bg-amber-500/15 text-amber-700 border-amber-300" title={detail.pronto_msg_error} data-testid="servizio-pronto-error-badge">
+                    Avviso "pronto" non inviato
                   </span>
                 )}
                 {detail.pagato
@@ -417,6 +443,11 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                         className="gap-2 bg-emerald-600 hover:bg-emerald-700">
                   <MessageCircle className="h-4 w-4" /> {waLoading ? "Invio..." : "Invia privacy WhatsApp"}
                 </Button>
+                {isRip && detail.stato === "pronto" && (
+                  <Button size="sm" variant="outline" onClick={sendPronto} disabled={waLoading} className="border-emerald-300 text-emerald-700" data-testid="servizio-wa-pronto-button">
+                    <MessageCircle className="mr-2 h-4 w-4" /> {detail.pronto_msg_sent_at ? "Reinvia avviso pronto" : "Avvisa cliente: pronto"}
+                  </Button>
+                )}
                 {!detail.pagato && (
                   <Button size="sm" variant="outline" onClick={markPaid} data-testid="servizio-mark-paid-button">
                     <Wallet className="mr-2 h-4 w-4" /> Segna pagato

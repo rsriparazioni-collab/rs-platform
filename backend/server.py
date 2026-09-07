@@ -2365,7 +2365,7 @@ async def get_servizio(servizio_id: str, user: dict = Depends(get_current_user))
     return out
 
 @api_router.patch("/servizi/{servizio_id}")
-async def update_servizio(servizio_id: str, input: ServizioInput, user: dict = Depends(get_current_user)):
+async def update_servizio(servizio_id: str, input: ServizioInput, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     old = await get_scoped_servizio(servizio_id, user)
     data = input.model_dump(exclude_unset=True)
     if user["role"] == "negozio":
@@ -2376,8 +2376,40 @@ async def update_servizio(servizio_id: str, input: ServizioInput, user: dict = D
         data["last_payment_date"] = date.today().isoformat()
     await db.servizi.update_one({"id": servizio_id}, {"$set": data})
     updated = await db.servizi.find_one({"id": servizio_id}, {"_id": 0})
+    if updated.get("tipo") == "riparazione" and updated.get("stato") == "pronto" and old.get("stato") != "pronto" \
+            and not updated.get("pronto_msg_sent_at"):
+        background_tasks.add_task(invia_avviso_pronto, updated)
     names = await clients_name_map([updated["client_id"]])
     return serialize_servizio(updated, names.get(updated["client_id"], ""))
+
+PRONTO_MSG = ("Ciao {nome}!\nIl tuo {dispositivo} (riparazione N. {numero}) è pronto per il ritiro presso RS Riparazioni {negozio}.\n"
+              "Ti aspettiamo in negozio negli orari di apertura. Grazie!")
+
+async def invia_avviso_pronto(svc: dict) -> None:
+    client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "telefono": 1})
+    if not client_doc or not client_doc.get("telefono"):
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_error": "Cliente senza numero di telefono"}})
+        return
+    store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0, "nome": 1})
+    msg = PRONTO_MSG.format(nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", "dispositivo"),
+                            numero=svc.get("numero_riparazione", "-"), negozio=(store or {}).get("nome", ""))
+    try:
+        await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default")
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_sent_at": datetime.now(timezone.utc).isoformat(),
+                                                                 "pronto_msg_error": None}})
+    except HTTPException as e:
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_error": str(e.detail)}})
+
+@api_router.post("/servizi/{servizio_id}/whatsapp/pronto")
+async def whatsapp_pronto_servizio(servizio_id: str, user: dict = Depends(get_current_user)):
+    svc = await get_scoped_servizio(servizio_id, user)
+    if svc.get("tipo") != "riparazione":
+        raise HTTPException(status_code=400, detail="Solo per riparazioni")
+    await invia_avviso_pronto(svc)
+    updated = await db.servizi.find_one({"id": servizio_id}, {"_id": 0, "pronto_msg_sent_at": 1, "pronto_msg_error": 1})
+    if updated.get("pronto_msg_error"):
+        raise HTTPException(status_code=400, detail=f"WhatsApp: {updated['pronto_msg_error']}")
+    return {"status": "ok", "pronto_msg_sent_at": updated.get("pronto_msg_sent_at")}
 
 @api_router.delete("/servizi/{servizio_id}")
 async def delete_servizio(servizio_id: str, admin: dict = Depends(require_admin)):
