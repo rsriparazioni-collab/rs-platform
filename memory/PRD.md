@@ -180,3 +180,4 @@ Vedi /app/memory/test_credentials.md
 - Registro WhatsApp: `wa_send` logga `tipo` (privacy/recensione/pronto/promemoria/avviso_negozio) e `client_id`; `GET /clients/{id}/whatsapp-log` (match per client_id o telefono) mostrato in ClientDetail (`WhatsAppLog.jsx`) con esito ed errore.
 - Blacklist da anagrafica: pulsante/badge in ClientDetail; filtro "Solo blacklist recensioni" in Clienti (`GET /clients?no_recensioni=1`).
 - Registro WA: `wa_log` ha `id`, `servizio_id`; `GET /servizi/{id}/whatsapp-log` (in ServizioDetail); `POST /whatsapp-log/{id}/resend` reinvia messaggi falliti (segna `resent_at`, aggiorna i flag *_msg_sent_at). Componente `WhatsAppLog` generico con prop `url`.
+- Fix pagina bianca/"removeChild" in produzione: causa = Google Translate di Chrome che riscrive il DOM React. `index.html` ora ha `lang="it" translate="no"` + meta `google notranslate`; ErrorBoundary riconosce l'errore, ricarica una volta e mostra istruzioni per disattivare la traduzione.
