@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus, Search, Wrench, CheckCircle2, XCircle, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
@@ -30,9 +31,17 @@ export default function Riparazioni() {
   }, [filters]);
 
   useEffect(() => { load(); }, [load]);
+  const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     api.get("/meta").then((r) => setMeta(r.data)).catch(() => {});
   }, []);
+  useEffect(() => {
+    const apri = searchParams.get("apri");
+    if (apri) {
+      setDetailRow({ id: apri });
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const storeName = (id) => meta.stores.find((s) => s.id === id)?.nome || "-";
 

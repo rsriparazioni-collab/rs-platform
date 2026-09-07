@@ -5,6 +5,14 @@ crons:
     timezone: "Europe/Rome"
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     endpoint: "{{BASE_URL}}/api/cron/daily-digest"
+  - name: riparazioni-ferme
+    description: "Ogni mattina alle 8:30 invia via WhatsApp a ogni negozio le riparazioni ferme da oltre 7 giorni"
+    cron: "30 8 * * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/riparazioni-ferme"
+    method: POST
+    enabled: true
   - name: whatsapp-due
     description: "Invia i messaggi WhatsApp in coda (richiesta recensione 5 minuti dopo il link privacy)"
     cron: "*/5 * * * *"

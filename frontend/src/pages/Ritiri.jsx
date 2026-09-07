@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Recycle, FileDown, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Plus, Search, Recycle, FileDown, Trash2, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -150,6 +151,7 @@ export default function Ritiri() {
                 <th className="px-4 py-3">Data</th>
                 <th className="px-4 py-3">Cliente</th>
                 <th className="px-4 py-3">Articolo</th>
+                <th className="px-4 py-3">Riparazione</th>
                 <th className="px-4 py-3">Prezzo ritiro</th>
                 {canSeeAll && <th className="px-4 py-3">Negozio</th>}
                 <th className="px-4 py-3"></th>
@@ -166,6 +168,14 @@ export default function Ritiri() {
                   <td className="px-4 py-3 text-slate-600">{fmtDate(r.data_ritiro)}</td>
                   <td className="px-4 py-3 font-medium text-slate-900">{r.cognome} {r.nome}</td>
                   <td className="px-4 py-3 text-slate-600">{r.articolo}{r.imei ? ` · IMEI ${r.imei}` : ""}</td>
+                  <td className="px-4 py-3">
+                    {r.servizio_id
+                      ? <Link to={`/riparazioni?apri=${r.servizio_id}`} className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-500/15 px-2 py-0.5 text-xs font-semibold text-sky-700 hover:bg-sky-500/25"
+                              data-testid={`ritiro-riparazione-link-${i}`}>
+                          <Wrench className="h-3 w-3" /> {r.riparazione_numero || "Scheda"}
+                        </Link>
+                      : <span className="text-xs text-slate-400">-</span>}
+                  </td>
                   <td className="px-4 py-3 font-semibold text-slate-800">
                     {r.prezzo_ritiro != null ? `€ ${Number(r.prezzo_ritiro).toFixed(2)}` : "-"}
                   </td>
@@ -185,7 +195,7 @@ export default function Ritiri() {
                 </tr>
               ))}
               {ritiri.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-500" data-testid="ritiri-empty">
+                <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-500" data-testid="ritiri-empty">
                   Nessun ritiro registrato. Crea la prima bolla con "Nuovo ritiro".
                 </td></tr>
               )}

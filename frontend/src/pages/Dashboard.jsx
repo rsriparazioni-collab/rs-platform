@@ -28,12 +28,28 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState(null);
   const [scadenze, setScadenze] = useState(null);
   const [waStatus, setWaStatus] = useState(null);
+  const [ferme, setFerme] = useState([]);
+  const [sendingFerme, setSendingFerme] = useState(false);
   const [sending, setSending] = useState(false);
+
+  const inviaFerme = async () => {
+    setSendingFerme(true);
+    try {
+      const res = await api.post("/riparazioni-ferme/invia-ora");
+      const ok = res.data.report.filter((r) => r.inviato).length;
+      toast.success(`Avvisi inviati a ${ok} negozi`);
+    } catch (e) {
+      toast.error(apiError(e, "Invio avvisi fallito"));
+    } finally {
+      setSendingFerme(false);
+    }
+  };
 
   useEffect(() => {
     api.get("/dashboard/stats").then((r) => setStats(r.data)).catch(() => {});
     api.get("/alerts").then((r) => setAlerts(r.data)).catch(() => {});
     api.get("/scadenze-settimana").then((r) => setScadenze(r.data)).catch(() => {});
+    api.get("/riparazioni-ferme").then((r) => setFerme(r.data)).catch(() => {});
     if (user.role === "admin") {
       api.get("/whatsapp/sessions-summary").then((r) => setWaStatus(r.data)).catch(() => {});
     }
@@ -278,6 +294,42 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {ferme.length > 0 && (
+        <div className="rounded-xl border border-rose-200 bg-white shadow-sm" data-testid="riparazioni-ferme-panel">
+          <div className="flex flex-wrap items-center gap-2 border-b border-rose-100 px-5 py-4">
+            <BellRing className="h-4 w-4 text-rose-600" />
+            <h2 className="font-heading text-lg font-semibold text-slate-800">Riparazioni ferme da oltre 7 giorni</h2>
+            <span className="text-xs text-slate-500">({ferme.reduce((n, f) => n + f.items.length, 0)} totali)</span>
+            {user.role === "admin" && (
+              <Button size="sm" variant="outline" onClick={inviaFerme} disabled={sendingFerme} className="ml-auto gap-2" data-testid="invia-avvisi-ferme-button">
+                <MessageCircle className="h-4 w-4" /> {sendingFerme ? "Invio..." : "Invia avvisi WhatsApp ora"}
+              </Button>
+            )}
+          </div>
+          <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+            {ferme.map((f) => (
+              <div key={f.store_id} className="rounded-lg border border-slate-200 p-3" data-testid={`ferme-store-${f.store_id}`}>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-900">{f.store_name} <span className="text-rose-700">({f.items.length})</span></p>
+                  <span className={`text-[10px] font-medium ${f.telefono_avvisi ? "text-emerald-700" : "text-amber-600"}`}>
+                    {f.telefono_avvisi ? "avvisi WA attivi" : "nessun numero avvisi"}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {f.items.slice(0, 6).map((it) => (
+                    <Link to="/riparazioni" key={it.numero} className="flex items-center justify-between text-xs hover:text-sky-700">
+                      <span className="truncate"><span className="font-mono font-semibold">{it.numero}</span> {it.dispositivo} · {it.cliente}</span>
+                      <span className="ml-2 shrink-0 font-semibold text-rose-700">{it.giorni} gg</span>
+                    </Link>
+                  ))}
+                  {f.items.length > 6 && <p className="text-[10px] text-slate-400">+ altre {f.items.length - 6}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {stats?.tempi_riparazione?.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="tempi-riparazione-panel">

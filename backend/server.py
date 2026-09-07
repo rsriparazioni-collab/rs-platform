@@ -409,6 +409,7 @@ class StoreCreate(BaseModel):
     tipo: str = "negozio"
     note: str = ""
     review_link: str = ""
+    telefono_avvisi: str = ""
 
 class StoreUpdate(BaseModel):
     nome: Optional[str] = None
@@ -416,6 +417,7 @@ class StoreUpdate(BaseModel):
     tipo: Optional[str] = None
     note: Optional[str] = None
     review_link: Optional[str] = None
+    telefono_avvisi: Optional[str] = None
 
 @api_router.get("/stores")
 async def list_stores(user: dict = Depends(get_current_user)):
@@ -441,7 +443,7 @@ async def list_stores(user: dict = Depends(get_current_user)):
 async def create_store(input: StoreCreate, admin: dict = Depends(require_admin)):
     store = {"id": str(uuid.uuid4()), "nome": input.nome, "referente": input.referente,
              "tipo": input.tipo, "note": input.note, "review_link": input.review_link,
-             "pagato": False, "last_payment_date": None,
+             "telefono_avvisi": input.telefono_avvisi, "pagato": False, "last_payment_date": None,
              "created_at": datetime.now(timezone.utc).isoformat()}
     await db.stores.insert_one(store)
     store.pop("_id", None)
@@ -2526,6 +2528,82 @@ async def cron_whatsapp_due(request: Request, background_tasks: BackgroundTasks)
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(process_whatsapp_queue)
     return {"status": "accepted"}
+
+RIP_FERME_GIORNI = 7
+
+async def riparazioni_ferme_per_negozio() -> dict:
+    today = date.today()
+    rips = await db.servizi.find({"tipo": "riparazione", "stato": {"$nin": ["consegnato", "non_riparabile"]}},
+                                 {"_id": 0, "venditore_id": 1, "numero_riparazione": 1, "dispositivo": 1,
+                                  "stato": 1, "client_id": 1, "data_ingresso": 1, "created_at": 1}).to_list(10000)
+    names = await clients_name_map(list({r["client_id"] for r in rips}))
+    out: dict = {}
+    for r in rips:
+        try:
+            ingresso = date.fromisoformat(str(r.get("data_ingresso") or r.get("created_at"))[:10])
+        except (ValueError, TypeError):
+            continue
+        giorni = (today - ingresso).days
+        if giorni > RIP_FERME_GIORNI:
+            out.setdefault(r.get("venditore_id", ""), []).append({
+                "numero": r.get("numero_riparazione", "-"), "dispositivo": r.get("dispositivo", ""),
+                "cliente": names.get(r["client_id"], ""), "stato": r.get("stato", ""), "giorni": giorni})
+    for lst in out.values():
+        lst.sort(key=lambda x: -x["giorni"])
+    return out
+
+RIP_STATO_LABEL = {"ingresso": "Ingresso", "attesa_ricambio_cliente": "Attesa ricambio (cliente)",
+                   "attesa_ricambio_carico": "Attesa ricambio (in carico)", "in_attesa_cliente": "In attesa cliente",
+                   "preventivo": "Preventivo", "in_lavorazione": "In lavorazione", "pronto": "Pronto"}
+
+def messaggio_riparazioni_ferme(store_name: str, items: list) -> str:
+    righe = [f"- {i['numero']} {i['dispositivo']} ({i['cliente']}) - {RIP_STATO_LABEL.get(i['stato'], i['stato'])} - {i['giorni']} gg"
+             for i in items[:25]]
+    extra = f"\n...e altre {len(items) - 25}" if len(items) > 25 else ""
+    return (f"Buongiorno {store_name}!\nRiparazioni ferme da oltre {RIP_FERME_GIORNI} giorni: {len(items)}\n"
+            + "\n".join(righe) + extra + "\nControllale nel gestionale, grazie.")
+
+async def invia_avvisi_riparazioni_ferme() -> dict:
+    ferme = await riparazioni_ferme_per_negozio()
+    stores = await db.stores.find({"telefono_avvisi": {"$nin": [None, ""]}}, {"_id": 0}).to_list(200)
+    report = []
+    for s in stores:
+        items = ferme.get(s["id"], [])
+        if not items:
+            report.append({"store": s["nome"], "inviato": False, "ferme": 0})
+            continue
+        try:
+            await wa_send(s["telefono_avvisi"], messaggio_riparazioni_ferme(s["nome"], items), session=s["id"])
+            report.append({"store": s["nome"], "inviato": True, "ferme": len(items)})
+        except HTTPException as e:
+            report.append({"store": s["nome"], "inviato": False, "ferme": len(items), "errore": str(e.detail)})
+    await db.cron_log.insert_one({"job": "riparazioni-ferme", "at": datetime.now(timezone.utc).isoformat(), "report": report})
+    return {"report": report}
+
+@api_router.post("/cron/riparazioni-ferme")
+async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundTasks):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(invia_avvisi_riparazioni_ferme)
+    return {"status": "accepted"}
+
+@api_router.get("/riparazioni-ferme")
+async def get_riparazioni_ferme(user: dict = Depends(get_current_user)):
+    scope = servizio_scope(user, "riparazione")
+    ferme = await riparazioni_ferme_per_negozio()
+    allowed = scope.get("venditore_id", {}).get("$in") if isinstance(scope.get("venditore_id"), dict) else None
+    stores = {s["id"]: s for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1, "telefono_avvisi": 1}).to_list(200)}
+    return [{"store_id": sid, "store_name": stores.get(sid, {}).get("nome", "-"),
+             "telefono_avvisi": stores.get(sid, {}).get("telefono_avvisi", ""), "items": items}
+            for sid, items in ferme.items() if allowed is None or sid in allowed]
+
+@api_router.post("/riparazioni-ferme/invia-ora")
+async def invia_riparazioni_ferme_ora(admin: dict = Depends(require_admin)):
+    return await invia_avvisi_riparazioni_ferme()
 
 @api_router.get("/")
 async def root():

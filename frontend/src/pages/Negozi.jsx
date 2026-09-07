@@ -14,7 +14,8 @@ export default function Negozi() {
   const { user } = useAuth();
   const [stores, setStores] = useState([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ nome: "", referente: "", tipo: "negozio", note: "", review_link: "" });
+  const EMPTY_FORM = { nome: "", referente: "", tipo: "negozio", note: "", review_link: "", telefono_avvisi: "" };
+  const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
   const isAdmin = user.role === "admin";
 
@@ -45,7 +46,7 @@ export default function Negozi() {
       }
       setOpen(false);
       setEditing(null);
-      setForm({ nome: "", referente: "", tipo: "negozio", note: "", review_link: "" });
+      setForm(EMPTY_FORM);
       load();
     } catch (err) {
       toast.error(apiError(err));
@@ -120,9 +121,12 @@ export default function Negozi() {
               {s.review_link
                 ? <span className="text-xs font-medium text-emerald-700" data-testid={`store-review-ok-${s.id}`}>✓ Link recensioni configurato</span>
                 : <span className="text-xs font-medium text-amber-600" data-testid={`store-review-missing-${s.id}`}>Link recensioni mancante</span>}
+              {s.telefono_avvisi
+                ? <span className="text-xs font-medium text-emerald-700" data-testid={`store-avvisi-ok-${s.id}`}>✓ Avvisi WA {s.telefono_avvisi}</span>
+                : <span className="text-xs font-medium text-slate-400" data-testid={`store-avvisi-missing-${s.id}`}>Avvisi WA non attivi</span>}
               {isAdmin && (
                 <Button variant="ghost" size="sm" data-testid={`store-edit-${s.id}`}
-                        onClick={() => { setEditing(s); setForm({ nome: s.nome, referente: s.referente || "", tipo: s.tipo, note: s.note || "", review_link: s.review_link || "" }); setOpen(true); }}>
+                        onClick={() => { setEditing(s); setForm({ nome: s.nome, referente: s.referente || "", tipo: s.tipo, note: s.note || "", review_link: s.review_link || "", telefono_avvisi: s.telefono_avvisi || "" }); setOpen(true); }}>
                   Modifica
                 </Button>
               )}
@@ -165,6 +169,12 @@ export default function Negozi() {
               <Input value={form.review_link} onChange={(e) => setForm({ ...form, review_link: e.target.value })}
                      placeholder="https://g.page/r/.../review" data-testid="store-input-review-link" />
               <p className="text-xs text-slate-500">Usato nel messaggio recensione WhatsApp per riparazioni/SIM/internet di questo negozio.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Numero WhatsApp avvisi negozio</Label>
+              <Input value={form.telefono_avvisi} onChange={(e) => setForm({ ...form, telefono_avvisi: e.target.value })}
+                     placeholder="es. 3471234567" data-testid="store-input-telefono-avvisi" />
+              <p className="text-xs text-slate-500">Ogni mattina alle 8:30 riceve l'elenco delle riparazioni ferme da oltre 7 giorni. Lascia vuoto per non ricevere avvisi.</p>
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} data-testid="store-form-cancel">Annulla</Button>
