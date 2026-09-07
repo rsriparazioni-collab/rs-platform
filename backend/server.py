@@ -1271,6 +1271,130 @@ async def migra_dati_storici(admin: dict = Depends(require_admin)):
                 report["clienti_aggiornati"] += updated
     return report
 
+# ---------------- Import storico riparazioni dai fogli Google (idempotente, admin) ----------------
+
+RIPARAZIONI_SHEETS = {
+    "Morbegno": "1IogWl5ISTndU0_IzQEGE_NUZzGNtiSC1DbSt9XilT0E",
+    "Gravedona": "1VmPtZXW72MWcyENfjkQ1wDuMj2PfxXCRi2w60nQn65E",
+    "Tirano": "1lP7mJo7Y0-lOPCiAKBMjMj1WT91P8pbZoYbuEyesH7w",
+    "Grosio": "15qcxX8Sf14WbDOYuTirggmzfrZ89_xctVKJKJgWgTCk",
+    "Sondrio": "197nm49W3d6jT0jaE5qD5tE2mF-HHZLs48se_g1lWHhA",
+    "Sondalo": "1LAOpPtEpz1FrMDXwR8wV1UghMXNSJa23wYmo6PvEmgc",
+}
+RIP_PREFIX = {"morbegno": "RM", "sondrio": "RSO", "gravedona": "RG",
+              "tirano": "RT", "sondalo": "RSA", "grosio": "RGR"}
+RIP_STATO_MAP = {
+    "consegnato": "consegnato", "pronto": "pronto", "in lavorazione": "in_lavorazione",
+    "preventivato": "preventivo", "non riparabile": "non_riparabile",
+    "in attesa cliente": "in_attesa_cliente", "": "ingresso",
+}
+
+def _rip_stato(raw: str) -> str:
+    s = re.sub(r"\s+", " ", str(raw or "").strip().lower())
+    if s in RIP_STATO_MAP:
+        return RIP_STATO_MAP[s]
+    if "ricambio" in s:
+        return "attesa_ricambio_carico"
+    return "ingresso"
+
+def _rip_date(v: str) -> str:
+    m = re.match(r"(\d{1,2})-(\d{1,2})-(\d{4})", str(v or "").strip())
+    if not m:
+        return datetime.now(timezone.utc).isoformat()
+    d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        return datetime(y, mo, d, 10, 0, tzinfo=timezone.utc).isoformat()
+    except ValueError:
+        return datetime.now(timezone.utc).isoformat()
+
+async def _find_or_create_rip_client(nome: str, cognome: str, telefono: str, store_id: str, now: str) -> str:
+    scope = {"venditore_id": store_id}
+    if telefono:
+        found = await db.clients.find_one({**scope, "telefono": telefono}, {"_id": 0, "id": 1})
+        if found:
+            return found["id"]
+    key = _nome_key(nome, cognome)
+    async for c in db.clients.find(scope, {"_id": 0, "id": 1, "nome": 1, "cognome": 1}):
+        if _nome_key(c.get("nome", ""), c.get("cognome", "")) == key:
+            return c["id"]
+    cid = str(uuid.uuid4())
+    await db.clients.insert_one({
+        "id": cid, "nome": nome, "cognome": cognome, "tipo_cliente": "privato",
+        "codice_fiscale": "", "p_iva": "", "indirizzo": "", "pod": "", "pdr": "",
+        "iban": "", "email": "", "telefono": telefono, "kw_potenza": None,
+        "tipo_bolletta": "luce", "fornitore_provenienza": "",
+        "costo_kwh_attuale": None, "spese_fisse_attuale": None, "costo_smc_attuale": None,
+        "data_contratto": None, "data_verifica": None, "data_cambio": None,
+        "tipo_contratto": "fisso", "nuovo_fornitore": "",
+        "costo_kwh_nuovo": None, "spese_fisse_nuovo": None, "costo_smc_nuovo": None,
+        "privacy_firmata": False, "note": "", "lavorazione": "",
+        "venditore_id": store_id, "operatore_id": "", "pagato": False,
+        "last_payment_date": None, "import_source": "fogli_riparazioni",
+        "created_by": "import", "created_at": now, "updated_at": now})
+    return cid
+
+@api_router.post("/admin/import-riparazioni-storiche")
+async def import_riparazioni_storiche(admin: dict = Depends(require_admin)):
+    """Idempotente: importa le riparazioni storiche dai 6 fogli Google (una per negozio)."""
+    marker = await db.import_state.find_one({"_id": "riparazioni_fogli_v1"})
+    if marker:
+        return {"status": "gia_importato", **{k: v for k, v in marker.items() if k != "_id"}}
+    stores_by_name = {s["nome"]: s["id"] for s in await db.stores.find({}, {"_id": 0}).to_list(100)}
+    now = datetime.now(timezone.utc).isoformat()
+    report, tot_servizi, tot_clienti_new = [], 0, 0
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http:
+        for store_name, sheet_id in RIPARAZIONI_SHEETS.items():
+            store_id = stores_by_name.get(store_name)
+            if not store_id:
+                report.append({"store": store_name, "status": "negozio_mancante"})
+                continue
+            r = await http.get(f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid=0")
+            if r.status_code != 200:
+                report.append({"store": store_name, "status": "foglio_non_leggibile"})
+                continue
+            rows = list(csv.reader(io.StringIO(r.text)))
+            hdr_i = next((i for i, row in enumerate(rows[:5])
+                          if any(c.strip().lower() == "cognome" for c in row)), None)
+            if hdr_i is None:
+                report.append({"store": store_name, "status": "intestazioni_mancanti"})
+                continue
+            hdr = [c.strip().lower() for c in rows[hdr_i]]
+            prefix = next((p for key, p in RIP_PREFIX.items() if key in store_name.lower()), "RIP")
+            count, seq = 0, 1
+            clients_before = await db.clients.count_documents({})
+            for row in rows[hdr_i + 1:]:
+                row = row + [""] * (len(hdr) - len(row))
+                d = dict(zip(hdr, row))
+                cognome, nome = d.get("cognome", "").strip(), d.get("nome", "").strip()
+                if not cognome and not nome:
+                    continue
+                telefono = re.sub(r"[^\d]", "", d.get("numero", ""))
+                cid = await _find_or_create_rip_client(nome.capitalize(), cognome.capitalize(),
+                                                       telefono, store_id, now)
+                await db.servizi.insert_one({
+                    "id": str(uuid.uuid4()), "tipo": "riparazione", "client_id": cid,
+                    "venditore_id": store_id, "operatore_id": "",
+                    "dispositivo": d.get("modello", "").strip(),
+                    "problema": d.get("intervento", "").strip(),
+                    "note": d.get("note", "").strip(),
+                    "stato": _rip_stato(d.get("stato", "")),
+                    "pagato": _parse_bool(d.get("pagato", "")),
+                    "numero_riparazione": f"{prefix}{seq}",
+                    "created_at": _rip_date(d.get("data di consegna", "")),
+                    "updated_at": now, "import_source": "fogli_riparazioni"})
+                count += 1
+                seq += 1
+            tot_clienti_new += await db.clients.count_documents({}) - clients_before
+            tot_servizi += count
+            if count:
+                await db.counters.update_one({"_id": f"riparazione:{store_id}"},
+                                             {"$set": {"prefix": prefix, "seq": seq}}, upsert=True)
+            report.append({"store": store_name, "status": "ok", "importate": count})
+    await db.import_state.insert_one({"_id": "riparazioni_fogli_v1", "at": now,
+                                      "servizi_creati": tot_servizi, "clienti_creati": tot_clienti_new})
+    return {"status": "ok", "servizi_creati": tot_servizi,
+            "clienti_creati": tot_clienti_new, "report": report}
+
 # ---------------- Object Storage (allegati bollette/documenti) ----------------
 
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
