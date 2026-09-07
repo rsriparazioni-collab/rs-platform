@@ -163,3 +163,9 @@ Vedi /app/memory/test_credentials.md
 ## Prossimi task
 1. Utente scansiona QR WhatsApp → test invio privacy + recensione su cliente reale
 2. Utente elimina il record di test "TEST GESTIONALE" dal sistema registrazioni del sito
+
+## 2026-09-07 — Riparazioni: date, ritiro collegato, error boundary
+- Aggiunti campi `data_ingresso` / `data_lavorazione` / `data_uscita` alle riparazioni (auto-compilati al cambio stato: in_lavorazione→lavorazione, consegnato→uscita; modificabili nel form). Visibili in tabella e dettaglio.
+- Pulsante "Ritira telefono" nel dettaglio riparazione: crea bolla ritiro (POST /ritiri con `servizio_id`) precompilata con cliente e dispositivo; la riparazione mostra badge "Ritiro Mx" e pulsante download bolla. Eliminando il ritiro il collegamento viene rimosso.
+- Aggiunto `ErrorBoundary` globale (App.js): ricarica automatica su ChunkLoadError (schermata bianca post-deploy) e pulsante "Ricarica la pagina" su errori JS.
+- Nota: cambio stato riparazione verificato funzionante lato API e UI; la "schermata bianca" segnalata è riconducibile a cache JS vecchia in produzione.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package } from "lucide-react";
+import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, Recycle, FileDown } from "lucide-react";
+import RitiroDaRiparazione from "./RitiroDaRiparazione";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI, magazzinoCategoriaLabel } from "../lib/constants";
@@ -41,6 +42,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
   const [compatibili, setCompatibili] = useState([]);
   const [ricQty, setRicQty] = useState(1);
   const [ricPrezzo, setRicPrezzo] = useState("");
+  const [ritiroOpen, setRitiroOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!servizio) return;
@@ -222,6 +224,11 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                   <span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300" data-testid="servizio-numero-badge">N° {detail.numero_riparazione}</span>
                 )}
                 {isRip && <span className={`status-badge ${ripStatoBadge(detail.stato)}`} data-testid="servizio-stato-badge">{ripStatoLabel(detail.stato)}</span>}
+                {isRip && detail.ritiro_numero && (
+                  <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300" data-testid="servizio-ritiro-badge">
+                    <Recycle className="h-3 w-3" /> Ritiro {detail.ritiro_numero}
+                  </span>
+                )}
                 {detail.pagato
                   ? <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300">Pagato</span>
                   : <span className="status-badge bg-rose-500/15 text-rose-700 border-rose-300">Non pagato</span>}
@@ -239,6 +246,11 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                   <>
                     <div><p className="text-xs text-slate-500">Dispositivo</p><p className="font-medium">{detail.dispositivo || "-"}</p></div>
                     <div><p className="text-xs text-slate-500">Ricambio</p><p className="font-medium">{detail.con_ricambio ? "Da ordinare" : "Non necessario"}</p></div>
+                    <div className="col-span-2 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3" data-testid="servizio-date-info">
+                      <div><p className="text-xs text-slate-500">Ingresso</p><p className="font-medium" data-testid="servizio-data-ingresso-info">{fmtDate(detail.data_ingresso)}</p></div>
+                      <div><p className="text-xs text-slate-500">Lavorazione</p><p className="font-medium" data-testid="servizio-data-lavorazione-info">{fmtDate(detail.data_lavorazione)}</p></div>
+                      <div><p className="text-xs text-slate-500">Uscita</p><p className="font-medium" data-testid="servizio-data-uscita-info">{fmtDate(detail.data_uscita)}</p></div>
+                    </div>
                     {detail.problema && <div className="col-span-2"><p className="text-xs text-slate-500">Problema</p><p className="font-medium whitespace-pre-wrap">{detail.problema}</p></div>}
                     {detail.codice_sblocco_tipo && detail.codice_sblocco_tipo !== "nessuno" && (
                       <div><p className="text-xs text-slate-500">Codice sblocco</p><p className="font-medium" data-testid="servizio-sblocco-info">{detail.codice_sblocco_tipo}: {detail.codice_sblocco || "-"}</p></div>
@@ -417,6 +429,16 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     <Printer className="mr-2 h-4 w-4" /> Scheda
                   </Button>
                 )}
+                {isRip && !detail.ritiro_id && (
+                  <Button size="sm" variant="outline" className="border-emerald-300 text-emerald-700" onClick={() => setRitiroOpen(true)} data-testid="servizio-ritiro-button">
+                    <Recycle className="mr-2 h-4 w-4" /> Ritira telefono
+                  </Button>
+                )}
+                {isRip && detail.ritiro_id && (
+                  <Button size="sm" variant="outline" onClick={() => downloadBlob(`/ritiri/${detail.ritiro_id}/pdf`, `${detail.ritiro_numero}.pdf`)} data-testid="servizio-ritiro-pdf-button">
+                    <FileDown className="mr-2 h-4 w-4" /> Bolla {detail.ritiro_numero}
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" onClick={() => onEdit(detail)} data-testid="servizio-edit-button">
                   <Pencil className="mr-2 h-4 w-4" /> Modifica
                 </Button>
@@ -429,6 +451,8 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
             </div>
           </>
         )}
+        <RitiroDaRiparazione open={ritiroOpen} onClose={() => setRitiroOpen(false)} servizio={detail}
+                             onCreated={() => { refresh(); onChanged(); }} />
       </SheetContent>
     </Sheet>
   );

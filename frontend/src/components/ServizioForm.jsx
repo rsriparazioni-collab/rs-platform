@@ -35,7 +35,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
     if (open) {
       const t = servizio?.tipo || defaultTipo || "riparazione";
       setTipo(t);
-      setForm(servizio ? { ...servizio } : { stato: "ingresso", con_ricambio: false, pagato: false });
+      setForm(servizio ? { ...servizio } : { stato: "ingresso", con_ricambio: false, pagato: false, data_ingresso: new Date().toISOString().slice(0, 10) });
       setClientId(servizio?.client_id || "");
       setClientLabel(servizio?.client_name || "");
       setSearch("");
@@ -86,6 +86,9 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
         importo: form.importo === "" || form.importo == null ? null : parseFloat(form.importo),
         vincolo_mesi: form.vincolo_mesi === "" || form.vincolo_mesi == null ? null : parseInt(form.vincolo_mesi),
         data_attivazione: form.data_attivazione || null,
+        data_ingresso: form.data_ingresso || null,
+        data_lavorazione: form.data_lavorazione || null,
+        data_uscita: form.data_uscita || null,
       };
       if (isEdit) {
         await api.patch(`/servizi/${servizio.id}`, payload);
@@ -192,6 +195,20 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                     {RIP_STATI.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="col-span-full grid grid-cols-3 gap-3 rounded-lg bg-slate-50 p-3" data-testid="servizio-date-box">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Data ingresso</Label>
+                  <Input type="date" value={form.data_ingresso || ""} onChange={(e) => set("data_ingresso", e.target.value)} data-testid="servizio-data-ingresso" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Data lavorazione</Label>
+                  <Input type="date" value={form.data_lavorazione || ""} onChange={(e) => set("data_lavorazione", e.target.value)} data-testid="servizio-data-lavorazione" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Data uscita</Label>
+                  <Input type="date" value={form.data_uscita || ""} onChange={(e) => set("data_uscita", e.target.value)} data-testid="servizio-data-uscita" />
+                </div>
               </div>
               <div className="col-span-full space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Problema</Label>

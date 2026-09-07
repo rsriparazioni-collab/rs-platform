@@ -14,6 +14,7 @@ import Riparazioni from "./pages/Riparazioni";
 import Telefonia from "./pages/Telefonia";
 import Magazzino from "./pages/Magazzino";
 import Ritiri from "./pages/Ritiri";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -45,6 +46,7 @@ function RequireRole({ roles, section, children }) {
 
 function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -66,6 +68,7 @@ function App() {
       </BrowserRouter>
       <Toaster position="top-right" richColors />
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

@@ -3,7 +3,7 @@ import { Plus, Search, Wrench, CheckCircle2, XCircle, Pencil } from "lucide-reac
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { RIP_STATI, ripStatoLabel, ripStatoBadge } from "../lib/constants";
+import { RIP_STATI, ripStatoLabel, ripStatoBadge, fmtDate } from "../lib/constants";
 import ServizioForm from "../components/ServizioForm";
 import ServizioDetail from "../components/ServizioDetail";
 import { Button } from "../components/ui/button";
@@ -84,6 +84,9 @@ export default function Riparazioni() {
                 <th className="px-4 py-3">Cliente</th>
                 <th className="px-4 py-3">Dispositivo</th>
                 <th className="px-4 py-3">Stato</th>
+                <th className="px-4 py-3">Ingresso</th>
+                <th className="px-4 py-3">Lavorazione</th>
+                <th className="px-4 py-3">Uscita</th>
                 <th className="px-4 py-3">Prezzo cons.</th>
                 {canSeeAll && <th className="px-4 py-3">Negozio</th>}
                 <th className="px-4 py-3">Pagato</th>
@@ -103,7 +106,11 @@ export default function Riparazioni() {
                   </td>
                   <td className="px-4 py-3">
                     <span className={`status-badge ${ripStatoBadge(s.stato)}`}>{ripStatoLabel(s.stato)}</span>
+                    {s.ritiro_numero && <span className="status-badge ml-1 bg-emerald-500/15 text-emerald-700 border-emerald-300" data-testid={`riparazione-ritiro-${i}`}>Ritiro {s.ritiro_numero}</span>}
                   </td>
+                  <td className="px-4 py-3 text-xs text-slate-600" data-testid={`riparazione-ingresso-${i}`}>{fmtDate(s.data_ingresso)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600" data-testid={`riparazione-lavorazione-${i}`}>{fmtDate(s.data_lavorazione)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600" data-testid={`riparazione-uscita-${i}`}>{fmtDate(s.data_uscita)}</td>
                   <td className="px-4 py-3 font-semibold text-emerald-700">
                     {s.prezzo_consigliato != null ? `€ ${s.prezzo_consigliato.toFixed(2)}` : "-"}
                   </td>
@@ -122,7 +129,7 @@ export default function Riparazioni() {
                 </tr>
               ))}
               {servizi.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-slate-500" data-testid="riparazioni-empty">
+                <tr><td colSpan={10} className="px-4 py-12 text-center text-sm text-slate-500" data-testid="riparazioni-empty">
                   Nessuna riparazione trovata.
                 </td></tr>
               )}

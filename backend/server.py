@@ -1836,6 +1836,7 @@ class RitiroInput(BaseModel):
     numero_documento: str = ""
     n_allegati: int = 2
     data_ritiro: Optional[str] = None
+    servizio_id: str = ""
 
 def ritiri_scope(user: dict) -> dict:
     if "riparazioni" not in user_sections(user):
@@ -1881,6 +1882,10 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
     data["storage_path"] = result["path"]
     await db.ritiri.insert_one(data)
     data.pop("_id", None)
+    if data.get("servizio_id"):
+        await db.servizi.update_one({"id": data["servizio_id"]},
+                                    {"$set": {"ritiro_id": data["id"], "ritiro_numero": data["numero"],
+                                              "updated_at": now}})
     return data
 
 @api_router.get("/ritiri/{ritiro_id}/pdf")
@@ -1899,6 +1904,7 @@ async def delete_ritiro(ritiro_id: str, admin: dict = Depends(require_admin)):
     res = await db.ritiri.delete_one({"id": ritiro_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Ritiro non trovato")
+    await db.servizi.update_many({"ritiro_id": ritiro_id}, {"$unset": {"ritiro_id": "", "ritiro_numero": ""}})
     return {"status": "ok"}
 
 # ---------------- WhatsApp (Baileys service) ----------------
@@ -2198,6 +2204,8 @@ def serialize_servizio(s: dict, client_name: str = "") -> dict:
         except (ValueError, TypeError):
             pass
     out["prezzo_consigliato"] = calcola_prezzo_riparazione(s)
+    if s.get("tipo") == "riparazione" and not s.get("data_ingresso") and s.get("created_at"):
+        out["data_ingresso"] = str(s["created_at"])[:10]
     return out
 
 async def get_scoped_servizio(servizio_id: str, user: dict) -> dict:
@@ -2240,6 +2248,23 @@ class ServizioInput(BaseModel):
     account_password: str = ""
     operazioni: str = ""
     cliente_contattato: bool = False
+    data_ingresso: Optional[str] = None
+    data_lavorazione: Optional[str] = None
+    data_uscita: Optional[str] = None
+
+def apply_rip_dates(data: dict, old: Optional[dict] = None) -> None:
+    if data.get("tipo", (old or {}).get("tipo")) != "riparazione":
+        return
+    today = date.today().isoformat()
+    old = old or {}
+    if not data.get("data_ingresso") and not old.get("data_ingresso"):
+        data["data_ingresso"] = today
+    stato = data.get("stato")
+    if stato and stato != old.get("stato"):
+        if stato in ("in_lavorazione", "pronto", "consegnato") and not data.get("data_lavorazione") and not old.get("data_lavorazione"):
+            data["data_lavorazione"] = today
+        if stato == "consegnato" and not data.get("data_uscita") and not old.get("data_uscita"):
+            data["data_uscita"] = today
 
 @api_router.get("/servizi")
 async def list_servizi(user: dict = Depends(get_current_user), tipo: str = "", stato: str = "",
@@ -2273,6 +2298,7 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
         data["stato"] = "ingresso"
     if data["tipo"] == "riparazione":
         data["numero_riparazione"] = await next_numero("riparazione", data.get("venditore_id") or "")
+    apply_rip_dates(data)
     now = datetime.now(timezone.utc).isoformat()
     data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_at": now, "updated_at": now,
                  "last_payment_date": date.today().isoformat() if data.get("pagato") else None,
@@ -2285,7 +2311,7 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
 async def get_servizio(servizio_id: str, user: dict = Depends(get_current_user)):
     s = await get_scoped_servizio(servizio_id, user)
     names = await clients_name_map([s["client_id"]])
-    client_doc = await db.clients.find_one({"id": s["client_id"]}, {"_id": 0, "telefono": 1, "email": 1})
+    client_doc = await db.clients.find_one({"id": s["client_id"]}, {"_id": 0, "telefono": 1, "email": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1})
     out = serialize_servizio(s, names.get(s["client_id"], ""))
     out["client_contacts"] = client_doc or {}
     return out
@@ -2296,6 +2322,7 @@ async def update_servizio(servizio_id: str, input: ServizioInput, user: dict = D
     data = input.model_dump(exclude_unset=True)
     if user["role"] == "negozio":
         data.pop("venditore_id", None)
+    apply_rip_dates(data, old)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     if data.get("pagato") and not old.get("pagato"):
         data["last_payment_date"] = date.today().isoformat()
