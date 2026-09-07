@@ -95,6 +95,13 @@ Vedi /app/memory/test_credentials.md
 - WHATSAPP COLLEGATO (2026-09-06): account "Cambia Ora Sondrio" (393519460591), messaggio di test inviato e ricevuto dall'utente — canale di invio verificato E2E in preview
 - RAILWAY DEPLOY RIUSCITO (2026-09-06): servizio WhatsApp online su https://tranquil-clarity-production-b9ba.up.railway.app (progetto jubilant-elegance, servizio tranquil-clarity). Fix applicati via CLI/API con project token: rootDirectory azzerata (era il blocco del build Railpack), package.json main→service.js + scripts.start, volume /data creato (id 8cf86842), API key attiva (401 senza chiave verificato). backend/.env ora punta WA_SERVICE_URL al dominio Railway. SERVIREBbe eliminare il servizio "rs-platform" (offline, token non autorizzato a cancellarlo — utente può farlo da UI). ULTIMO PASSO: scansione QR del servizio Railway (sessione nuova, salvata su volume) — QR verificato visibile sulla pagina WhatsApp in preview (proxy backend→Railway OK). Dopo la scansione serve REDEPLOY su Emergent per portare WA_SERVICE_URL in produzione. Token Railway progetto: revocabile dopo il collaudo
 
+## Pulizia negozi (2026-09-07)
+- Negozi attivi definitivi (7): Sondrio, Morbegno, Gravedona, Sondalo, Tirano, Grosio, Ipro
+- "Sondrio Grosio" rinominato in "Grosio" (ID invariato: venditore Seba, utente Michael e contatori GR/RGR intatti); seed in server.py e make_guide.py aggiornati
+- Eliminati: Deriu (+1 cliente demo Franco Colombo), Devis (Freelance) (0 clienti, Devis resta venditore esterno), 5 TEST_Negozio complessivi
+- Nuovo endpoint DELETE /api/stores/{id} (solo admin, 400 se il negozio ha clienti, ripulisce store_ids utenti e store_id venditori); test aggiornati con cleanup automatico TEST_Negozio + nuovo test blocco delete con clienti → 54/54 pytest, DB resta pulito dopo i test
+- NOTA RICORRENZA RISOLTA: i TEST_Negozio ricomparivano perché test_list_and_mark_paid_and_create non faceva cleanup; ora il test elimina il negozio creato
+
 ## Backlog prioritizzato
 - P0: utente deve scansionare il QR WhatsApp (pagina WhatsApp) con il numero 3519460591 per attivare gli invii
 - P1: notifiche email ai negozi quando viene registrato il loro compenso

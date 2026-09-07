@@ -58,7 +58,7 @@ pdf.multi_cell(0, 6, "Versione 1.0 - Giugno 2026 - Documento interno", align="C"
 
 pdf.add_page()
 h1("1. Presentazione del progetto")
-p("Il gestionale e la piattaforma unica di RS Riparazioni e CambiaOra per amministrare tutti i negozi (Tirano, Sondalo, Sondrio, Sondrio Grosio, Gravedona, Morbegno e collaboratori esterni) da un solo punto. Sostituisce i fogli Google con un sistema condiviso, con permessi per ruolo e numerazione automatica dei documenti.")
+p("Il gestionale e la piattaforma unica di RS Riparazioni e CambiaOra per amministrare tutti i negozi (Tirano, Sondalo, Sondrio, Grosio, Gravedona, Morbegno, Ipro e collaboratori esterni) da un solo punto. Sostituisce i fogli Google con un sistema condiviso, con permessi per ruolo e numerazione automatica dei documenti.")
 h2("Cosa fa in sintesi")
 bullet([
     "Anagrafica clienti unica: un cliente puo avere piu servizi (energia, riparazioni, telefonia) e il sistema riconosce i clienti Premium",

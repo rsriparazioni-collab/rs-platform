@@ -145,7 +145,7 @@ class TestRBAC:
         s, u = michael
         stores = {st["id"]: st["nome"] for st in admin.get(f"{API}/stores", timeout=30).json()}
         allowed = {stores[i] for i in u["store_ids"]}
-        assert allowed == {"Tirano", "Sondrio", "Sondrio Grosio"}
+        assert allowed == {"Tirano", "Sondrio", "Grosio"}
         clients = s.get(f"{API}/clients", timeout=30).json()
         admin_count = len([c for c in admin.get(f"{API}/clients", timeout=30).json()
                            if c["venditore_id"] in u["store_ids"]])
@@ -334,6 +334,16 @@ class TestStores:
 
         up = admin.patch(f"{API}/stores/{new_id}", json={"referente": "QA2"}, timeout=30)
         assert up.status_code == 200 and up.json()["referente"] == "QA2"
+
+        d = admin.delete(f"{API}/stores/{new_id}", timeout=30)
+        assert d.status_code == 200, d.text[:300]
+        assert not any(s["id"] == new_id for s in admin.get(f"{API}/stores", timeout=30).json())
+
+    def test_delete_store_with_clients_blocked(self, admin):
+        stores = admin.get(f"{API}/stores", timeout=30).json()
+        with_clients = next(s for s in stores if s["totale_clienti"] > 0)
+        assert admin.delete(f"{API}/stores/{with_clients['id']}", timeout=30).status_code == 400
+        assert admin.delete(f"{API}/stores/{uuid.uuid4()}", timeout=30).status_code == 404
 
     def test_store_mark_paid_404(self, admin):
         assert admin.post(f"{API}/stores/{uuid.uuid4()}/mark-paid", timeout=30).status_code == 404

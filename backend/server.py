@@ -457,6 +457,18 @@ async def mark_store_paid(store_id: str, admin: dict = Depends(require_admin)):
         raise HTTPException(status_code=404, detail="Negozio non trovato")
     return {"status": "ok", "last_payment_date": date.today().isoformat()}
 
+@api_router.delete("/stores/{store_id}")
+async def delete_store(store_id: str, admin: dict = Depends(require_admin)):
+    n_clients = await db.clients.count_documents({"venditore_id": store_id})
+    if n_clients:
+        raise HTTPException(status_code=400, detail=f"Il negozio ha {n_clients} clienti collegati: spostali prima di eliminarlo")
+    res = await db.stores.delete_one({"id": store_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Negozio non trovato")
+    await db.users.update_many({}, {"$pull": {"store_ids": store_id}})
+    await db.venditori.update_many({"store_id": store_id}, {"$set": {"store_id": ""}})
+    return {"status": "ok"}
+
 # ---------------- Clients (utenze) ----------------
 
 class ClientInput(BaseModel):
@@ -2229,7 +2241,7 @@ SEED_STORES = [
     {"nome": "Tirano", "referente": "Michael", "tipo": "negozio"},
     {"nome": "Sondalo", "referente": "Lorenzo", "tipo": "negozio"},
     {"nome": "Sondrio", "referente": "Michael", "tipo": "negozio"},
-    {"nome": "Sondrio Grosio", "referente": "Michael", "tipo": "negozio"},
+    {"nome": "Grosio", "referente": "Michael", "tipo": "negozio"},
     {"nome": "Deriu", "referente": "Deriu", "tipo": "negozio"},
     {"nome": "Gravedona", "referente": "Kevin", "tipo": "negozio"},
     {"nome": "Devis (Freelance)", "referente": "Devis", "tipo": "freelance"},
@@ -2239,7 +2251,7 @@ SEED_USERS = [
     {"name": "Deborah", "email": "deborah@cambiaora.local", "password": "Deborah2026!",
      "role": "operatore", "can_view_all": True, "stores": []},
     {"name": "Michael", "email": "michael@cambiaora.local", "password": "Michael2026!",
-     "role": "negozio", "can_view_all": False, "stores": ["Tirano", "Sondrio", "Sondrio Grosio"]},
+     "role": "negozio", "can_view_all": False, "stores": ["Tirano", "Sondrio", "Grosio"]},
     {"name": "Lorenzo", "email": "lorenzo@cambiaora.local", "password": "Lorenzo2026!",
      "role": "negozio", "can_view_all": False, "stores": ["Sondalo"]},
     {"name": "Kevin", "email": "kevin@cambiaora.local", "password": "Kevin2026!",
@@ -2255,7 +2267,7 @@ SEED_CLIENT_SAMPLES = [
     ("Bar al Lago", "Sas", "business", "luce", "Illumia", "contattare_cliente", "Gravedona", 0, False, None),
     ("Paola", "Neri", "privato", "gas", "NeN", "da_quotare", "Sondalo", 2, False, None),
     ("Franco", "Colombo", "privato", "luce", "Octopus Energy", "in_attesa_ok", "Deriu", 10, True, 4),
-    ("Agriturismo Pizzo", "Srl", "business", "gas", "Dolomiti Energia", "passa_in_negozio", "Sondrio Grosio", 6, False, None),
+    ("Agriturismo Pizzo", "Srl", "business", "gas", "Dolomiti Energia", "passa_in_negozio", "Grosio", 6, False, None),
     ("Sara", "Galli", "privato", "luce", "Tate", "problema_tecnico", "Tirano", 4, False, None),
 ]
 
