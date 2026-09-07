@@ -1927,7 +1927,7 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
         updates["privacy_msg_sent_at"] = now.isoformat()
         await db.whatsapp_queue.insert_one({
             "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
-            "type": "review", "message": REVIEW_MSG, "send_after": (now + timedelta(minutes=5)).isoformat(),
+            "type": "review", "message": REVIEW_MSG, "send_after": (now + timedelta(minutes=2)).isoformat(),
             "session": c.get("venditore_id") or "default",
             "sent": False, "created_at": now.isoformat()})
     if registered:
@@ -1936,7 +1936,7 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
     if updates:
         await db.clients.update_one({"id": client_id}, {"$set": updates})
     return {"status": "ok", "privacy_registered": registered, "registration_error": reg_error,
-            "wa_error": wa_error, "review_scheduled_at": (now + timedelta(minutes=5)).isoformat() if not wa_error else None}
+            "wa_error": wa_error, "review_scheduled_at": (now + timedelta(minutes=2)).isoformat() if not wa_error else None}
 
 @api_router.post("/clients/{client_id}/whatsapp/review")
 async def whatsapp_review(client_id: str, user: dict = Depends(get_current_user)):
@@ -2246,7 +2246,7 @@ async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_c
             await db.whatsapp_queue.insert_one({
                 "id": str(uuid.uuid4()), "client_id": svc["client_id"], "servizio_id": servizio_id,
                 "phone": client_doc["telefono"], "type": "review", "message": review_msg,
-                "send_after": (now + timedelta(minutes=5)).isoformat(), "sent": False,
+                "send_after": (now + timedelta(minutes=2)).isoformat(), "sent": False,
                 "created_at": now.isoformat()})
             review_queued = True
     if registered:

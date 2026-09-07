@@ -14,10 +14,10 @@ const NAV = [
   { to: "/riparazioni", label: "Riparazioni", icon: Wrench, roles: ["admin", "operatore", "negozio", "tecnico"], section: "riparazioni", testid: "nav-riparazioni" },
   { to: "/telefonia", label: "Telefonia", icon: Smartphone, roles: ["admin", "operatore", "negozio", "tecnico"], section: "telefonia", testid: "nav-telefonia" },
   { to: "/magazzino", label: "Magazzino", icon: Package, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-magazzino" },
-  { to: "/ritiri", label: "Ritiri usato", icon: Recycle, roles: ["admin", "operatore", "negozio", "tecnico"], section: "riparazioni", testid: "nav-ritiri" },
-  { to: "/negozi", label: "Negozi", icon: Building2, roles: ["admin", "operatore"], testid: "nav-negozi" },
+  { to: "/ritiri", label: "Ritiri Telefoni", icon: Recycle, roles: ["admin", "operatore", "negozio", "tecnico"], section: "riparazioni", testid: "nav-ritiri" },
+  { to: "/negozi", label: "Gestione Negozi", icon: Building2, roles: ["admin", "operatore"], testid: "nav-negozi" },
   { to: "/operatori", label: "Venditori", icon: UserCog, roles: ["admin", "operatore"], testid: "nav-operatori" },
-  { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: ["admin"], testid: "nav-whatsapp" },
+  { to: "/whatsapp", label: "WHP Collegamento", icon: MessageCircle, roles: ["admin"], testid: "nav-whatsapp" },
   { to: "/utenti", label: "Utenti", icon: ShieldCheck, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-utenti" },
 ];
 

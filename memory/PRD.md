@@ -95,6 +95,15 @@ Vedi /app/memory/test_credentials.md
 - WHATSAPP COLLEGATO (2026-09-06): account "Cambia Ora Sondrio" (393519460591), messaggio di test inviato e ricevuto dall'utente — canale di invio verificato E2E in preview
 - RAILWAY DEPLOY RIUSCITO (2026-09-06): servizio WhatsApp online su https://tranquil-clarity-production-b9ba.up.railway.app (progetto jubilant-elegance, servizio tranquil-clarity). Fix applicati via CLI/API con project token: rootDirectory azzerata (era il blocco del build Railpack), package.json main→service.js + scripts.start, volume /data creato (id 8cf86842), API key attiva (401 senza chiave verificato). backend/.env ora punta WA_SERVICE_URL al dominio Railway. SERVIREBbe eliminare il servizio "rs-platform" (offline, token non autorizzato a cancellarlo — utente può farlo da UI). ULTIMO PASSO: scansione QR del servizio Railway (sessione nuova, salvata su volume) — QR verificato visibile sulla pagina WhatsApp in preview (proxy backend→Railway OK). Dopo la scansione serve REDEPLOY su Emergent per portare WA_SERVICE_URL in produzione. Token Railway progetto: revocabile dopo il collaudo
 
+## WhatsApp produzione collegato + rinomina menu (2026-09-07)
+- Utente ha scansionato il QR su gestionale.rsriparazioni.com/whatsapp: sessione "Cambia Ora Sondrio" (393519460591, id store Sondrio) CONNESSA su Railway — KPI dashboard 1/8
+- Primo invio reale E2E in produzione: privacy + recensione a Enrico Mangani (cliente dad9dbe8, tel 3478190825) — privacy registrata sul sito + WA inviato 10:21, recensione inviata 10:34 dopo trigger manuale del cron
+- Delay recensione ridotto da 5 a 2 minuti (3 occorrenze timedelta(minutes=5→2) in server.py: privacy cliente, risposta endpoint, privacy servizio)
+- NOTA CRON: il secret WEBHOOK_CRON_SECRET in .env ha le VIRGOLETTE — il trigger manuale funziona solo strippando le virgolette; il cron piattaforma (crons.yml, */5min) legge il valore corretto. Authorization: Bearer <secret>, endpoint POST /api/cron/whatsapp-due
+- NOTA DATI: un cliente può avere PIÙ UTENZE e più schede (es. Enrico Mangani ha 5 record: 2 privati + 3 aziende in città diverse) — NON deduplicare mai per nome/telefono. Alcune righe del foglio energia hanno telefono="morbegno"/"gravedona" (righe sporche tollerate)
+- Menu sidebar rinominato (Layout.jsx): "Ritiri usato"→"Ritiri Telefoni", "Negozi"→"Gestione Negozi", "WhatsApp"→"WHP Collegamento". Gli altri (Dashboard, Clienti, Riparazioni, Telefonia, Magazzino, Venditori, Utenti) confermati OK dall'utente
+- Verifiche: 54/54 pytest, recensione nel wa_log, screenshot sidebar OK
+
 ## Correzione permessi utenti (2026-09-07)
 - Admin rinominato Devis → **Enrico** (l'amministratore è Enrico; Devis resta venditore esterno) su preview+produzione+seed
 - **Michael: SOLO Tirano** (rimossi Sondrio e Grosio) su preview+produzione+seed
