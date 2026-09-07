@@ -490,6 +490,8 @@ class ClientInput(BaseModel):
     lavorazione: str = "da_quotare"
     venditore_id: str = ""
     operatore_id: str = ""
+    provincia: str = ""
+    venditore_pagato: bool = False
 
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(get_current_user),
@@ -606,6 +608,75 @@ async def log_lavorazione(client_doc: dict, user: dict, status: str, note: str):
         "operatore_id": client_doc.get("operatore_id") or user["id"],
         "operatore_name": user["name"], "status": status, "note": note,
         "created_at": datetime.now(timezone.utc).isoformat()})
+
+# ---------------- Venditori ----------------
+
+class VenditoreInput(BaseModel):
+    nome: str
+    store_id: str = ""
+    tipo: str = "interno"
+    attivo: bool = True
+
+@api_router.get("/venditori")
+async def list_venditori(user: dict = Depends(get_current_user)):
+    venditori = await db.venditori.find({}, {"_id": 0}).sort("nome", 1).to_list(200)
+    store_ids = [v["store_id"] for v in venditori if v.get("store_id")]
+    stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(100)
+    smap = {s["id"]: s["nome"] for s in stores}
+    for v in venditori:
+        v["store_name"] = smap.get(v.get("store_id", ""), "Esterno")
+        v["vendite"] = await db.clients.count_documents({"operatore_id": v["id"]})
+        v["da_pagare"] = await db.clients.count_documents({"operatore_id": v["id"], "venditore_pagato": {"$ne": True}})
+    return venditori
+
+@api_router.post("/venditori")
+async def create_venditore(input: VenditoreInput, admin: dict = Depends(require_admin)):
+    data = input.model_dump()
+    data.update({"id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()})
+    await db.venditori.insert_one(data)
+    data.pop("_id", None)
+    return data
+
+@api_router.patch("/venditori/{venditore_id}")
+async def update_venditore(venditore_id: str, input: VenditoreInput, admin: dict = Depends(require_admin)):
+    res = await db.venditori.update_one({"id": venditore_id}, {"$set": input.model_dump(exclude_unset=True)})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Venditore non trovato")
+    return await db.venditori.find_one({"id": venditore_id}, {"_id": 0})
+
+@api_router.delete("/venditori/{venditore_id}")
+async def delete_venditore(venditore_id: str, admin: dict = Depends(require_admin)):
+    res = await db.venditori.delete_one({"id": venditore_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Venditore non trovato")
+    return {"status": "ok"}
+
+@api_router.get("/venditori/{venditore_id}/vendite")
+async def vendite_venditore(venditore_id: str, user: dict = Depends(get_current_user)):
+    if user["role"] not in ("admin", "operatore") and not user.get("can_view_all"):
+        raise HTTPException(status_code=403, detail="Non autorizzato")
+    clients = await db.clients.find({"operatore_id": venditore_id},
+        {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "data_contratto": 1, "lavorazione": 1,
+         "venditore_pagato": 1, "venditore_id": 1, "created_at": 1}).sort("created_at", -1).to_list(2000)
+    store_ids = list({c.get("venditore_id") for c in clients if c.get("venditore_id")})
+    stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(100)
+    smap = {s["id"]: s["nome"] for s in stores}
+    for c in clients:
+        c["store_name"] = smap.get(c.get("venditore_id", ""), "-")
+        c.pop("venditore_id", None)
+    return clients
+
+@api_router.post("/clients/{client_id}/venditore-pagato")
+async def toggle_venditore_pagato(client_id: str, user: dict = Depends(get_current_user)):
+    scope = client_scope_filter(user)
+    scope["id"] = client_id
+    c = await db.clients.find_one(scope, {"_id": 0, "venditore_pagato": 1})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    new_val = not c.get("venditore_pagato", False)
+    await db.clients.update_one({"id": client_id}, {"$set": {"venditore_pagato": new_val}})
+    return {"venditore_pagato": new_val}
+
 
 # ---------------- Meta, Dashboard, Alerts, Operatori ----------------
 

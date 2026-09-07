@@ -16,7 +16,7 @@ const NAV = [
   { to: "/magazzino", label: "Magazzino", icon: Package, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-magazzino" },
   { to: "/ritiri", label: "Ritiri usato", icon: Recycle, roles: ["admin", "operatore", "negozio", "tecnico"], section: "riparazioni", testid: "nav-ritiri" },
   { to: "/negozi", label: "Negozi", icon: Building2, roles: ["admin", "operatore"], testid: "nav-negozi" },
-  { to: "/operatori", label: "Operatori", icon: UserCog, roles: ["admin", "operatore"], testid: "nav-operatori" },
+  { to: "/operatori", label: "Venditori", icon: UserCog, roles: ["admin", "operatore"], testid: "nav-operatori" },
   { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: ["admin"], testid: "nav-whatsapp" },
   { to: "/utenti", label: "Utenti", icon: ShieldCheck, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-utenti" },
 ];
@@ -63,8 +63,8 @@ function SidebarContent({ onNavigate, mobile }) {
           <Zap className="h-5 w-5 text-amber-400" />
         </div>
         <div>
-          <p className="font-heading text-sm font-bold leading-tight text-slate-900">Gestionale Utenze</p>
-          <p className="text-xs text-slate-500">Luce & Gas</p>
+          <p className="font-heading text-sm font-bold leading-tight text-slate-900">Gestionale RS & CambiaOra</p>
+          <p className="text-xs text-slate-500">Tutto sotto controllo</p>
         </div>
       </div>
       <NavItems onNavigate={onNavigate} mobile={mobile} />
@@ -106,7 +106,7 @@ export default function Layout() {
           </Sheet>
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-amber-500" />
-            <span className="font-heading text-sm font-bold">Gestionale Utenze</span>
+            <span className="font-heading text-sm font-bold">Gestionale RS & CambiaOra</span>
           </div>
         </header>
         <main className="p-6 sm:p-8">

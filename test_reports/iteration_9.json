@@ -1,0 +1,38 @@
+{
+  "summary": "Verified new Venditori section (menu, /operatori route, 8 seeded cards) + Provincia field + 'Venduto da' select showing venditori. Backend pytest 44/44 green. Full backend flow tested via API: create QA venditore -> create client with provincia SO + Lorenzo -> Lorenzo vendite=1, da_pagare=1 -> toggle venditore-pagato (true/false) -> cleanup. Frontend UI verified: 8 cards render with correct stores (Bruno/Deborah/Silvio->Morbegno, Michael->Tirano, Lorenzo->Sondalo, Seba->Sondrio Grosio, Enrico->Sondrio, Devis->Esterno). Provincia input has maxLength=2. 'Venduto da' select shows all 8 venditori with 'Nome · Negozio' format (e.g. 'Devis · Esterno').",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Operatori/Venditori page", "issue": "After opening/closing the Radix Select 'Tipo' inside 'Nuovo venditore' dialog, a full-screen 'Uncaught runtime errors: ResizeObserver loop completed with undelivered notifications' overlay appears in the CRA dev build, blocking subsequent clicks (delete, navigation) until dismissed. Non-fatal (benign browser warning) but disrupts UX in dev/preview.", "selector": "[data-testid=venditore-form-tipo]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_scenarios": {
+    "backend_pytest_regression": "PASS - 44/44 in 10.19s",
+    "GET /api/venditori": "PASS - 8 venditori seeded correctly with store_name and tipo",
+    "POST /api/venditori + DELETE": "PASS - created/deleted 'QA Venditore' (esterno)",
+    "GET /api/venditori/{id}/vendite": "PASS - returns clienti associati with venditore_pagato and store_name",
+    "Client create con provincia+operatore_id (Lorenzo)": "PASS - Lorenzo vendite=1, da_pagare=1 after creation",
+    "POST /api/clients/{id}/venditore-pagato toggle": "PASS - toggles true<->false",
+    "UI Venditori page /operatori": "PASS - 8 cards render, correct stores/tipi, add-venditore modal works",
+    "UI ClientForm provincia + Venduto da": "PASS - input-provincia maxlength=2, select-operatore lists 8 venditori"
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/iter9.xml"],
+  "action_items": [
+    "(Optional/LOW) Silence the ResizeObserver overlay in CRA dev by adding a global window.onerror filter or webpack overlay ignore for 'ResizeObserver loop' — this is a known Radix UI/Select interaction issue and does not affect prod builds."
+  ],
+  "critical_code_review_comments": [
+    "Backend Venditori section (server.py ~610-680): clean, correctly uses {\"_id\":0} projection, admin-only for POST/PATCH/DELETE via require_admin, scope filter respects negozio users on /vendite. Good.",
+    "Operatori.jsx uses `venditore-card-${v.nome.toLowerCase()}` as testid which contains spaces (e.g. 'QA Venditore UI') — works but avoid spaces in testids for robustness (use slug/id).",
+    "ClientForm: 'Venduto da' correctly loads from GET /api/venditori (not /users) — matches spec."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (44/44 pytest + 6/6 endpoint spot checks)", "frontend": "7/8 scenari (delete via UI bloccato dall'overlay ResizeObserver; verificato via API)"},
+  "test_credentials": "admin rsriparazioni@gmail.com/Devis2026! (da /app/memory/test_credentials.md)",
+  "seed_data_creation": "Nessun dato residuo. Creato e SUBITO eliminato tramite API: venditore 'QA Venditore' (esterno) + client TEST_QA (provincia SO, venditore Lorenzo). Verifica finale: 8 venditori totali, cliente Enrico Mangani preservato.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Tutte le nuove funzionalità (Venditori page, provincia, 'Venduto da') funzionano correttamente. Solo issue LOW-priority: overlay 'ResizeObserver loop completed' compare in dev preview dopo interazione con Radix Select nel modal 'Nuovo venditore'; è un warning benigno del browser Chrome amplificato dal CRA error overlay in dev. Preservato cliente Enrico Mangani. DB pulito.",
+  "rca of the issue": "N/A - nessun bug funzionale. Il warning ResizeObserver è un problema noto delle animazioni Radix UI che il devServer di CRA promuove a error overlay; in produzione non compare."
+}

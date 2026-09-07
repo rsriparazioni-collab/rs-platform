@@ -181,7 +181,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                 <div><p className="text-xs text-slate-500">Email</p><p className="font-medium">{detail.email || "-"}</p></div>
                 <div><p className="text-xs text-slate-500">Codice Fiscale</p><p className="font-medium">{detail.codice_fiscale || "-"}</p></div>
                 <div><p className="text-xs text-slate-500">P.IVA</p><p className="font-medium">{detail.p_iva || "-"}</p></div>
-                <div className="col-span-2"><p className="text-xs text-slate-500">Indirizzo</p><p className="font-medium">{detail.indirizzo || "-"}</p></div>
+                <div className="col-span-2"><p className="text-xs text-slate-500">Indirizzo</p><p className="font-medium">{[detail.indirizzo, detail.provincia].filter(Boolean).join(" ") || "-"}</p></div>
                 <div><p className="text-xs text-slate-500">POD</p><p className="font-medium">{detail.pod || "-"}</p></div>
                 <div><p className="text-xs text-slate-500">PDR</p><p className="font-medium">{detail.pdr || "-"}</p></div>
                 <div className="col-span-2"><p className="text-xs text-slate-500">IBAN</p><p className="font-medium">{detail.iban || "-"}</p></div>

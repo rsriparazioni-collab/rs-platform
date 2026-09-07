@@ -12,7 +12,7 @@ import { LAVORAZIONI } from "../lib/constants";
 
 const EMPTY = {
   nome: "", cognome: "", tipo_cliente: "privato", codice_fiscale: "", p_iva: "",
-  indirizzo: "", pod: "", pdr: "", iban: "", email: "", telefono: "",
+  indirizzo: "", provincia: "", pod: "", pdr: "", iban: "", email: "", telefono: "",
   kw_potenza: "", tipo_bolletta: "luce", fornitore_provenienza: "",
   costo_kwh_attuale: "", spese_fisse_attuale: "", costo_smc_attuale: "",
   data_contratto: "", data_verifica: "", data_cambio: "", tipo_contratto: "fisso",
@@ -37,6 +37,11 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [baseline, setBaseline] = useState(EMPTY);
+  const [venditori, setVenditori] = useState([]);
+
+  useEffect(() => {
+    api.get("/venditori").then((r) => setVenditori(r.data.filter((v) => v.attivo !== false))).catch(() => {});
+  }, []);
   const isEdit = Boolean(client);
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
 
@@ -139,6 +144,9 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
               )}
               <Field label="Indirizzo" testid="indirizzo">
                 <Input value={form.indirizzo} onChange={(e) => set("indirizzo", e.target.value)} data-testid="input-indirizzo" />
+              </Field>
+              <Field label="Provincia" testid="provincia">
+                <Input placeholder="es. SO" maxLength={2} value={form.provincia || ""} onChange={(e) => set("provincia", e.target.value.toUpperCase())} data-testid="input-provincia" />
               </Field>
               <Field label="Email" testid="email">
                 <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} data-testid="input-email" />
@@ -265,11 +273,11 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Servito da (operatore)" testid="operatore">
+              <Field label="Venduto da" testid="operatore">
                 <Select value={form.operatore_id} onValueChange={(v) => set("operatore_id", v)}>
-                  <SelectTrigger data-testid="select-operatore"><SelectValue placeholder="Seleziona operatore" /></SelectTrigger>
+                  <SelectTrigger data-testid="select-operatore"><SelectValue placeholder="Seleziona venditore" /></SelectTrigger>
                   <SelectContent>
-                    {meta.operators.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
+                    {venditori.map((o) => <SelectItem key={o.id} value={o.id}>{o.nome}{o.store_name ? ` · ${o.store_name}` : ""}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </Field>
