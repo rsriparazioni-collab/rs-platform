@@ -1181,6 +1181,96 @@ async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(req
         await _insert_imported(docs, admin)
     return {"imported": len(docs), "skipped": skipped}
 
+# ---------------- Migrazione dati storici (idempotente, admin) ----------------
+
+VENDITORI_SEED = [
+    ("Deborah", "Morbegno", "interno"), ("Silvio", "Morbegno", "interno"),
+    ("Bruno", "Morbegno", "interno"), ("Michael", "Tirano", "interno"),
+    ("Lorenzo", "Sondalo", "interno"), ("Seba", "Grosio", "interno"),
+    ("Enrico", "Sondrio", "interno"), ("Devis", "", "esterno"),
+]
+ENERGY_SHEET_ID = "19pEn41GLbJi6iI6BQ7v83idmro4GUoazUwdLGBUuksY"
+
+
+def _nome_key(nome: str, cognome: str) -> str:
+    return re.sub(r"\s+", " ", f"{nome} {cognome}".strip().lower())
+
+
+@api_router.post("/admin/migra-dati-storici")
+async def migra_dati_storici(admin: dict = Depends(require_admin)):
+    """Idempotente: rinomina/pulisce negozi, seed venditori, import colonna venditore dal foglio energia."""
+    report = {"rinominati": [], "eliminati": [], "venditori_seedati": 0,
+              "clienti_aggiornati": 0, "clienti_pagati": 0, "dettagli": []}
+    now = datetime.now(timezone.utc).isoformat()
+
+    r = await db.stores.update_one({"nome": "Sondrio Grosio"}, {"$set": {"nome": "Grosio"}})
+    if r.modified_count:
+        report["rinominati"].append("Sondrio Grosio -> Grosio")
+
+    deriu = await db.stores.find_one({"nome": "Deriu"}, {"_id": 0})
+    if deriu:
+        cl_ids = [c["id"] for c in await db.clients.find({"venditore_id": deriu["id"]},
+                                                         {"_id": 0, "id": 1}).to_list(500)]
+        if cl_ids:
+            await db.lavorazioni_log.delete_many({"client_id": {"$in": cl_ids}})
+            await db.servizi.delete_many({"client_id": {"$in": cl_ids}})
+            await db.clients.delete_many({"venditore_id": deriu["id"]})
+        await db.stores.delete_one({"id": deriu["id"]})
+        report["eliminati"].append("Deriu")
+    for nome in ("Devis (Freelance)", "TEST_Negozio"):
+        res = await db.stores.delete_many({"nome": nome})
+        if res.deleted_count:
+            report["eliminati"].append(f"{nome} x{res.deleted_count}")
+
+    stores_by_name = {s["nome"]: s["id"] for s in await db.stores.find({}, {"_id": 0}).to_list(100)}
+    for nome, store_nome, tipo in VENDITORI_SEED:
+        if not await db.venditori.find_one({"nome": nome}):
+            await db.venditori.insert_one({"id": str(uuid.uuid4()), "nome": nome,
+                                           "store_id": stores_by_name.get(store_nome, ""),
+                                           "tipo": tipo, "attivo": True, "created_at": now})
+            report["venditori_seedati"] += 1
+
+    vend_map = await _venditori_name_map()
+    vend_fallback = vend_map.get("enrico", "")
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http:
+        fb = await _fetch_tab_csv(http, ENERGY_SHEET_ID, sheet_name="__non_esiste__")
+        if fb.status_code != 200:
+            raise HTTPException(status_code=400, detail="Foglio Google non raggiungibile")
+        fb_hash = hashlib.sha256(fb.text.encode()).hexdigest()
+        for store_name, store_id in stores_by_name.items():
+            r = await _fetch_tab_csv(http, ENERGY_SHEET_ID, sheet_name=store_name)
+            if r.status_code != 200:
+                continue
+            if hashlib.sha256(r.text.encode()).hexdigest() == fb_hash and store_name != "Sondrio":
+                continue  # il fallback di Google restituisce il primo foglio (Sondrio)
+            if "venditore" not in r.text[:3000].lower():
+                continue
+            parsed, err = _parse_any_csv(r.text, store_id, admin, vend_map, vend_fallback)
+            if err:
+                continue
+            docs, _ = parsed
+            sheet_map = {}
+            for d in docs:
+                if d.get("operatore_id"):
+                    sheet_map[_nome_key(d["nome"], d["cognome"])] = (d["operatore_id"], d.get("venditore_pagato", False))
+            updated = 0
+            async for c in db.clients.find({"venditore_id": store_id},
+                                           {"_id": 0, "id": 1, "nome": 1, "cognome": 1}):
+                k = _nome_key(c.get("nome", ""), c.get("cognome", ""))
+                if k not in sheet_map:
+                    continue
+                op_id, vpag = sheet_map[k]
+                upd = {"operatore_id": op_id}
+                if vpag:
+                    upd["venditore_pagato"] = True
+                    report["clienti_pagati"] += 1
+                await db.clients.update_one({"id": c["id"]}, {"$set": upd})
+                updated += 1
+            if updated:
+                report["dettagli"].append(f"{store_name}: {updated} clienti")
+                report["clienti_aggiornati"] += updated
+    return report
+
 # ---------------- Object Storage (allegati bollette/documenti) ----------------
 
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"

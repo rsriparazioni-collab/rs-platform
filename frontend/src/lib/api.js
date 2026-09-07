@@ -1,8 +1,12 @@
 import axios from "axios";
 
 // Auth via httpOnly cookie (gu_token) impostato dal backend - niente token in localStorage
+// Su qualsiasi dominio servito dall'ingress (preview, produzione, dominio custom) /api e' same-origin:
+// il cookie viaggia sempre. Solo in dev locale (localhost:3000) si usa l'URL assoluto del backend.
+const isLocalDev = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const baseURL = isLocalDev ? `${process.env.REACT_APP_BACKEND_URL}/api` : `${window.location.origin}/api`;
 const api = axios.create({
-  baseURL: `${process.env.REACT_APP_BACKEND_URL}/api`,
+  baseURL,
   withCredentials: true,
 });
 
