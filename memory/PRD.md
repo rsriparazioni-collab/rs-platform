@@ -96,6 +96,10 @@ Vedi /app/memory/test_credentials.md
 - RAILWAY DEPLOY RIUSCITO (2026-09-06): servizio WhatsApp online su https://tranquil-clarity-production-b9ba.up.railway.app (progetto jubilant-elegance, servizio tranquil-clarity). Fix applicati via CLI/API con project token: rootDirectory azzerata (era il blocco del build Railpack), package.json main→service.js + scripts.start, volume /data creato (id 8cf86842), API key attiva (401 senza chiave verificato). backend/.env ora punta WA_SERVICE_URL al dominio Railway. SERVIREBbe eliminare il servizio "rs-platform" (offline, token non autorizzato a cancellarlo — utente può farlo da UI). ULTIMO PASSO: scansione QR del servizio Railway (sessione nuova, salvata su volume) — QR verificato visibile sulla pagina WhatsApp in preview (proxy backend→Railway OK). Dopo la scansione serve REDEPLOY su Emergent per portare WA_SERVICE_URL in produzione. Token Railway progetto: revocabile dopo il collaudo
 
 ## Import riparazioni storiche in produzione (2026-09-07)
+- ESEGUITO IN PRODUZIONE dopo redeploy: 167 servizi (M108/SO32/SA12/G8/T6/GR1), 158 clienti, 146 pagate, counters allineati. Verificato via API per negozio.
+- Causa pagina bianca /whatsapp segnalata da utente: 401 su /auth/me (sessione assente) → l'app non reindirizzava al login. Da migliorare il redirect.
+
+## WhatsApp produzione collegato + rinomina menu (2026-09-07)
 - Utente ha fornito i 6 link dei fogli riparazioni (Morbegno 1IogWl5..., Gravedona 1VmPtZ..., Tirano 1lP7mJ..., Grosio 15qcxX..., Sondrio 197nm4..., Sondalo 1LAOpP...)
 - Nuovo endpoint POST /api/admin/import-riparazioni-storiche (admin, idempotente con marker import_state:riparazioni_fogli_v1): legge i 6 fogli, matcha clienti per telefono o nome+cognome nel negozio, crea servizi riparazione con numerazione R+prefisso (RM/RSO/RG/RT/RSA/RGR), normalizza stati ("in attesa ricambio..."→attesa_ricambio_carico ecc.), aggiorna i counters
 - Testato su preview: risponde correttamente "gia_importato" (marker presente, zero duplicati). Su produzione risponde 404: SERVE REDEPLOY, poi chiamare l'endpoint una volta su gestionale.rsriparazioni.com
