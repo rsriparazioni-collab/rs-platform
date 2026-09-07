@@ -57,7 +57,7 @@ export default function Negozi() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">Negozi & Venditori</h1>
-          <p className="mt-1 text-sm text-slate-500">Contratti del mese, compensi e reset pagamento a 6 mesi</p>
+          <p className="mt-1 text-sm text-slate-500">Il flag "Pagato" sul cliente = incassato dalla struttura. "Paga" sul negozio = promemoria compenso globale versato al negozio (reset a 6 mesi)</p>
         </div>
         {isAdmin && (
           <Button onClick={() => setOpen(true)} data-testid="add-store-button" className="gap-2 bg-slate-900 hover:bg-slate-800">
@@ -83,7 +83,7 @@ export default function Negozi() {
                 {s.tipo === "freelance" ? "Freelance" : "Negozio"}
               </span>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="mt-4 grid grid-cols-3 gap-3">
               <div className="rounded-lg bg-slate-50 p-3">
                 <p className="text-xs text-slate-500">Contratti nel mese</p>
                 <p className="font-heading text-2xl font-bold text-slate-900" data-testid={`store-contratti-mese-${s.id}`}>{s.contratti_mese}</p>
@@ -91,6 +91,11 @@ export default function Negozi() {
               <div className="rounded-lg bg-slate-50 p-3">
                 <p className="text-xs text-slate-500">Clienti totali</p>
                 <p className="font-heading text-2xl font-bold text-slate-900">{s.totale_clienti}</p>
+              </div>
+              <div className={`rounded-lg p-3 ${s.clienti_incassati > 0 ? "bg-emerald-50" : "bg-slate-50"}`}>
+                <p className="text-xs text-slate-500">Incassati struttura</p>
+                <p className={`font-heading text-2xl font-bold ${s.clienti_incassati > 0 ? "text-emerald-700" : "text-slate-900"}`}
+                   data-testid={`store-incassati-${s.id}`}>{s.clienti_incassati ?? 0}</p>
               </div>
             </div>
             <div className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 p-3">

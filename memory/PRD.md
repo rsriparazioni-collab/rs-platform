@@ -95,6 +95,13 @@ Vedi /app/memory/test_credentials.md
 - WHATSAPP COLLEGATO (2026-09-06): account "Cambia Ora Sondrio" (393519460591), messaggio di test inviato e ricevuto dall'utente — canale di invio verificato E2E in preview
 - RAILWAY DEPLOY RIUSCITO (2026-09-06): servizio WhatsApp online su https://tranquil-clarity-production-b9ba.up.railway.app (progetto jubilant-elegance, servizio tranquil-clarity). Fix applicati via CLI/API con project token: rootDirectory azzerata (era il blocco del build Railpack), package.json main→service.js + scripts.start, volume /data creato (id 8cf86842), API key attiva (401 senza chiave verificato). backend/.env ora punta WA_SERVICE_URL al dominio Railway. SERVIREBbe eliminare il servizio "rs-platform" (offline, token non autorizzato a cancellarlo — utente può farlo da UI). ULTIMO PASSO: scansione QR del servizio Railway (sessione nuova, salvata su volume) — QR verificato visibile sulla pagina WhatsApp in preview (proxy backend→Railway OK). Dopo la scansione serve REDEPLOY su Emergent per portare WA_SERVICE_URL in produzione. Token Railway progetto: revocabile dopo il collaudo
 
+## Modello compensi "pagato" (2026-09-07, confermato da utente)
+- 3 flussi distinti: Cliente→Struttura (flag `pagato` cliente = incassato dalla struttura), Struttura→Negozio (pulsante "Paga" su Negozi = promemoria compenso GLOBALE versato al negozio), Struttura→Venditore (toggle venditore_pagato per singola vendita). Niente automazioni a blocco, niente storico pagamenti, niente importi in € per ora: solo conteggi. Reset a 6 mesi come già esistente.
+- GET /api/stores ora include `clienti_incassati` (clienti con pagato_effettivo=true): card Negozi a 3 colonne con box "Incassati struttura" (verde se >0) — base per la divisione compensi
+- GET /api/venditori/{id}/vendite ora include `incassato_struttura` per ogni vendita: nella lista vendite venditore ogni riga mostra "Incassato/Non ancora incassato dalla struttura" + toggle Pagato venditore
+- Sottotitolo pagina Negozi aggiornato per spiegare la semantica dei due flag
+- Verifiche: 54/54 pytest, API stores/vendite OK (Sondrio 87 incassati, Devis 8/35), screenshot Negozi + Venditori OK
+
 ## Pulizia negozi (2026-09-07)
 - Negozi attivi definitivi (7): Sondrio, Morbegno, Gravedona, Sondalo, Tirano, Grosio, Ipro
 - "Sondrio Grosio" rinominato in "Grosio" (ID invariato: venditore Seba, utente Michael e contatori GR/RGR intatti); seed in server.py e make_guide.py aggiornati

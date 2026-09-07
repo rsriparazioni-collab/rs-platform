@@ -173,6 +173,10 @@ export default function Operatori() {
                     <div>
                       <p className="font-medium text-slate-900">{c.cognome} {c.nome}</p>
                       <p className="text-slate-500">{c.store_name} · {fmtDate(c.data_contratto || c.created_at)}</p>
+                      <p className={`mt-0.5 text-[10px] font-semibold ${c.incassato_struttura ? "text-emerald-600" : "text-slate-400"}`}
+                         data-testid={`vendita-incassato-${c.id.slice(0, 8)}`}>
+                        {c.incassato_struttura ? "Incassato dalla struttura" : "Non ancora incassato dalla struttura"}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`status-badge ${lavorazioneBadge(c.lavorazione)}`}>{lavorazioneLabel(c.lavorazione)}</span>

@@ -429,6 +429,12 @@ async def list_stores(user: dict = Depends(get_current_user)):
         s["totale_clienti"] = await db.clients.count_documents({"venditore_id": s["id"]})
         s["contratti_mese"] = await db.clients.count_documents(
             {"venditore_id": s["id"], "data_contratto": {"$gte": month_start}})
+        # Clienti incassati dalla struttura (pagato effettivo, reset 6 mesi): base per la divisione compensi
+        s["clienti_incassati"] = 0
+        async for c in db.clients.find({"venditore_id": s["id"], "pagato": True},
+                                       {"_id": 0, "pagato": 1, "last_payment_date": 1}):
+            if effective_pagato(c.get("pagato", False), c.get("last_payment_date")):
+                s["clienti_incassati"] += 1
     return stores
 
 @api_router.post("/stores")
@@ -669,13 +675,16 @@ async def vendite_venditore(venditore_id: str, user: dict = Depends(get_current_
         raise HTTPException(status_code=403, detail="Non autorizzato")
     clients = await db.clients.find({"operatore_id": venditore_id},
         {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "data_contratto": 1, "lavorazione": 1,
-         "venditore_pagato": 1, "venditore_id": 1, "created_at": 1}).sort("created_at", -1).to_list(2000)
+         "venditore_pagato": 1, "venditore_id": 1, "created_at": 1,
+         "pagato": 1, "last_payment_date": 1}).sort("created_at", -1).to_list(2000)
     store_ids = list({c.get("venditore_id") for c in clients if c.get("venditore_id")})
     stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(100)
     smap = {s["id"]: s["nome"] for s in stores}
     for c in clients:
         c["store_name"] = smap.get(c.get("venditore_id", ""), "-")
+        c["incassato_struttura"] = effective_pagato(c.get("pagato", False), c.get("last_payment_date"))
         c.pop("venditore_id", None)
+        c.pop("last_payment_date", None)
     return clients
 
 @api_router.post("/clients/{client_id}/venditore-pagato")
