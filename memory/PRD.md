@@ -98,7 +98,16 @@ Vedi /app/memory/test_credentials.md
 ## Backlog prioritizzato
 - P0: utente deve scansionare il QR WhatsApp (pagina WhatsApp) con il numero 3519460591 per attivare gli invii
 - P1: notifiche email ai negozi quando viene registrato il loro compenso
+- P1: logica calcolo compensi (energia a rinnovo per Devis/Deborah/Kevin/Bruno; SIM/internet mensile per Michael/Lorenzo/Seba) — da fare dopo aver reso il sistema affidabile
+- P1: dominio custom gestionale.rsriparazioni.com → utente deve collegarlo da dashboard Emergent (Deployments → Link domain) + DNS CNAME dal provider
 - P2: statistiche avanzate per fornitore/periodo
+- P2: sync bidirezionale bolle ritiro → fogli Google
+
+## Import venditore storico (2026-09-07)
+- Colonna "venditore" aggiunta dall'utente nel foglio energia (presente solo nel tab Sondrio = primo foglio del documento; Tirano/Sondalo senza colonna)
+- server.py: parser import estesi (`_venditore_match`, `_venditori_name_map`, alias davis→devis, debby→deborah; suffisso "pagata"→venditore_pagato=True; nome non riconosciuto→fallback Enrico/Sondrio come da utente; blocco gestionale esteso a 23 colonne; vend_map passato a `_parse_any_csv`/`_parse_gestionale_csv`/`_parse_sheet_csv` e ai call site di `/api/import/google-sheet`)
+- Migrazione una tantum `/app/backend/migrate_venditori_storico.py` eseguita: 58 clienti Sondrio aggiornati (match nome+cognome nel negozio), 22 con compenso già pagato. Risultato: Devis 35 vendite/13 da pagare, Deborah 20/20, Enrico 3/3. 28 clienti Sondrio senza venditore nel foglio restano non assegnati (corretto)
+- Verifiche: 53/53 pytest, GET /api/venditori e /venditori/{id}/vendite OK, screenshot pagina Venditori OK
 
 ## Prossimi task
 1. Utente scansiona QR WhatsApp → test invio privacy + recensione su cliente reale

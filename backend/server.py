@@ -840,7 +840,27 @@ HEADER_MAP = {
     "privacy": "privacy_firmata", "privacy firmata": "privacy_firmata",
     "pagato": "pagato", "note": "note",
     "lavorazione": "lavorazione", "stato": "lavorazione", "tipologia lavorazione": "lavorazione",
+    "venditore": "venditore", "venduto da": "venditore",
 }
+
+VENDITORE_ALIASES = {"davis": "devis", "debby": "deborah", "debora": "deborah"}
+
+async def _venditori_name_map():
+    m = {}
+    async for v in db.venditori.find({"attivo": {"$ne": False}}, {"_id": 0, "id": 1, "nome": 1}):
+        nome = str(v.get("nome", "")).strip().lower()
+        if nome:
+            m[nome] = v["id"]
+    return m
+
+def _venditore_match(raw, vend_map: dict, fallback_id: str):
+    v = re.sub(r"\s+", " ", str(raw or "").strip().lower())
+    if not v:
+        return "", False
+    pagato = "pagat" in v
+    v = re.sub(r"\bpagat[oa]?\b", "", v).strip()
+    vid = vend_map.get(v) or vend_map.get(VENDITORE_ALIASES.get(v, "")) or fallback_id
+    return vid, pagato
 
 LAV_BY_LABEL = {
     "cambiare": "cambiare", "da cambiare": "cambiare",
@@ -908,7 +928,8 @@ def _find_gestionale_blocks(r: list) -> list:
                 starts.append(j)
     return starts
 
-def _gestionale_block_to_doc(b: list, store_id: str, admin: dict, now: str) -> Optional[dict]:
+def _gestionale_block_to_doc(b: list, store_id: str, admin: dict, now: str,
+                             vend_map: Optional[dict] = None, vend_fallback: str = "") -> Optional[dict]:
     servizio = b[10].upper()
     if servizio not in ("LUCE", "GAS"):
         return None
@@ -931,6 +952,7 @@ def _gestionale_block_to_doc(b: list, store_id: str, admin: dict, now: str) -> O
     if b[19].strip().lower() == "annullato":
         note = (note + " | Pagamento: annullato").strip(" |")
     pagato = _parse_bool(b[19])
+    op_id, vend_pagato = _venditore_match(b[22], vend_map or {}, vend_fallback)
     is_gas = servizio == "GAS"
     return {
         "id": str(uuid.uuid4()),
@@ -954,13 +976,15 @@ def _gestionale_block_to_doc(b: list, store_id: str, admin: dict, now: str) -> O
         "privacy_firmata": False,
         "note": note,
         "lavorazione": lav,
-        "venditore_id": store_id, "operatore_id": "",
+        "venditore_id": store_id, "operatore_id": op_id,
+        "venditore_pagato": vend_pagato,
         "pagato": pagato,
         "last_payment_date": date.today().isoformat() if pagato else None,
         "created_by": admin["id"], "created_at": now, "updated_at": now,
     }
 
-def _parse_gestionale_csv(text: str, store_id: str, admin: dict):
+def _parse_gestionale_csv(text: str, store_id: str, admin: dict,
+                          vend_map: Optional[dict] = None, vend_fallback: str = ""):
     rows = list(csv.reader(io.StringIO(text)))
     hdr_i = None
     for i, r in enumerate(rows[:10]):
@@ -976,8 +1000,8 @@ def _parse_gestionale_csv(text: str, store_id: str, admin: dict):
         if not starts:
             skipped += 1
         for s in starts:
-            b = [str(x).strip() for x in r[s:s + 22]] + [""] * max(0, 22 - len(r[s:s + 22]))
-            doc = _gestionale_block_to_doc(b, store_id, admin, now)
+            b = [str(x).strip() for x in r[s:s + 23]] + [""] * max(0, 23 - len(r[s:s + 23]))
+            doc = _gestionale_block_to_doc(b, store_id, admin, now, vend_map, vend_fallback)
             if doc:
                 docs.append(doc)
             else:
@@ -986,11 +1010,12 @@ def _parse_gestionale_csv(text: str, store_id: str, admin: dict):
         return None, "Nessun cliente riconosciuto nel formato gestionale"
     return (docs, skipped), None
 
-def _parse_any_csv(text: str, store_id: str, admin: dict):
+def _parse_any_csv(text: str, store_id: str, admin: dict,
+                   vend_map: Optional[dict] = None, vend_fallback: str = ""):
     head = text[:2000].lower()
     if "nome cognome" in head and "servizio" in head:
-        return _parse_gestionale_csv(text, store_id, admin)
-    return _parse_sheet_csv(text, store_id, admin)
+        return _parse_gestionale_csv(text, store_id, admin, vend_map, vend_fallback)
+    return _parse_sheet_csv(text, store_id, admin, vend_map, vend_fallback)
 
 def _build_col_map(df) -> dict:
     col_map = {}
@@ -1000,10 +1025,12 @@ def _build_col_map(df) -> dict:
             col_map[col] = field
     return col_map
 
-def _row_to_doc(data: dict, store_id: str, admin: dict, now: str) -> dict:
+def _row_to_doc(data: dict, store_id: str, admin: dict, now: str,
+                vend_map: Optional[dict] = None, vend_fallback: str = "") -> dict:
     tb = str(data.get("tipo_bolletta", "")).strip().lower()
     tc = str(data.get("tipo_contratto", "")).strip().lower()
     pagato = _parse_bool(data.get("pagato", ""))
+    op_id, vend_pagato = _venditore_match(data.get("venditore", ""), vend_map or {}, vend_fallback)
     return {
         "id": str(uuid.uuid4()),
         "nome": str(data.get("nome", "")).strip(), "cognome": str(data.get("cognome", "")).strip(),
@@ -1033,13 +1060,15 @@ def _row_to_doc(data: dict, store_id: str, admin: dict, now: str) -> dict:
         "privacy_firmata": _parse_bool(data.get("privacy_firmata", "")),
         "note": str(data.get("note", "")).strip(),
         "lavorazione": _norm_lavorazione(data.get("lavorazione", "")),
-        "venditore_id": store_id, "operatore_id": "",
+        "venditore_id": store_id, "operatore_id": op_id,
+        "venditore_pagato": vend_pagato,
         "pagato": pagato,
         "last_payment_date": date.today().isoformat() if pagato else None,
         "created_by": admin["id"], "created_at": now, "updated_at": now,
     }
 
-def _parse_sheet_csv(text: str, store_id: str, admin: dict):
+def _parse_sheet_csv(text: str, store_id: str, admin: dict,
+                     vend_map: Optional[dict] = None, vend_fallback: str = ""):
     try:
         df = pd.read_csv(io.StringIO(text), dtype=str)
     except Exception:
@@ -1054,7 +1083,7 @@ def _parse_sheet_csv(text: str, store_id: str, admin: dict):
         if not str(data.get("nome", "")).strip() and not str(data.get("cognome", "")).strip():
             skipped += 1
             continue
-        docs.append(_row_to_doc(data, store_id, admin, now))
+        docs.append(_row_to_doc(data, store_id, admin, now, vend_map, vend_fallback))
     return (docs, skipped), None
 
 async def _insert_imported(docs: list, admin: dict):
@@ -1079,11 +1108,12 @@ async def _fetch_tab_csv(http_client, sheet_id: str, gid: Optional[str] = None, 
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid or '0'}"
     return await http_client.get(url)
 
-async def _import_store_tab(http_client, sheet_id: str, store: dict, fallback_hash: str, admin: dict) -> dict:
+async def _import_store_tab(http_client, sheet_id: str, store: dict, fallback_hash: str, admin: dict,
+                            vend_map: Optional[dict] = None, vend_fallback: str = "") -> dict:
     r = await _fetch_tab_csv(http_client, sheet_id, sheet_name=store["nome"])
     if r.status_code != 200 or hashlib.sha256(r.text.encode()).hexdigest() == fallback_hash:
         return {"store": store["nome"], "status": "pagina_non_trovata", "imported": 0}
-    parsed, err = _parse_any_csv(r.text, store["id"], admin)
+    parsed, err = _parse_any_csv(r.text, store["id"], admin, vend_map, vend_fallback)
     if err:
         return {"store": store["nome"], "status": "errore", "detail": err, "imported": 0}
     docs, skipped = parsed
@@ -1098,6 +1128,8 @@ async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(req
         raise HTTPException(status_code=400, detail="Link Google Sheet non valido")
     sheet_id = m.group(1)
     gid_m = re.search(r"gid=(\d+)", input.sheet_url)
+    vend_map = await _venditori_name_map()
+    vend_fallback = vend_map.get("enrico", "")
 
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http_client:
         if input.all_tabs:
@@ -1108,7 +1140,8 @@ async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(req
             fallback_hash = hashlib.sha256(fallback_resp.text.encode()).hexdigest()
             report, total_imported = [], 0
             for s in stores:
-                rep = await _import_store_tab(http_client, sheet_id, s, fallback_hash, admin)
+                rep = await _import_store_tab(http_client, sheet_id, s, fallback_hash, admin,
+                                              vend_map, vend_fallback)
                 report.append(rep)
                 total_imported += rep["imported"]
             return {"mode": "all_tabs", "total_imported": total_imported, "report": report,
@@ -1119,7 +1152,7 @@ async def import_google_sheet(input: SheetImportInput, admin: dict = Depends(req
                                     sheet_name=input.sheet_name)
     if resp.status_code != 200 or ("text/csv" not in resp.headers.get("content-type", "") and "text/plain" not in resp.headers.get("content-type", "")):
         raise HTTPException(status_code=400, detail="Impossibile leggere il foglio. Verifica che sia condiviso: 'Chiunque abbia il link può visualizzare'.")
-    parsed, err = _parse_any_csv(resp.text, input.store_id, admin)
+    parsed, err = _parse_any_csv(resp.text, input.store_id, admin, vend_map, vend_fallback)
     if err:
         raise HTTPException(status_code=400, detail=err)
     docs, skipped = parsed
