@@ -278,6 +278,46 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {stats?.tempi_riparazione?.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="tempi-riparazione-panel">
+          <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-4">
+            <Wrench className="h-4 w-4 text-slate-500" />
+            <h2 className="font-heading text-lg font-semibold text-slate-800">Tempi di riparazione per negozio</h2>
+            <span className="ml-auto text-xs text-slate-500">media ingresso → uscita (riparazioni consegnate)</span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-5 py-2.5">Negozio</th>
+                <th className="px-5 py-2.5">Media giorni</th>
+                <th className="px-5 py-2.5">Chiuse</th>
+                <th className="px-5 py-2.5">Aperte</th>
+                <th className="px-5 py-2.5">In ritardo (&gt;7gg)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {stats.tempi_riparazione.map((t) => (
+                <tr key={t.store_id} data-testid={`tempi-riparazione-${t.store_id}`}>
+                  <td className="px-5 py-2.5 font-medium text-slate-900">{t.store_name}</td>
+                  <td className="px-5 py-2.5">
+                    {t.media_giorni != null
+                      ? <span className={`font-bold ${t.media_giorni > 7 ? "text-rose-700" : t.media_giorni > 3 ? "text-amber-700" : "text-emerald-700"}`}>{t.media_giorni} gg</span>
+                      : <span className="text-slate-400">-</span>}
+                  </td>
+                  <td className="px-5 py-2.5 text-slate-600">{t.chiuse}</td>
+                  <td className="px-5 py-2.5 text-slate-600">{t.aperte}</td>
+                  <td className="px-5 py-2.5">
+                    {t.aperte_oltre_7gg > 0
+                      ? <span className="status-badge bg-rose-500/15 text-rose-700 border-rose-300">{t.aperte_oltre_7gg}</span>
+                      : <span className="text-slate-400">0</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

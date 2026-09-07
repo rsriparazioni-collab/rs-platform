@@ -169,3 +169,5 @@ Vedi /app/memory/test_credentials.md
 - Pulsante "Ritira telefono" nel dettaglio riparazione: crea bolla ritiro (POST /ritiri con `servizio_id`) precompilata con cliente e dispositivo; la riparazione mostra badge "Ritiro Mx" e pulsante download bolla. Eliminando il ritiro il collegamento viene rimosso.
 - Aggiunto `ErrorBoundary` globale (App.js): ricarica automatica su ChunkLoadError (schermata bianca post-deploy) e pulsante "Ricarica la pagina" su errori JS.
 - Nota: cambio stato riparazione verificato funzionante lato API e UI; la "schermata bianca" segnalata è riconducibile a cache JS vecchia in produzione.
+- Bolla ritiro: se creata da una riparazione, il PDF riporta "Riparazione collegata N. RMx - dispositivo" e nota recupero dati (campi `riparazione_numero`/`riparazione_dispositivo` sul ritiro).
+- Dashboard: pannello "Tempi di riparazione per negozio" (`stats.tempi_riparazione`): media giorni ingresso→uscita su riparazioni chiuse con data_uscita, aperte e aperte >7gg. Le riparazioni storiche importate non hanno data_uscita → la media si costruisce dalle nuove.

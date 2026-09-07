@@ -754,7 +754,42 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
                 stats["vincoli_60gg"] += 1
         except (ValueError, TypeError):
             pass
+    stats["tempi_riparazione"] = await tempi_riparazione_per_negozio(svc_scope)
     return stats
+
+async def tempi_riparazione_per_negozio(svc_scope: dict) -> list:
+    allowed = svc_scope.get("tipo")
+    if isinstance(allowed, dict) and "riparazione" not in allowed.get("$in", []):
+        return []
+    if isinstance(allowed, str) and allowed != "riparazione":
+        return []
+    rips = await db.servizi.find({**svc_scope, "tipo": "riparazione"},
+                                 {"_id": 0, "venditore_id": 1, "stato": 1, "data_ingresso": 1,
+                                  "data_uscita": 1, "created_at": 1}).to_list(10000)
+    stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)}
+    acc: dict = {}
+    today = date.today()
+    for r in rips:
+        vid = r.get("venditore_id", "")
+        a = acc.setdefault(vid, {"store_id": vid, "store_name": stores.get(vid, "-"), "chiuse": 0,
+                                 "giorni_totali": 0, "aperte": 0, "aperte_oltre_7gg": 0})
+        try:
+            ingresso = date.fromisoformat(str(r.get("data_ingresso") or r.get("created_at"))[:10])
+        except (ValueError, TypeError):
+            continue
+        if r.get("stato") in ("consegnato", "non_riparabile"):
+            if r.get("data_uscita"):
+                a["chiuse"] += 1
+                a["giorni_totali"] += max((date.fromisoformat(str(r["data_uscita"])[:10]) - ingresso).days, 0)
+        else:
+            a["aperte"] += 1
+            if (today - ingresso).days > 7:
+                a["aperte_oltre_7gg"] += 1
+    out = []
+    for a in acc.values():
+        a["media_giorni"] = round(a["giorni_totali"] / a["chiuse"], 1) if a["chiuse"] else None
+        out.append(a)
+    return sorted(out, key=lambda x: x["store_name"])
 
 @api_router.get("/alerts")
 async def get_alerts(user: dict = Depends(get_current_user)):
@@ -1818,6 +1853,12 @@ def _build_bolla_pdf(r: dict) -> bytes:
     _pdf_field(pdf, "Prezzo ritiro", prezzo)
     _pdf_field(pdf, "Numero documento", r.get("numero_documento"))
     _pdf_field(pdf, "Si allegano documenti n.", str(r.get("n_allegati", 2)))
+    if r.get("riparazione_numero"):
+        pdf.ln(3)
+        _pdf_field(pdf, "Riparazione collegata", f"N. {r['riparazione_numero']}  -  {r.get('riparazione_dispositivo', '')}")
+        pdf.set_font("helvetica", "I", 9)
+        pdf.cell(0, 6, "Dispositivo lasciato al negozio dopo la riparazione; il cliente ha richiesto il recupero dei dati.",
+                 new_x="LMARGIN", new_y="NEXT")
     pdf.ln(14)
     pdf.set_font("helvetica", "", 11)
     pdf.cell(95, 8, "Firma negozio: ______________________")
@@ -1877,6 +1918,11 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
         data["data_ritiro"] = date.today().isoformat()
     now = datetime.now(timezone.utc).isoformat()
     data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_at": now})
+    if data.get("servizio_id"):
+        svc = await db.servizi.find_one({"id": data["servizio_id"]}, {"_id": 0, "numero_riparazione": 1, "dispositivo": 1})
+        if svc:
+            data["riparazione_numero"] = svc.get("numero_riparazione", "")
+            data["riparazione_dispositivo"] = svc.get("dispositivo", "")
     pdf_bytes = _build_bolla_pdf(data)
     result = put_object(f"{APP_NAME}/ritiri/{data['numero']}.pdf", pdf_bytes, "application/pdf")
     data["storage_path"] = result["path"]
