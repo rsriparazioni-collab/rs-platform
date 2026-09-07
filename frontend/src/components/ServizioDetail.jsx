@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, Recycle, FileDown } from "lucide-react";
+import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, Recycle, FileDown, Ban } from "lucide-react";
 import RitiroDaRiparazione from "./RitiroDaRiparazione";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
@@ -158,7 +158,9 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
       await api.patch(`/servizi/${detail.id}`, { client_id: detail.client_id, tipo: detail.tipo, stato });
       toast.success(stato === "pronto" && !detail.pronto_msg_sent_at
         ? "Stato aggiornato: Pronto. Avviso WhatsApp al cliente in invio..."
-        : `Stato aggiornato: ${ripStatoLabel(stato)}`);
+        : stato === "consegnato" && !detail.client_contacts?.no_recensioni
+          ? "Dispositivo consegnato. Richiesta recensione in partenza tra 2 minuti."
+          : `Stato aggiornato: ${ripStatoLabel(stato)}`);
       setTimeout(refresh, 2500);
       refresh();
       onChanged();
@@ -199,13 +201,27 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
       if (res.data.registration_error) toast.warning(`Registrazione sito: ${res.data.registration_error}`);
       if (res.data.wa_error) toast.warning(`WhatsApp non inviato: ${res.data.wa_error}`);
       else toast.success(res.data.review_queued
-        ? "Messaggio privacy inviato. Recensione del negozio in partenza tra 5 minuti."
-        : "Messaggio privacy inviato (nessun link recensioni configurato per questo negozio)");
+        ? "Messaggio privacy inviato. Recensione del negozio in partenza tra 2 minuti."
+        : detail.tipo === "riparazione"
+          ? "Messaggio privacy inviato. La recensione partirà alla consegna del dispositivo."
+          : "Messaggio privacy inviato (nessun link recensioni configurato per questo negozio)");
       refresh();
     } catch (e) {
       toast.error(apiError(e, "Invio fallito"));
     } finally {
       setWaLoading(false);
+    }
+  };
+
+  const toggleBlacklist = async () => {
+    const next = !detail.client_contacts?.no_recensioni;
+    if (next && !window.confirm("Bloccare l'invio delle richieste di recensione a questo cliente?")) return;
+    try {
+      await api.post(`/clients/${detail.client_id}/blacklist-recensioni`, { no_recensioni: next });
+      toast.success(next ? "Cliente in blacklist: nessuna recensione verrà inviata" : "Blacklist rimossa");
+      refresh();
+    } catch (e) {
+      toast.error(apiError(e));
     }
   };
 
@@ -253,6 +269,17 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                 {isRip && !detail.pronto_msg_sent_at && detail.pronto_msg_error && (
                   <span className="status-badge bg-amber-500/15 text-amber-700 border-amber-300" title={detail.pronto_msg_error} data-testid="servizio-pronto-error-badge">
                     Avviso "pronto" non inviato
+                  </span>
+                )}
+                {isRip && detail.review_msg_sent_at && (
+                  <span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300" data-testid="servizio-review-sent-badge">Recensione inviata {fmtDate(detail.review_msg_sent_at)}</span>
+                )}
+                {isRip && !detail.review_msg_sent_at && detail.review_queued_at && (
+                  <span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300" data-testid="servizio-review-queued-badge">Recensione in invio</span>
+                )}
+                {detail.client_contacts?.no_recensioni && (
+                  <span className="status-badge bg-slate-500/15 text-slate-700 border-slate-300" data-testid="servizio-blacklist-badge">
+                    <Ban className="h-3 w-3" /> No recensioni
                   </span>
                 )}
                 {detail.pagato
@@ -448,6 +475,10 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     <MessageCircle className="mr-2 h-4 w-4" /> {detail.pronto_msg_sent_at ? "Reinvia avviso pronto" : "Avvisa cliente: pronto"}
                   </Button>
                 )}
+                <Button size="sm" variant="outline" onClick={toggleBlacklist}
+                        className={detail.client_contacts?.no_recensioni ? "" : "border-slate-300 text-slate-600"} data-testid="servizio-blacklist-button">
+                  <Ban className="mr-2 h-4 w-4" /> {detail.client_contacts?.no_recensioni ? "Riattiva recensioni" : "Blacklist recensioni"}
+                </Button>
                 {!detail.pagato && (
                   <Button size="sm" variant="outline" onClick={markPaid} data-testid="servizio-mark-paid-button">
                     <Wallet className="mr-2 h-4 w-4" /> Segna pagato

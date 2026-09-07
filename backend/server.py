@@ -410,6 +410,10 @@ class StoreCreate(BaseModel):
     note: str = ""
     review_link: str = ""
     telefono_avvisi: str = ""
+    msg_privacy: str = ""
+    msg_pronto: str = ""
+    msg_recensione: str = ""
+    msg_promemoria: str = ""
 
 class StoreUpdate(BaseModel):
     nome: Optional[str] = None
@@ -418,6 +422,42 @@ class StoreUpdate(BaseModel):
     note: Optional[str] = None
     review_link: Optional[str] = None
     telefono_avvisi: Optional[str] = None
+    msg_privacy: Optional[str] = None
+    msg_pronto: Optional[str] = None
+    msg_recensione: Optional[str] = None
+    msg_promemoria: Optional[str] = None
+
+MSG_DEFAULTS = {
+    "msg_privacy": """RS Group – Grazie per averci scelto!
+Ciao {nome}
+per procedere con la tua richiesta e completare l'attivazione del servizio, è necessario firmare l'autorizzazione privacy.
+Puoi farlo in modo semplice e veloce al link qui sotto:
+https://rsriparazioni.it/privacy/
+La firma è richiesta per attivare correttamente il servizio (riparazioni, contratti energia o telefonia).
+Grazie per la fiducia
+RS Group""",
+    "msg_pronto": ("Ciao {nome}!\nIl tuo {dispositivo} (riparazione N. {numero}) è pronto per il ritiro presso RS Riparazioni {negozio}.\n"
+                   "Ti aspettiamo in negozio negli orari di apertura. Grazie!"),
+    "msg_recensione": ("Ciao!\nGrazie per aver scelto RS Riparazioni {negozio}\n"
+                       "Se ti sei trovato bene, ci farebbe davvero piacere una tua recensione\n"
+                       "Basta un clic qui\n{link}\nGrazie per il supporto"),
+    "msg_promemoria": ("Ciao {nome}, ti ricordiamo che il tuo {dispositivo} (riparazione N. {numero}) è pronto da alcuni giorni "
+                       "presso RS Riparazioni {negozio}.\nPassa a ritirarlo quando vuoi negli orari di apertura. Grazie!"),
+}
+MSG_PLACEHOLDERS = ["{nome}", "{dispositivo}", "{numero}", "{negozio}", "{link}"]
+
+def store_msg(store: Optional[dict], key: str, **vals) -> str:
+    tpl = (store or {}).get(key) or MSG_DEFAULTS[key]
+    vals = {"nome": "", "dispositivo": "", "numero": "", "negozio": (store or {}).get("nome", ""),
+            "link": (store or {}).get("review_link", ""), **vals}
+    try:
+        return tpl.format(**vals)
+    except (KeyError, IndexError, ValueError):
+        return tpl
+
+@api_router.get("/messaggi-default")
+async def messaggi_default(user: dict = Depends(get_current_user)):
+    return {"defaults": MSG_DEFAULTS, "placeholders": MSG_PLACEHOLDERS}
 
 @api_router.get("/stores")
 async def list_stores(user: dict = Depends(get_current_user)):
@@ -443,7 +483,8 @@ async def list_stores(user: dict = Depends(get_current_user)):
 async def create_store(input: StoreCreate, admin: dict = Depends(require_admin)):
     store = {"id": str(uuid.uuid4()), "nome": input.nome, "referente": input.referente,
              "tipo": input.tipo, "note": input.note, "review_link": input.review_link,
-             "telefono_avvisi": input.telefono_avvisi, "pagato": False, "last_payment_date": None,
+             "telefono_avvisi": input.telefono_avvisi, "msg_privacy": input.msg_privacy, "msg_pronto": input.msg_pronto,
+             "msg_recensione": input.msg_recensione, "msg_promemoria": input.msg_promemoria, "pagato": False, "last_payment_date": None,
              "created_at": datetime.now(timezone.utc).isoformat()}
     await db.stores.insert_one(store)
     store.pop("_id", None)
@@ -2093,8 +2134,9 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
             reg_error = getattr(e, "detail", str(e))
             logger.error(f"Registrazione privacy sito fallita per {client_id}: {reg_error}")
     wa_error = None
+    store_c = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
     try:
-        await wa_send(c["telefono"], PRIVACY_MSG.format(nome=c.get("nome", "")), session=c.get("venditore_id") or "default")
+        await wa_send(c["telefono"], store_msg(store_c, "msg_privacy", nome=c.get("nome", "")), session=c.get("venditore_id") or "default")
     except Exception as e:
         wa_error = getattr(e, "detail", str(e))
     if wa_error and not registered:
@@ -2103,7 +2145,8 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
     updates = {}
     if not wa_error:
         updates["privacy_msg_sent_at"] = now.isoformat()
-        await db.whatsapp_queue.insert_one({
+        if not c.get("no_recensioni"):
+            await db.whatsapp_queue.insert_one({
             "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
             "type": "review", "message": REVIEW_MSG, "send_after": (now + timedelta(minutes=2)).isoformat(),
             "session": c.get("venditore_id") or "default",
@@ -2135,6 +2178,8 @@ async def process_whatsapp_queue():
             await wa_send(item["phone"], item.get("message") or REVIEW_MSG, session=item.get("session", "default"))
             await db.whatsapp_queue.update_one({"id": item["id"]}, {"$set": {"sent": True, "sent_at": now}})
             await db.clients.update_one({"id": item["client_id"]}, {"$set": {"review_msg_sent_at": now}})
+            if item.get("servizio_id"):
+                await db.servizi.update_one({"id": item["servizio_id"]}, {"$set": {"review_msg_sent_at": now}})
             sent_count += 1
         except Exception as e:
             logger.error(f"WhatsApp queue send fallito per {item['id']}: {getattr(e, 'detail', str(e))}")
@@ -2359,7 +2404,7 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
 async def get_servizio(servizio_id: str, user: dict = Depends(get_current_user)):
     s = await get_scoped_servizio(servizio_id, user)
     names = await clients_name_map([s["client_id"]])
-    client_doc = await db.clients.find_one({"id": s["client_id"]}, {"_id": 0, "telefono": 1, "email": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1})
+    client_doc = await db.clients.find_one({"id": s["client_id"]}, {"_id": 0, "telefono": 1, "email": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1, "no_recensioni": 1})
     out = serialize_servizio(s, names.get(s["client_id"], ""))
     out["client_contacts"] = client_doc or {}
     return out
@@ -2379,20 +2424,80 @@ async def update_servizio(servizio_id: str, input: ServizioInput, background_tas
     if updated.get("tipo") == "riparazione" and updated.get("stato") == "pronto" and old.get("stato") != "pronto" \
             and not updated.get("pronto_msg_sent_at"):
         background_tasks.add_task(invia_avviso_pronto, updated)
+    if updated.get("tipo") == "riparazione" and updated.get("stato") == "consegnato" and old.get("stato") != "consegnato":
+        if await accoda_recensione_riparazione(updated):
+            updated["review_queued_at"] = datetime.now(timezone.utc).isoformat()
     names = await clients_name_map([updated["client_id"]])
     return serialize_servizio(updated, names.get(updated["client_id"], ""))
 
-PRONTO_MSG = ("Ciao {nome}!\nIl tuo {dispositivo} (riparazione N. {numero}) è pronto per il ritiro presso RS Riparazioni {negozio}.\n"
-              "Ti aspettiamo in negozio negli orari di apertura. Grazie!")
+async def accoda_recensione_riparazione(svc: dict) -> bool:
+    if svc.get("review_msg_sent_at") or svc.get("review_queued_at"):
+        return False
+    client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "telefono": 1, "no_recensioni": 1})
+    if not client_doc or not client_doc.get("telefono") or client_doc.get("no_recensioni"):
+        return False
+    store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
+    if not store or not store.get("review_link"):
+        return False
+    now = datetime.now(timezone.utc)
+    await db.whatsapp_queue.insert_one({
+        "id": str(uuid.uuid4()), "client_id": svc["client_id"], "servizio_id": svc["id"],
+        "phone": client_doc["telefono"], "type": "review", "message": store_msg(store, "msg_recensione"),
+        "session": svc.get("venditore_id") or "default",
+        "send_after": (now + timedelta(minutes=2)).isoformat(), "sent": False, "created_at": now.isoformat()})
+    await db.servizi.update_one({"id": svc["id"]}, {"$set": {"review_queued_at": now.isoformat()}})
+    return True
+
+class BlacklistInput(BaseModel):
+    no_recensioni: bool
+
+@api_router.post("/clients/{client_id}/blacklist-recensioni")
+async def blacklist_recensioni(client_id: str, input: BlacklistInput, user: dict = Depends(get_current_user)):
+    c = await db.clients.find_one({"id": client_id}, {"_id": 0, "id": 1})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    await db.clients.update_one({"id": client_id}, {"$set": {"no_recensioni": input.no_recensioni}})
+    if input.no_recensioni:
+        await db.whatsapp_queue.delete_many({"client_id": client_id, "type": "review", "sent": False})
+        await db.servizi.update_many({"client_id": client_id, "review_msg_sent_at": None}, {"$unset": {"review_queued_at": ""}})
+    return {"status": "ok", "no_recensioni": input.no_recensioni}
+
+PROMEMORIA_GIORNI = 7
+
+async def invia_promemoria_ritiro() -> dict:
+    limite = (datetime.now(timezone.utc) - timedelta(days=PROMEMORIA_GIORNI)).isoformat()
+    svcs = await db.servizi.find({"tipo": "riparazione", "stato": "pronto", "pronto_msg_sent_at": {"$ne": None, "$lte": limite},
+                                  "promemoria_msg_sent_at": {"$in": [None]}}, {"_id": 0}).to_list(1000)
+    report = []
+    for svc in svcs:
+        if svc.get("promemoria_msg_sent_at"):
+            continue
+        client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "telefono": 1})
+        if not client_doc or not client_doc.get("telefono"):
+            continue
+        store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
+        msg = store_msg(store, "msg_promemoria", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", ""),
+                        numero=svc.get("numero_riparazione", "-"))
+        try:
+            await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default")
+            await db.servizi.update_one({"id": svc["id"]}, {"$set": {"promemoria_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
+            report.append({"numero": svc.get("numero_riparazione"), "inviato": True})
+        except HTTPException as e:
+            report.append({"numero": svc.get("numero_riparazione"), "inviato": False, "errore": str(e.detail)})
+    if report:
+        await db.cron_log.insert_one({"job": "promemoria-ritiro", "at": datetime.now(timezone.utc).isoformat(), "report": report})
+    return {"report": report}
+
+PRONTO_MSG = MSG_DEFAULTS["msg_pronto"]
 
 async def invia_avviso_pronto(svc: dict) -> None:
     client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "telefono": 1})
     if not client_doc or not client_doc.get("telefono"):
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_error": "Cliente senza numero di telefono"}})
         return
-    store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0, "nome": 1})
-    msg = PRONTO_MSG.format(nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", "dispositivo"),
-                            numero=svc.get("numero_riparazione", "-"), negozio=(store or {}).get("nome", ""))
+    store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
+    msg = store_msg(store, "msg_pronto", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", "dispositivo"),
+                    numero=svc.get("numero_riparazione", "-"))
     try:
         await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default")
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_sent_at": datetime.now(timezone.utc).isoformat(),
@@ -2441,9 +2546,7 @@ async def register_privacy_servizio(client: dict, svc: dict, store_name: str) ->
 def review_message_for_store(store: Optional[dict]) -> Optional[str]:
     if not store or not store.get("review_link"):
         return None
-    return (f"Ciao!\nGrazie per aver scelto RS Riparazioni {store['nome']}\n"
-            "Se ti sei trovato bene, ci farebbe davvero piacere una tua recensione\n"
-            f"Basta un clic qui\n{store['review_link']}\nGrazie per il supporto")
+    return store_msg(store, "msg_recensione")
 
 @api_router.post("/servizi/{servizio_id}/whatsapp/privacy")
 async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_current_user)):
@@ -2462,7 +2565,7 @@ async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_c
             logger.error(f"Registrazione privacy sito fallita per servizio {servizio_id}: {reg_error}")
     wa_error = None
     try:
-        await wa_send(client_doc["telefono"], PRIVACY_MSG.format(nome=client_doc.get("nome", "")), session=client_doc.get("venditore_id") or "default")
+        await wa_send(client_doc["telefono"], store_msg(store, "msg_privacy", nome=client_doc.get("nome", "")), session=client_doc.get("venditore_id") or "default")
     except Exception as e:
         wa_error = getattr(e, "detail", str(e))
     if wa_error and not registered:
@@ -2473,10 +2576,12 @@ async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_c
     if not wa_error:
         updates["privacy_msg_sent_at"] = now.isoformat()
         review_msg = review_message_for_store(store)
-        if review_msg:
+        # Per le riparazioni la recensione parte alla consegna del dispositivo, non dopo la privacy
+        if review_msg and svc.get("tipo") != "riparazione" and not client_doc.get("no_recensioni"):
             await db.whatsapp_queue.insert_one({
                 "id": str(uuid.uuid4()), "client_id": svc["client_id"], "servizio_id": servizio_id,
                 "phone": client_doc["telefono"], "type": "review", "message": review_msg,
+                "session": svc.get("venditore_id") or "default",
                 "send_after": (now + timedelta(minutes=2)).isoformat(), "sent": False,
                 "created_at": now.isoformat()})
             review_queued = True
@@ -2621,6 +2726,7 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
     if not token or not secret or not hmac.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(invia_avvisi_riparazioni_ferme)
+    background_tasks.add_task(invia_promemoria_ritiro)
     return {"status": "accepted"}
 
 @api_router.get("/riparazioni-ferme")

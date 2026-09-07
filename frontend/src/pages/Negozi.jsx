@@ -9,12 +9,15 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import StoreMessaggiEditor from "../components/StoreMessaggiEditor";
+
+const MSG_KEYS = ["msg_privacy", "msg_pronto", "msg_recensione", "msg_promemoria"];
 
 export default function Negozi() {
   const { user } = useAuth();
   const [stores, setStores] = useState([]);
   const [open, setOpen] = useState(false);
-  const EMPTY_FORM = { nome: "", referente: "", tipo: "negozio", note: "", review_link: "", telefono_avvisi: "" };
+  const EMPTY_FORM = { nome: "", referente: "", tipo: "negozio", note: "", review_link: "", telefono_avvisi: "", msg_privacy: "", msg_pronto: "", msg_recensione: "", msg_promemoria: "" };
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
   const isAdmin = user.role === "admin";
@@ -126,7 +129,7 @@ export default function Negozi() {
                 : <span className="text-xs font-medium text-slate-400" data-testid={`store-avvisi-missing-${s.id}`}>Avvisi WA non attivi</span>}
               {isAdmin && (
                 <Button variant="ghost" size="sm" data-testid={`store-edit-${s.id}`}
-                        onClick={() => { setEditing(s); setForm({ nome: s.nome, referente: s.referente || "", tipo: s.tipo, note: s.note || "", review_link: s.review_link || "", telefono_avvisi: s.telefono_avvisi || "" }); setOpen(true); }}>
+                        onClick={() => { setEditing(s); setForm({ nome: s.nome, referente: s.referente || "", tipo: s.tipo, note: s.note || "", review_link: s.review_link || "", telefono_avvisi: s.telefono_avvisi || "", ...Object.fromEntries(MSG_KEYS.map((k) => [k, s[k] || ""])) }); setOpen(true); }}>
                   Modifica
                 </Button>
               )}
@@ -139,7 +142,7 @@ export default function Negozi() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent data-testid="store-form-dialog">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="store-form-dialog">
           <DialogHeader><DialogTitle className="font-heading text-xl">{editing ? `Modifica ${editing.nome}` : "Nuovo negozio / venditore"}</DialogTitle></DialogHeader>
           <form onSubmit={create} className="space-y-4" data-testid="store-form">
             <div className="space-y-1.5">
@@ -176,6 +179,7 @@ export default function Negozi() {
                      placeholder="es. 3471234567" data-testid="store-input-telefono-avvisi" />
               <p className="text-xs text-slate-500">Ogni mattina alle 8:30 riceve l'elenco delle riparazioni ferme da oltre 7 giorni. Lascia vuoto per non ricevere avvisi.</p>
             </div>
+            <StoreMessaggiEditor form={form} setForm={setForm} />
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} data-testid="store-form-cancel">Annulla</Button>
               <Button type="submit" className="bg-slate-900 hover:bg-slate-800" data-testid="store-form-submit">{editing ? "Salva" : "Aggiungi"}</Button>
