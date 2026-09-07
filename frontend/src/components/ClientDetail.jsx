@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban } from "lucide-react";
+import WhatsAppLog from "./WhatsAppLog";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { lavorazioneLabel, lavorazioneBadge, fmtDate, servizioTipoLabel, ripStatoLabel, ripStatoBadge } from "../lib/constants";
@@ -11,6 +12,20 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
   const [attachments, setAttachments] = useState([]);
   const [waLoading, setWaLoading] = useState("");
   const [servizi, setServizi] = useState([]);
+  const [logKey, setLogKey] = useState(0);
+
+  const toggleBlacklist = async () => {
+    const next = !detail.no_recensioni;
+    if (next && !window.confirm("Bloccare l'invio delle richieste di recensione a questo cliente?")) return;
+    try {
+      await api.post(`/clients/${detail.id}/blacklist-recensioni`, { no_recensioni: next });
+      toast.success(next ? "Cliente in blacklist: nessuna recensione verrà inviata" : "Blacklist rimossa");
+      refresh();
+      onChanged();
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+  };
 
   const loadServizi = useCallback(async () => {
     if (!client) return;
@@ -109,6 +124,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
         toast.success("Richiesta recensione inviata");
       }
       refresh();
+      setLogKey((k) => k + 1);
     } catch (e) {
       toast.error(apiError(e, "Invio WhatsApp fallito"));
     } finally {
@@ -159,6 +175,11 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                 {detail.privacy_firmata && (
                   <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300">
                     <ShieldCheck className="h-3 w-3" /> Privacy firmata
+                  </span>
+                )}
+                {detail.no_recensioni && (
+                  <span className="status-badge bg-slate-500/15 text-slate-700 border-slate-300" data-testid="client-blacklist-badge">
+                    <Ban className="h-3 w-3" /> No recensioni
                   </span>
                 )}
                 {detail.pagato_effettivo
@@ -252,17 +273,23 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                     <MessageCircle className="h-4 w-4" />
                     {waLoading === "privacy" ? "Invio..." : "Invia link privacy"}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => sendWhatsApp("review")} disabled={waLoading !== ""}
+                  <Button size="sm" variant="outline" onClick={() => sendWhatsApp("review")} disabled={waLoading !== "" || detail.no_recensioni}
                           data-testid="wa-review-button" className="gap-2">
                     <MessageCircle className="h-4 w-4" />
                     {waLoading === "review" ? "Invio..." : "Invia richiesta recensione"}
                   </Button>
+                  <Button size="sm" variant="outline" onClick={toggleBlacklist} data-testid="client-blacklist-button" className="gap-2">
+                    <Ban className="h-4 w-4" /> {detail.no_recensioni ? "Riattiva recensioni" : "Blacklist recensioni"}
+                  </Button>
                 </div>
                 <div className="mt-2 space-y-0.5 text-xs text-slate-500">
-                  {detail.privacy_msg_sent_at && <p data-testid="wa-privacy-sent">Privacy inviata il {fmtDate(detail.privacy_msg_sent_at)} — recensione automatica dopo 5 min</p>}
+                  {detail.no_recensioni && <p className="text-slate-700" data-testid="wa-blacklist-info">Cliente in blacklist: nessuna richiesta recensione automatica.</p>}
+                  {detail.privacy_msg_sent_at && <p data-testid="wa-privacy-sent">Privacy inviata il {fmtDate(detail.privacy_msg_sent_at)}</p>}
                   {detail.review_msg_sent_at && <p data-testid="wa-review-sent">Recensione richiesta il {fmtDate(detail.review_msg_sent_at)}</p>}
                 </div>
               </div>
+
+              <WhatsAppLog clientId={detail.id} refreshKey={logKey} />
 
               <div className="rounded-xl border border-slate-200 p-4" data-testid="attachments-card">
                 <div className="mb-2 flex items-center justify-between">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown } from "lucide-react";
+import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -16,7 +16,7 @@ export default function Clienti() {
   const { user } = useAuth();
   const [clients, setClients] = useState([]);
   const [meta, setMeta] = useState({ suppliers: [], lavorazioni: [], stores: [], operators: [] });
-  const [filters, setFilters] = useState({ q: "", lavorazione: "all", tipo_bolletta: "all", venditore_id: "all" });
+  const [filters, setFilters] = useState({ q: "", lavorazione: "all", tipo_bolletta: "all", venditore_id: "all", no_recensioni: false });
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
@@ -34,6 +34,7 @@ export default function Clienti() {
     if (filters.lavorazione !== "all") params.lavorazione = filters.lavorazione;
     if (filters.tipo_bolletta !== "all") params.tipo_bolletta = filters.tipo_bolletta;
     if (filters.venditore_id !== "all") params.venditore_id = filters.venditore_id;
+    if (filters.no_recensioni) params.no_recensioni = "1";
     api.get("/clients", { params }).then((r) => setClients(r.data))
       .catch((e) => toast.error(apiError(e, "Impossibile caricare i clienti")));
   }, [filters]);
@@ -139,6 +140,10 @@ export default function Clienti() {
             </SelectContent>
           </Select>
         )}
+        <Button type="button" variant={filters.no_recensioni ? "default" : "outline"} size="sm" className="h-10 gap-1.5"
+                onClick={() => setFilters((f) => ({ ...f, no_recensioni: !f.no_recensioni }))} data-testid="filter-blacklist-toggle">
+          <Ban className="h-4 w-4" /> Solo blacklist recensioni
+        </Button>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="clients-table">

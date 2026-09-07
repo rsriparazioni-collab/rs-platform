@@ -557,8 +557,10 @@ class ClientInput(BaseModel):
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(get_current_user),
                        lavorazione: str = "", tipo_bolletta: str = "",
-                       venditore_id: str = "", q: str = ""):
+                       venditore_id: str = "", q: str = "", no_recensioni: str = ""):
     scope = client_scope_filter(user)
+    if no_recensioni == "1":
+        scope["no_recensioni"] = True
     if lavorazione:
         scope["lavorazione"] = lavorazione
     if tipo_bolletta:
@@ -573,7 +575,7 @@ async def list_clients(user: dict = Depends(get_current_user),
             "telefono": 1, "email": 1, "codice_fiscale": 1, "pod": 1, "pdr": 1,
             "tipo_bolletta": 1, "fornitore_provenienza": 1, "lavorazione": 1,
             "data_contratto": 1, "venditore_id": 1, "pagato": 1, "last_payment_date": 1,
-            "privacy_firmata": 1, "created_at": 1}
+            "privacy_firmata": 1, "created_at": 1, "no_recensioni": 1}
     clients = await db.clients.find(scope, proj).sort("created_at", -1).to_list(5000)
     tipi_per_client = {}
     async for row in db.servizi.aggregate([{"$group": {"_id": "$client_id", "tipi": {"$addToSet": "$tipo"}}}]):
@@ -2020,8 +2022,8 @@ Basta un clic qui
 https://g.page/r/CaSv3O7luiBPEAE/review
 Grazie per il supporto"""
 
-async def wa_send(phone: str, message: str, session: str = "default"):
-    log = {"phone": phone, "session": session, "message": message[:120],
+async def wa_send(phone: str, message: str, session: str = "default", tipo: str = "", client_id: str = ""):
+    log = {"phone": phone, "session": session, "message": message[:400], "tipo": tipo, "client_id": client_id,
            "at": datetime.now(timezone.utc).isoformat(), "ok": False, "error": None, "session_used": None}
     try:
         async with httpx.AsyncClient(timeout=30) as http_client:
@@ -2136,7 +2138,7 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
     wa_error = None
     store_c = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
     try:
-        await wa_send(c["telefono"], store_msg(store_c, "msg_privacy", nome=c.get("nome", "")), session=c.get("venditore_id") or "default")
+        await wa_send(c["telefono"], store_msg(store_c, "msg_privacy", nome=c.get("nome", "")), session=c.get("venditore_id") or "default", tipo="privacy", client_id=client_id)
     except Exception as e:
         wa_error = getattr(e, "detail", str(e))
     if wa_error and not registered:
@@ -2164,7 +2166,7 @@ async def whatsapp_review(client_id: str, user: dict = Depends(get_current_user)
     c = await get_scoped_client(client_id, user)
     if not c.get("telefono"):
         raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
-    await wa_send(c["telefono"], REVIEW_MSG, session=c.get("venditore_id") or "default")
+    await wa_send(c["telefono"], REVIEW_MSG, session=c.get("venditore_id") or "default", tipo="recensione", client_id=client_id)
     await db.clients.update_one({"id": client_id},
                                 {"$set": {"review_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
     return {"status": "ok"}
@@ -2175,7 +2177,8 @@ async def process_whatsapp_queue():
     sent_count = 0
     for item in due:
         try:
-            await wa_send(item["phone"], item.get("message") or REVIEW_MSG, session=item.get("session", "default"))
+            await wa_send(item["phone"], item.get("message") or REVIEW_MSG, session=item.get("session", "default"),
+                          tipo="recensione", client_id=item.get("client_id", ""))
             await db.whatsapp_queue.update_one({"id": item["id"]}, {"$set": {"sent": True, "sent_at": now}})
             await db.clients.update_one({"id": item["client_id"]}, {"$set": {"review_msg_sent_at": now}})
             if item.get("servizio_id"):
@@ -2451,6 +2454,15 @@ async def accoda_recensione_riparazione(svc: dict) -> bool:
 class BlacklistInput(BaseModel):
     no_recensioni: bool
 
+@api_router.get("/clients/{client_id}/whatsapp-log")
+async def client_whatsapp_log(client_id: str, user: dict = Depends(get_current_user)):
+    c = await get_scoped_client(client_id, user)
+    cond = [{"client_id": client_id}]
+    if c.get("telefono"):
+        cond.append({"phone": c["telefono"]})
+    logs = await db.wa_log.find({"$or": cond}, {"_id": 0}).sort("at", -1).to_list(200)
+    return logs
+
 @api_router.post("/clients/{client_id}/blacklist-recensioni")
 async def blacklist_recensioni(client_id: str, input: BlacklistInput, user: dict = Depends(get_current_user)):
     c = await db.clients.find_one({"id": client_id}, {"_id": 0, "id": 1})
@@ -2479,7 +2491,7 @@ async def invia_promemoria_ritiro() -> dict:
         msg = store_msg(store, "msg_promemoria", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", ""),
                         numero=svc.get("numero_riparazione", "-"))
         try:
-            await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default")
+            await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default", tipo="promemoria", client_id=svc["client_id"])
             await db.servizi.update_one({"id": svc["id"]}, {"$set": {"promemoria_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
             report.append({"numero": svc.get("numero_riparazione"), "inviato": True})
         except HTTPException as e:
@@ -2499,7 +2511,7 @@ async def invia_avviso_pronto(svc: dict) -> None:
     msg = store_msg(store, "msg_pronto", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", "dispositivo"),
                     numero=svc.get("numero_riparazione", "-"))
     try:
-        await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default")
+        await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default", tipo="pronto", client_id=svc["client_id"])
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_sent_at": datetime.now(timezone.utc).isoformat(),
                                                                  "pronto_msg_error": None}})
     except HTTPException as e:
@@ -2565,7 +2577,7 @@ async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_c
             logger.error(f"Registrazione privacy sito fallita per servizio {servizio_id}: {reg_error}")
     wa_error = None
     try:
-        await wa_send(client_doc["telefono"], store_msg(store, "msg_privacy", nome=client_doc.get("nome", "")), session=client_doc.get("venditore_id") or "default")
+        await wa_send(client_doc["telefono"], store_msg(store, "msg_privacy", nome=client_doc.get("nome", "")), session=client_doc.get("venditore_id") or "default", tipo="privacy", client_id=svc["client_id"])
     except Exception as e:
         wa_error = getattr(e, "detail", str(e))
     if wa_error and not registered:
@@ -2710,7 +2722,7 @@ async def invia_avvisi_riparazioni_ferme() -> dict:
             report.append({"store": s["nome"], "inviato": False, "ferme": 0})
             continue
         try:
-            await wa_send(s["telefono_avvisi"], messaggio_riparazioni_ferme(s["nome"], items), session=s["id"])
+            await wa_send(s["telefono_avvisi"], messaggio_riparazioni_ferme(s["nome"], items), session=s["id"], tipo="avviso_negozio")
             report.append({"store": s["nome"], "inviato": True, "ferme": len(items)})
         except HTTPException as e:
             report.append({"store": s["nome"], "inviato": False, "ferme": len(items), "errore": str(e.detail)})
