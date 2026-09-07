@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, Recycle, FileDown, Ban } from "lucide-react";
 import RitiroDaRiparazione from "./RitiroDaRiparazione";
+import WhatsAppLog from "./WhatsAppLog";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI, magazzinoCategoriaLabel } from "../lib/constants";
@@ -463,6 +464,11 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
               {detail.note && (
                 <div><p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Note</p>
                   <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{detail.note}</p></div>
+              )}
+
+              {isRip && (
+                <WhatsAppLog url={`/servizi/${detail.id}/whatsapp-log`} refreshKey={detail.updated_at} onResent={refresh}
+                             title="WhatsApp di questa riparazione" />
               )}
 
               <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">

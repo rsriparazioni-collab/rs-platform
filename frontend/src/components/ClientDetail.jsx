@@ -289,7 +289,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                 </div>
               </div>
 
-              <WhatsAppLog clientId={detail.id} refreshKey={logKey} />
+              <WhatsAppLog url={`/clients/${detail.id}/whatsapp-log`} refreshKey={logKey} onResent={refresh} />
 
               <div className="rounded-xl border border-slate-200 p-4" data-testid="attachments-card">
                 <div className="mb-2 flex items-center justify-between">
