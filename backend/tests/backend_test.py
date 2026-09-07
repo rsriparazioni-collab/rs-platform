@@ -145,7 +145,7 @@ class TestRBAC:
         s, u = michael
         stores = {st["id"]: st["nome"] for st in admin.get(f"{API}/stores", timeout=30).json()}
         allowed = {stores[i] for i in u["store_ids"]}
-        assert allowed == {"Tirano", "Sondrio", "Grosio"}
+        assert allowed == {"Tirano"}
         clients = s.get(f"{API}/clients", timeout=30).json()
         admin_count = len([c for c in admin.get(f"{API}/clients", timeout=30).json()
                            if c["venditore_id"] in u["store_ids"]])
@@ -386,6 +386,10 @@ class TestUsers:
         assert p.status_code == 200
         assert _login(email, "NewQa2026!").status_code == 200
         assert admin.patch(f"{API}/users/{uuid.uuid4()}", json={"name": "x"}, timeout=30).status_code == 404
+
+        # cleanup: delete test user
+        assert admin.delete(f"{API}/users/{uid}", timeout=30).status_code == 200
+        assert not any(u["id"] == uid for u in admin.get(f"{API}/users", timeout=30).json())
 
     def test_users_list_no_hash(self, admin):
         users = admin.get(f"{API}/users", timeout=30).json()

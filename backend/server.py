@@ -2350,7 +2350,9 @@ SEED_USERS = [
     {"name": "Deborah", "email": "deborah@cambiaora.local", "password": "Deborah2026!",
      "role": "operatore", "can_view_all": True, "stores": []},
     {"name": "Michael", "email": "michael@cambiaora.local", "password": "Michael2026!",
-     "role": "negozio", "can_view_all": False, "stores": ["Tirano", "Sondrio", "Grosio"]},
+     "role": "negozio", "can_view_all": False, "stores": ["Tirano"]},
+    {"name": "Seba", "email": "seba@cambiaora.local", "password": "Seba2026!",
+     "role": "negozio", "can_view_all": False, "stores": ["Grosio"]},
     {"name": "Lorenzo", "email": "lorenzo@cambiaora.local", "password": "Lorenzo2026!",
      "role": "negozio", "can_view_all": False, "stores": ["Sondalo"]},
     {"name": "Kevin", "email": "kevin@cambiaora.local", "password": "Kevin2026!",
@@ -2382,7 +2384,7 @@ async def _seed_admin():
     admin_password = os.environ["ADMIN_PASSWORD"]
     existing = await db.users.find_one({"email": admin_email})
     if not existing:
-        await db.users.insert_one({"id": str(uuid.uuid4()), "name": "Devis", "email": admin_email,
+        await db.users.insert_one({"id": str(uuid.uuid4()), "name": "Enrico", "email": admin_email,
                                    "password_hash": hash_password(admin_password), "role": "admin",
                                    "store_ids": [], "can_view_all": True, "active": True,
                                    "created_at": datetime.now(timezone.utc).isoformat()})

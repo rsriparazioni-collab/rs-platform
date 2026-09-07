@@ -5,7 +5,7 @@ Gestionale per utenze clienti con rinnovi a 10 mesi (utenza 12 mesi, attivazione
 
 ## Scelte utente
 - Auth: email+password con ruoli (accesso secondario rispetto al sito WordPress/Elementor)
-- Devis = amministratore
+- Admin = **Enrico** (email rsriparazioni@gmail.com, nome corretto da Devis a Enrico il 2026-09-07 su preview+produzione+seed; Devis resta venditore esterno)
 - Alert anche via email a cambiaora.rs@gmail.com (confermata dall'utente il 2026-09-04)
 - Design moderno (slate/azure, Outfit+Inter)
 - Import: link Google Sheet condiviso, colonne corrispondenti ai campi, una pagina per negozio
@@ -94,6 +94,13 @@ Vedi /app/memory/test_credentials.md
 - Baileys aggiornato a 7.0.0-rc14 (errore utente "impossibile collegare nuovi dispositivi" con QR valido = protocollo WA rifiutava la vecchia versione). WA_SERVICE_KEY generata (in backend/.env) per futura autenticazione servizio Railway. Account Railway creato dall'utente (2026-09-06), setup da completare insieme
 - WHATSAPP COLLEGATO (2026-09-06): account "Cambia Ora Sondrio" (393519460591), messaggio di test inviato e ricevuto dall'utente — canale di invio verificato E2E in preview
 - RAILWAY DEPLOY RIUSCITO (2026-09-06): servizio WhatsApp online su https://tranquil-clarity-production-b9ba.up.railway.app (progetto jubilant-elegance, servizio tranquil-clarity). Fix applicati via CLI/API con project token: rootDirectory azzerata (era il blocco del build Railpack), package.json main→service.js + scripts.start, volume /data creato (id 8cf86842), API key attiva (401 senza chiave verificato). backend/.env ora punta WA_SERVICE_URL al dominio Railway. SERVIREBbe eliminare il servizio "rs-platform" (offline, token non autorizzato a cancellarlo — utente può farlo da UI). ULTIMO PASSO: scansione QR del servizio Railway (sessione nuova, salvata su volume) — QR verificato visibile sulla pagina WhatsApp in preview (proxy backend→Railway OK). Dopo la scansione serve REDEPLOY su Emergent per portare WA_SERVICE_URL in produzione. Token Railway progetto: revocabile dopo il collaudo
+
+## Correzione permessi utenti (2026-09-07)
+- Admin rinominato Devis → **Enrico** (l'amministratore è Enrico; Devis resta venditore esterno) su preview+produzione+seed
+- **Michael: SOLO Tirano** (rimossi Sondrio e Grosio) su preview+produzione+seed
+- **Seba: nuovo account** seba@cambiaora.local / Seba2026!, ruolo negozio, SOLO Grosio — creato su preview+produzione+seed
+- Elimininati 10 utenti TEST_Utente residui (9 preview + 1 produzione) e fix test_user_lifecycle: ora cancella l'utente di test a fine run (stessa ricorrenza dei TEST_Negozio)
+- Verifiche: Michael vede solo Tirano (23 clienti preview/17 prod), Seba solo Grosio (2/1), 54/54 pytest
 
 ## Dominio custom gestionale.rsriparazioni.com (2026-09-07)
 - REDEPLOY FATTO dall'utente + migrazione produzione eseguita via POST /api/admin/migra-dati-storici: rinominato Grosio, eliminati Deriu/Devis Freelance, seedati 8 venditori, importati 58 clienti venditore (22 pagati). Verificato: login OK da dominio custom (admin + deborah/michael/lorenzo/kevin 200), dashboard carica, negozi 7 corretti, venditori OK (Devis 35/13, Deborah 20/20, Enrico 3/3)
