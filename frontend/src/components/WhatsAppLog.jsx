@@ -5,7 +5,7 @@ import api, { apiError } from "../lib/api";
 import { fmtDateTime } from "../lib/constants";
 import { Button } from "./ui/button";
 
-const TIPO_LABEL = { privacy: "Privacy", recensione: "Recensione", pronto: "Pronto per ritiro", promemoria: "Promemoria ritiro", avviso_negozio: "Avviso negozio", vincolo: "Scadenza vincolo", offerta_annuale: "Scadenza offerta annuale" };
+const TIPO_LABEL = { privacy: "Privacy", recensione: "Recensione", pronto: "Pronto per ritiro", promemoria: "Promemoria ritiro", avviso_negozio: "Avviso negozio", vincolo: "Scadenza vincolo", offerta_annuale: "Scadenza offerta annuale", rinnovo_energia: "Rinnovo luce/gas" };
 
 export default function WhatsAppLog({ url, refreshKey, onResent, title = "Registro WhatsApp inviati" }) {
   const [logs, setLogs] = useState([]);

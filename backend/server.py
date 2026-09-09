@@ -416,6 +416,7 @@ class StoreCreate(BaseModel):
     msg_promemoria: str = ""
     msg_vincolo: str = ""
     msg_offerta_annuale: str = ""
+    msg_rinnovo_energia: str = ""
 
 class StoreUpdate(BaseModel):
     nome: Optional[str] = None
@@ -430,6 +431,7 @@ class StoreUpdate(BaseModel):
     msg_promemoria: Optional[str] = None
     msg_vincolo: Optional[str] = None
     msg_offerta_annuale: Optional[str] = None
+    msg_rinnovo_energia: Optional[str] = None
 
 MSG_DEFAULTS = {
     "msg_privacy": """RS Group – Grazie per averci scelto!
@@ -450,6 +452,11 @@ RS Group""",
     "msg_vincolo": ("Ciao {nome} {cognome}, il vincolo sulla tua offerta sta per scadere: passa in negozio per valutare il tuo prossimo risparmio."),
     "msg_offerta_annuale": ("Ciao {nome} {cognome}, la tua offerta sta per scadere: contattaci o passa in negozio per il tuo prossimo risparmio, "
                             "abbiamo offerte dedicate per te."),
+    "msg_rinnovo_energia": """Ciao {nome}
+Ti informiamo che il tuo contratto utenze è in prossima scadenza. Nei prossimi giorni verrai contattato dal numero 353 377 6535: parlerai con Deborah, che ti seguirà nell'aggiornamento della tua fornitura e nella verifica delle migliori opportunità di risparmio in base ai tuoi consumi.
+Per effettuare un'analisi ancora più precisa, puoi inviarci direttamente qui le tue ultime bollette.
+Come sempre, valuteremo le tue abitudini di consumo per garantirti la soluzione più conveniente e il miglior prezzo disponibile sul mercato.
+A presto""",
 }
 MSG_PLACEHOLDERS = ["{nome}", "{cognome}", "{dispositivo}", "{numero}", "{negozio}", "{link}"]
 
@@ -1295,12 +1302,22 @@ def _nome_key(nome: str, cognome: str) -> str:
     return re.sub(r"\s+", " ", f"{nome} {cognome}".strip().lower())
 
 
+RINNOVI_GIA_AVVISATI = [("3497732677", "2026-11-01"), ("3496179229", "2026-09-30"), ("3388029097", "2026-10-06"),
+                        ("3665273901", "2026-10-08"), ("3332119225", "2026-10-08"), ("3896396032", "2026-10-20"),
+                        ("3895182566", "2026-10-25"), ("335406976", "2026-09-28"), ("3280167807", "2026-10-05"),
+                        ("3493200225", "2026-10-20")]
+
 @api_router.post("/admin/migra-dati-storici")
 async def migra_dati_storici(admin: dict = Depends(require_admin)):
     """Idempotente: rinomina/pulisce negozi, seed venditori, import colonna venditore dal foglio energia."""
     report = {"rinominati": [], "eliminati": [], "venditori_seedati": 0,
-              "clienti_aggiornati": 0, "clienti_pagati": 0, "dettagli": []}
+              "clienti_aggiornati": 0, "clienti_pagati": 0, "dettagli": [], "rinnovi_gia_avvisati": 0}
     now = datetime.now(timezone.utc).isoformat()
+    # Avvisi rinnovo energia già inviati il 09/09/2026 (dall'ambiente di anteprima): evita doppio invio in produzione
+    for tel, scad in RINNOVI_GIA_AVVISATI:
+        res = await db.clients.update_many({"telefono": tel, "rinnovo_msg_sent_for": {"$ne": scad}},
+                                           {"$set": {"rinnovo_msg_sent_for": scad, "rinnovo_msg_sent_at": "2026-09-09T10:32:00+00:00"}})
+        report["rinnovi_gia_avvisati"] += res.modified_count
 
     r = await db.stores.update_one({"nome": "Sondrio Grosio"}, {"$set": {"nome": "Grosio"}})
     if r.modified_count:
@@ -2045,6 +2062,10 @@ async def wa_send(phone: str, message: str, session: str = "default", tipo: str 
     log = {"id": str(uuid.uuid4()), "phone": phone, "session": session, "message": message[:1000], "tipo": tipo,
            "client_id": client_id, "servizio_id": servizio_id,
            "at": datetime.now(timezone.utc).isoformat(), "ok": False, "error": None, "session_used": None}
+    if os.environ.get("WA_DRY_RUN") == "1":
+        log.update({"ok": True, "session_used": "dry-run", "dry_run": True})
+        await db.wa_log.insert_one(log)
+        return {"status": "dry-run"}
     try:
         async with httpx.AsyncClient(timeout=30) as http_client:
             resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message, "session": session}, headers=wa_headers())
@@ -2601,6 +2622,35 @@ async def invia_avvisi_vincolo() -> dict:
 async def avvisi_vincolo_ora(admin: dict = Depends(require_admin)):
     return await invia_avvisi_vincolo()
 
+RINNOVO_PREAVVISO_GIORNI = 60
+
+async def invia_avvisi_rinnovo_energia() -> dict:
+    clients = await db.clients.find({"data_contratto": {"$nin": [None, ""]}, "telefono": {"$nin": [None, ""]}}, {"_id": 0}).to_list(20000)
+    report = []
+    for c in clients:
+        compute_dates(c)
+        if not c.get("data_scadenza"):
+            continue
+        giorni = (date.fromisoformat(c["data_scadenza"]) - date.today()).days
+        if not (0 <= giorni <= RINNOVO_PREAVVISO_GIORNI) or c.get("rinnovo_msg_sent_for") == c["data_scadenza"]:
+            continue
+        store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
+        msg = store_msg(store, "msg_rinnovo_energia", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
+        try:
+            await wa_send(c["telefono"], msg, session=c.get("venditore_id") or "default", tipo="rinnovo_energia", client_id=c["id"])
+            await db.clients.update_one({"id": c["id"]}, {"$set": {"rinnovo_msg_sent_for": c["data_scadenza"],
+                                                                   "rinnovo_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
+            report.append({"client_id": c["id"], "inviato": True, "scadenza": c["data_scadenza"]})
+        except HTTPException as e:
+            report.append({"client_id": c["id"], "inviato": False, "errore": str(e.detail)})
+    if report:
+        await db.cron_log.insert_one({"job": "rinnovo-energia", "at": datetime.now(timezone.utc).isoformat(), "report": report})
+    return {"report": report}
+
+@api_router.post("/energia/avvisi-rinnovo/invia-ora")
+async def avvisi_rinnovo_ora(admin: dict = Depends(require_admin)):
+    return await invia_avvisi_rinnovo_energia()
+
 PRONTO_MSG = MSG_DEFAULTS["msg_pronto"]
 
 async def invia_avviso_pronto(svc: dict) -> None:
@@ -2867,6 +2917,7 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
     background_tasks.add_task(invia_avvisi_riparazioni_ferme)
     background_tasks.add_task(invia_promemoria_ritiro)
     background_tasks.add_task(invia_avvisi_vincolo)
+    background_tasks.add_task(invia_avvisi_rinnovo_energia)
     return {"status": "accepted"}
 
 @api_router.get("/riparazioni-ferme")

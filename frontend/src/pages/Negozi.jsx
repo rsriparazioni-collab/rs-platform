@@ -11,13 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import StoreMessaggiEditor from "../components/StoreMessaggiEditor";
 
-const MSG_KEYS = ["msg_privacy", "msg_pronto", "msg_recensione", "msg_promemoria", "msg_vincolo", "msg_offerta_annuale"];
+const MSG_KEYS = ["msg_privacy", "msg_pronto", "msg_recensione", "msg_promemoria", "msg_vincolo", "msg_offerta_annuale", "msg_rinnovo_energia"];
 
 export default function Negozi() {
   const { user } = useAuth();
   const [stores, setStores] = useState([]);
   const [open, setOpen] = useState(false);
-  const EMPTY_FORM = { nome: "", referente: "", tipo: "negozio", note: "", review_link: "", telefono_avvisi: "", msg_privacy: "", msg_pronto: "", msg_recensione: "", msg_promemoria: "", msg_vincolo: "", msg_offerta_annuale: "" };
+  const EMPTY_FORM = { nome: "", referente: "", tipo: "negozio", note: "", review_link: "", telefono_avvisi: "", msg_privacy: "", msg_pronto: "", msg_recensione: "", msg_promemoria: "", msg_vincolo: "", msg_offerta_annuale: "", msg_rinnovo_energia: "" };
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
   const isAdmin = user.role === "admin";

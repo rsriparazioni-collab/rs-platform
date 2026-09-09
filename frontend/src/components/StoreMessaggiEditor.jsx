@@ -11,6 +11,7 @@ const CAMPI = [
   { key: "msg_recensione", label: "Richiesta recensione", hint: "Inviata 2 minuti dopo la consegna del dispositivo" },
   { key: "msg_vincolo", label: "Scadenza vincolo telefonia (30 gg prima)", hint: "Per Mobile/Fisso con vincolo > 0 mesi" },
   { key: "msg_offerta_annuale", label: "Scadenza offerta annuale (30 gg prima)", hint: "Per Mobile/Fisso con vincolo 0: ogni anno dall'attivazione" },
+  { key: "msg_rinnovo_energia", label: "Rinnovo contratto luce/gas (60 gg prima)", hint: "Inviato al 10° mese dall'attivazione del contratto energia" },
 ];
 
 export default function StoreMessaggiEditor({ form, setForm }) {
