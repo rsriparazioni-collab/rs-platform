@@ -181,3 +181,8 @@ Vedi /app/memory/test_credentials.md
 - Blacklist da anagrafica: pulsante/badge in ClientDetail; filtro "Solo blacklist recensioni" in Clienti (`GET /clients?no_recensioni=1`).
 - Registro WA: `wa_log` ha `id`, `servizio_id`; `GET /servizi/{id}/whatsapp-log` (in ServizioDetail); `POST /whatsapp-log/{id}/resend` reinvia messaggi falliti (segna `resent_at`, aggiorna i flag *_msg_sent_at). Componente `WhatsAppLog` generico con prop `url`.
 - Fix pagina bianca/"removeChild" in produzione: causa = Google Translate di Chrome che riscrive il DOM React. `index.html` ora ha `lang="it" translate="no"` + meta `google notranslate`; ErrorBoundary riconosce l'errore, ricarica una volta e mostra istruzioni per disattivare la traduzione.
+
+## 2026-09-09 — Negozio/Venduto da, privacy automatica, Telefonia Mobile/Fisso
+- ClientForm: "Negozio" mostra solo il nome negozio; "Venduto da (a chi va il compenso)" = "Negozio (compenso al negozio)" oppure un venditore (solo nome). operatore_id vuoto = compenso al negozio.
+- Privacy automatica: `POST /clients` invia in background il WhatsApp privacy a ogni nuovo cliente con telefono (`privacy_automatica_nuovo_cliente` → `invia_privacy_cliente`). Recensione accodata dopo privacy solo se non blacklist e origine != riparazione (campo `origine` su ClientInput; ServizioForm lo passa).
+- Telefonia: tab Mobile (sim) / Fisso (internet, fisso) / Vincoli in scadenza / Da proporre (`GET /telefonia/proposte`: clienti con mobile senza fisso e/o senza energia). Operatori: mobile WINDTRE VERY TIM KENA FASTWEB HO ILIAD LYCA DIGI ENEL; fisso EOLO WINDTRE FASTWEB ILIAD ENEL. Vincolo 0-999 mesi.

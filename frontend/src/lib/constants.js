@@ -56,17 +56,17 @@ export const SERVIZIO_TIPI = [
   { id: "riparazione", label: "Riparazione", section: "riparazioni" },
   { id: "accessori", label: "Accessori", section: "telefonia" },
   { id: "vendita", label: "Vendita", section: "telefonia" },
-  { id: "sim", label: "SIM", section: "telefonia" },
-  { id: "internet", label: "Internet", section: "telefonia" },
-  { id: "fisso", label: "Fisso", section: "telefonia" },
+  { id: "sim", label: "Mobile (SIM)", section: "telefonia" },
+  { id: "internet", label: "Fisso / Internet", section: "telefonia" },
+  { id: "fisso", label: "Fisso (voce)", section: "telefonia" },
 ];
 
 export const servizioTipoLabel = (id) => SERVIZIO_TIPI.find((t) => t.id === id)?.label || id || "-";
 
 export const TEL_OPERATORS = {
-  sim: ["WINDTRE", "FASTWEB", "TIM", "VERY", "KENA", "HO", "DIGI", "ILIAD"],
-  internet: ["TIM", "WindTre", "Fastweb", "Vodafone", "Iliad", "Eolo", "Enel Fibra"],
-  fisso: ["TIM", "WindTre", "Fastweb", "Vodafone", "Iliad", "Eolo"],
+  sim: ["WINDTRE", "VERY", "TIM", "KENA", "FASTWEB", "HO", "ILIAD", "LYCA", "DIGI", "ENEL"],
+  internet: ["EOLO", "WINDTRE", "FASTWEB", "ILIAD", "ENEL"],
+  fisso: ["EOLO", "WINDTRE", "FASTWEB", "ILIAD", "ENEL"],
 };
 
 

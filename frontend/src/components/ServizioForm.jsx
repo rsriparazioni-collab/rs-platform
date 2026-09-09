@@ -76,6 +76,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
           ...EMPTY_NEW_CLIENT, ...newClient,
           venditore_id: form.venditore_id || meta.stores[0]?.id || "",
           lavorazione: "da_quotare",
+          origine: tipo === "riparazione" ? "riparazione" : "telefonia",
         });
         cid = c.data.id;
       }
@@ -118,10 +119,11 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo servizio</Label>
-              <Select value={tipo} onValueChange={setTipo} disabled={isEdit || Boolean(defaultTipo)}>
+              <Select value={tipo} onValueChange={setTipo} disabled={isEdit}>
                 <SelectTrigger data-testid="servizio-tipo-select"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {SERVIZIO_TIPI.map((t) => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
+                  {SERVIZIO_TIPI.filter((t) => !defaultTipo || t.section === SERVIZIO_TIPI.find((x) => x.id === defaultTipo)?.section)
+                    .map((t) => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -131,7 +133,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                 <SelectTrigger data-testid="servizio-venditore-select"><SelectValue placeholder="Seleziona negozio" /></SelectTrigger>
                 <SelectContent>
                   {meta.stores.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.nome}{s.referente ? ` (${s.referente})` : ""}</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -296,8 +298,8 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                 <Input type="date" value={form.data_attivazione || ""} onChange={(e) => set("data_attivazione", e.target.value)} data-testid="servizio-attivazione" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vincolo (mesi, es. 48)</Label>
-                <Input type="number" value={form.vincolo_mesi ?? ""} onChange={(e) => set("vincolo_mesi", e.target.value)} data-testid="servizio-vincolo" />
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vincolo (mesi, 0-999)</Label>
+                <Input type="number" min="0" max="999" value={form.vincolo_mesi ?? ""} onChange={(e) => set("vincolo_mesi", e.target.value)} data-testid="servizio-vincolo" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Importo €/mese</Label>

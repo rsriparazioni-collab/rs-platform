@@ -549,6 +549,7 @@ class ClientInput(BaseModel):
     privacy_firmata: bool = False
     note: str = ""
     lavorazione: str = "da_quotare"
+    origine: str = ""
     venditore_id: str = ""
     operatore_id: str = ""
     provincia: str = ""
@@ -596,7 +597,7 @@ async def list_clients(user: dict = Depends(get_current_user),
     return out
 
 @api_router.post("/clients")
-async def create_client(input: ClientInput, user: dict = Depends(get_current_user)):
+async def create_client(input: ClientInput, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     data = input.model_dump()
     if user["role"] == "negozio" and data["venditore_id"] not in user.get("store_ids", []):
         if user.get("store_ids"):
@@ -607,7 +608,18 @@ async def create_client(input: ClientInput, user: dict = Depends(get_current_use
     await db.clients.insert_one(data)
     await log_lavorazione(data, user, data["lavorazione"], "Cliente inserito")
     data.pop("_id", None)
+    if data.get("telefono"):
+        background_tasks.add_task(privacy_automatica_nuovo_cliente, data["id"], data.get("origine", "") != "riparazione")
     return compute_dates(data)
+
+async def privacy_automatica_nuovo_cliente(client_id: str, queue_review: bool) -> None:
+    c = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    if not c or c.get("privacy_msg_sent_at"):
+        return
+    try:
+        await invia_privacy_cliente(c, queue_review=queue_review)
+    except HTTPException as e:
+        logger.warning(f"Privacy automatica non inviata per {client_id}: {e.detail}")
 
 @api_router.get("/clients/{client_id}")
 async def get_client(client_id: str, user: dict = Depends(get_current_user)):
@@ -2125,6 +2137,10 @@ async def whatsapp_pair(input: PairInput, admin: dict = Depends(require_admin)):
 @api_router.post("/clients/{client_id}/whatsapp/privacy")
 async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user)):
     c = await get_scoped_client(client_id, user)
+    return await invia_privacy_cliente(c)
+
+async def invia_privacy_cliente(c: dict, queue_review: bool = True) -> dict:
+    client_id = c["id"]
     if not c.get("telefono"):
         raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
     registered, reg_error = False, None
@@ -2148,7 +2164,7 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
     updates = {}
     if not wa_error:
         updates["privacy_msg_sent_at"] = now.isoformat()
-        if not c.get("no_recensioni"):
+        if queue_review and not c.get("no_recensioni"):
             await db.whatsapp_queue.insert_one({
             "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
             "type": "review", "message": REVIEW_MSG, "send_after": (now + timedelta(minutes=2)).isoformat(),
@@ -2250,9 +2266,9 @@ SERVIZIO_TIPI = ["riparazione", "accessori", "vendita", "sim", "internet", "fiss
 TIPO_TO_SECTION = {"riparazione": "riparazioni", "accessori": "telefonia", "vendita": "telefonia",
                    "sim": "telefonia", "internet": "telefonia", "fisso": "telefonia"}
 
-SIM_OPERATORS = ["WINDTRE", "FASTWEB", "TIM", "VERY", "KENA", "HO", "DIGI", "ILIAD"]
-FISSO_OPERATORS = ["TIM", "WindTre", "Fastweb", "Vodafone", "Iliad", "Eolo"]
-INTERNET_OPERATORS = ["WINDTRE", "ENELFIBRA", "EOLO", "FASTWEB", "ILIAD", "TIM", "Vodafone"]
+SIM_OPERATORS = ["WINDTRE", "VERY", "TIM", "KENA", "FASTWEB", "HO", "ILIAD", "LYCA", "DIGI", "ENEL"]
+FISSO_OPERATORS = ["EOLO", "WINDTRE", "FASTWEB", "ILIAD", "ENEL"]
+INTERNET_OPERATORS = FISSO_OPERATORS
 
 ALL_SECTIONS = ["energia", "riparazioni", "telefonia"]
 
@@ -2681,6 +2697,32 @@ async def report_vincoli(user: dict = Depends(get_current_user), giorni: int = 9
             out.append(ser)
     out.sort(key=lambda x: x["giorni_alla_scadenza"])
     return out
+
+@api_router.get("/telefonia/proposte")
+async def telefonia_proposte(user: dict = Depends(get_current_user)):
+    """Clienti con mobile ma senza fisso e senza contratto energia: da proporre."""
+    if "telefonia" not in user_sections(user):
+        raise HTTPException(status_code=403, detail="Sezione non abilitata")
+    scope = servizio_scope(user)
+    scope["tipo"] = {"$in": ["sim", "internet", "fisso"]}
+    servizi = await db.servizi.find(scope, {"_id": 0, "client_id": 1, "tipo": 1, "operatore_tel": 1, "venditore_id": 1}).to_list(10000)
+    per_client: dict = {}
+    for s in servizi:
+        per_client.setdefault(s["client_id"], {"tipi": set(), "venditore_id": s.get("venditore_id", ""), "operatore": s.get("operatore_tel", "")})
+        per_client[s["client_id"]]["tipi"].add(s["tipo"])
+    ids = [cid for cid, v in per_client.items() if "sim" in v["tipi"] and not ({"fisso", "internet"} & v["tipi"])]
+    if not ids:
+        return []
+    clients = await db.clients.find({"id": {"$in": ids}}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "telefono": 1,
+                                                          "lavorazione": 1, "nuovo_fornitore": 1, "no_recensioni": 1}).to_list(10000)
+    out = []
+    for c in clients:
+        ha_energia = c.get("lavorazione") == "cambio_effettuato" or bool(c.get("nuovo_fornitore"))
+        out.append({"client_id": c["id"], "client_name": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(),
+                    "telefono": c.get("telefono", ""), "operatore_mobile": per_client[c["id"]]["operatore"],
+                    "venditore_id": per_client[c["id"]]["venditore_id"],
+                    "manca_fisso": True, "manca_energia": not ha_energia})
+    return sorted(out, key=lambda x: (not x["manca_energia"], x["client_name"]))
 
 # ---------------- Cron ----------------
 

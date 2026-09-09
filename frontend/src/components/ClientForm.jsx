@@ -263,21 +263,22 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Negozio / Venditore" testid="venditore">
+              <Field label="Negozio" testid="venditore">
                 <Select value={form.venditore_id} onValueChange={(v) => set("venditore_id", v)}>
                   <SelectTrigger data-testid="select-venditore"><SelectValue placeholder="Seleziona negozio" /></SelectTrigger>
                   <SelectContent>
                     {meta.stores.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.nome}{s.referente ? ` (${s.referente})` : ""}</SelectItem>
+                      <SelectItem key={s.id} value={s.id}>{s.nome}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Venduto da" testid="operatore">
-                <Select value={form.operatore_id} onValueChange={(v) => set("operatore_id", v)}>
-                  <SelectTrigger data-testid="select-operatore"><SelectValue placeholder="Seleziona venditore" /></SelectTrigger>
-                  <SelectContent>
-                    {venditori.map((o) => <SelectItem key={o.id} value={o.id}>{o.nome}{o.store_name ? ` · ${o.store_name}` : ""}</SelectItem>)}
+              <Field label="Venduto da (a chi va il compenso)" testid="operatore">
+                <Select value={form.operatore_id || "__negozio__"} onValueChange={(v) => set("operatore_id", v === "__negozio__" ? "" : v)}>
+                  <SelectTrigger data-testid="select-operatore"><SelectValue placeholder="Seleziona" /></SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    <SelectItem value="__negozio__">Negozio (compenso al negozio)</SelectItem>
+                    {venditori.map((o) => <SelectItem key={o.id} value={o.id}>{o.nome}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </Field>
