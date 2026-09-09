@@ -2047,8 +2047,9 @@ def _build_scheda_pdf(svc: dict, client_doc: dict) -> bytes:
     _pdf_field(pdf, "Telefono", tel)
     _pdf_field(pdf, "Dispositivo", svc.get("dispositivo"))
     sblocco = ""
+    segreti = leggi_segreti(svc)
     if svc.get("codice_sblocco_tipo") and svc.get("codice_sblocco_tipo") != "nessuno":
-        sblocco = f"{svc['codice_sblocco_tipo']}: {svc.get('codice_sblocco') or '-'}"
+        sblocco = f"{svc['codice_sblocco_tipo']}: {segreti.get('codice_sblocco') or '-'}"
     _pdf_field(pdf, "Codice sblocco", sblocco or "Nessuno")
     pdf.ln(2)
     _pdf_multiline(pdf, "Problema riscontrato", svc.get("problema"))
@@ -2063,7 +2064,9 @@ def _build_scheda_pdf(svc: dict, client_doc: dict) -> bytes:
     else:
         pdf.cell(0, 7, "Nessun ricambio", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
-    if svc.get("prezzo_consigliato") is not None:
+    if svc.get("prezzo_finale") is not None:
+        _pdf_field(pdf, "Prezzo", f"EUR {float(svc['prezzo_finale']):.2f} (IVA inclusa)")
+    elif svc.get("prezzo_consigliato") is not None:
         _pdf_field(pdf, "Prezzo", f"EUR {svc['prezzo_consigliato']:.2f} (IVA inclusa)")
     pdf.ln(12)
     pdf.set_font("helvetica", "", 11)
@@ -2519,8 +2522,16 @@ def scadenza_offerta(s: dict) -> Optional[tuple]:
     return scad, True
 
 def serialize_servizio(s: dict, client_name: str = "") -> dict:
-    out = {k: v for k, v in s.items() if k != "_id"}
+    out = {k: v for k, v in s.items() if k != "_id" and k not in SECRET_FIELDS and not k.endswith("_enc")}
     out["client_name"] = client_name
+    for f in SECRET_FIELDS:
+        out["has_" + f] = bool(s.get(f + "_enc") or s.get(f))
+    costi = costi_riparazione(s)
+    if costi:
+        out["costi"] = costi
+        pf = s.get("prezzo_finale")
+        if pf is not None:
+            out["margine_reale"] = round(float(pf) / 1.22 - costi["totale"], 2)
     so = scadenza_offerta(s)
     if so:
         out["scadenza_vincolo"] = so[0].isoformat()
@@ -2575,6 +2586,43 @@ class ServizioInput(BaseModel):
     data_ingresso: Optional[str] = None
     data_lavorazione: Optional[str] = None
     data_uscita: Optional[str] = None
+    prezzo_finale: Optional[float] = None
+
+SECRET_FIELDS = ("codice_sblocco", "account_password")
+
+def cifra_segreti(data: dict, old: Optional[dict] = None) -> None:
+    """Sposta i campi sensibili in *_enc cifrati. Stringa vuota in update = mantieni valore esistente."""
+    for f in SECRET_FIELDS:
+        if f not in data:
+            continue
+        val = data.pop(f)
+        if val:
+            data[f + "_enc"] = totp_encrypt(val)
+        elif old is None:
+            data[f + "_enc"] = None
+
+def leggi_segreti(s: dict) -> dict:
+    out = {}
+    for f in SECRET_FIELDS:
+        enc = s.get(f + "_enc")
+        out[f] = totp_decrypt(enc) if enc else (s.get(f) or "")
+    return out
+
+def cancella_segreti_update() -> dict:
+    unset = {f: "" for f in SECRET_FIELDS}
+    unset.update({f + "_enc": "" for f in SECRET_FIELDS})
+    return {"$unset": unset, "$set": {"segreti_cancellati_at": datetime.now(timezone.utc).isoformat()}}
+
+def costi_riparazione(s: dict) -> Optional[dict]:
+    if s.get("tipo") != "riparazione":
+        return None
+    minuti_raw = int(s.get("minuti_lavoro") or 0)
+    batteria = bool(s.get("con_ricambio")) and s.get("tipo_ricambio") == "batteria"
+    minuti = minuti_raw if batteria else max(minuti_raw, 30)
+    componente = (float(s.get("costo_componente") or 0) + 2.0) if s.get("con_ricambio") else 0.0
+    lavoro = minuti * 0.22775
+    return {"componente": round(componente, 2), "lavoro": round(lavoro, 2), "totale": round(componente + lavoro, 2)}
+
 
 def apply_rip_dates(data: dict, old: Optional[dict] = None) -> None:
     if data.get("tipo", (old or {}).get("tipo")) != "riparazione":
@@ -2623,6 +2671,7 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
     if data["tipo"] == "riparazione":
         data["numero_riparazione"] = await next_numero("riparazione", data.get("venditore_id") or "")
     apply_rip_dates(data)
+    cifra_segreti(data)
     now = datetime.now(timezone.utc).isoformat()
     data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_at": now, "updated_at": now,
                  "last_payment_date": date.today().isoformat() if data.get("pagato") else None,
@@ -2630,6 +2679,12 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
     await db.servizi.insert_one(data)
     data.pop("_id", None)
     return serialize_servizio(data, f"{client_doc.get('cognome', '')} {client_doc.get('nome', '')}".strip())
+
+@api_router.get("/servizi/{servizio_id}/segreti")
+async def get_servizio_segreti(servizio_id: str, user: dict = Depends(get_current_user)):
+    s = await get_scoped_servizio(servizio_id, user)
+    return {**leggi_segreti(s), "codice_sblocco_tipo": s.get("codice_sblocco_tipo", ""), "account_email": s.get("account_email", ""),
+            "segreti_cancellati_at": s.get("segreti_cancellati_at")}
 
 @api_router.get("/servizi/{servizio_id}")
 async def get_servizio(servizio_id: str, user: dict = Depends(get_current_user)):
@@ -2647,10 +2702,13 @@ async def update_servizio(servizio_id: str, input: ServizioInput, background_tas
     if user["role"] == "negozio":
         data.pop("venditore_id", None)
     apply_rip_dates(data, old)
+    cifra_segreti(data, old)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     if data.get("pagato") and not old.get("pagato"):
         data["last_payment_date"] = date.today().isoformat()
     await db.servizi.update_one({"id": servizio_id}, {"$set": data})
+    if data.get("stato") in ("consegnato", "non_riparabile") and old.get("stato") not in ("consegnato", "non_riparabile"):
+        await db.servizi.update_one({"id": servizio_id}, cancella_segreti_update())
     updated = await db.servizi.find_one({"id": servizio_id}, {"_id": 0})
     if updated.get("tipo") == "riparazione" and updated.get("stato") == "pronto" and old.get("stato") != "pronto" \
             and not updated.get("pronto_msg_sent_at"):
@@ -3318,6 +3376,7 @@ async def seed_data():
 @app.on_event("startup")
 async def startup():
     await seed_data()
+    await migra_segreti_in_chiaro()
     try:
         init_storage()
         logger.info("Object storage inizializzato")
@@ -3327,6 +3386,20 @@ async def startup():
 app.include_router(api_router)
 
 # ---------------- Registro accessi (audit GDPR) ----------------
+async def migra_segreti_in_chiaro() -> None:
+    """Cifra i codici sblocco/password salvati in chiaro e cancella quelli di riparazioni chiuse."""
+    cur = db.servizi.find({"$or": [{"codice_sblocco": {"$nin": [None, ""]}}, {"account_password": {"$nin": [None, ""]}}]}, {"_id": 0})
+    n = 0
+    async for s in cur:
+        if s.get("stato") in ("consegnato", "non_riparabile"):
+            await db.servizi.update_one({"id": s["id"]}, cancella_segreti_update())
+        else:
+            upd = {f + "_enc": totp_encrypt(s[f]) for f in SECRET_FIELDS if s.get(f)}
+            await db.servizi.update_one({"id": s["id"]}, {"$set": upd, "$unset": {f: "" for f in SECRET_FIELDS}})
+        n += 1
+    if n:
+        logger.info(f"Segreti dispositivi migrati/cancellati: {n}")
+
 AUDIT_ENTITIES = [
     (re.compile(r"^/api/clients/([^/]+)/whatsapp-log$"), "cliente", "view"),
     (re.compile(r"^/api/clients/([^/]+)/messaggi-previsti$"), None, None),
@@ -3334,6 +3407,7 @@ AUDIT_ENTITIES = [
     (re.compile(r"^/api/clients/([^/]+)/(whatsapp|allegati|foto)"), "cliente", "update"),
     (re.compile(r"^/api/clients/([^/]+)$"), "cliente", None),
     (re.compile(r"^/api/clients$"), "cliente", None),
+    (re.compile(r"^/api/servizi/([^/]+)/segreti$"), "servizio", "view_segreti"),
     (re.compile(r"^/api/servizi/([^/]+)/whatsapp-log$"), "servizio", "view"),
     (re.compile(r"^/api/servizi/([^/]+)/(whatsapp|allegati|foto|ricambi|scheda)"), "servizio", "update"),
     (re.compile(r"^/api/servizi/([^/]+)$"), "servizio", None),

@@ -96,7 +96,7 @@ export default function Riparazioni() {
                 <th className="px-4 py-3">Ingresso</th>
                 <th className="px-4 py-3">Lavorazione</th>
                 <th className="px-4 py-3">Uscita</th>
-                <th className="px-4 py-3">Prezzo cons.</th>
+                <th className="px-4 py-3">Prezzo</th>
                 {canSeeAll && <th className="px-4 py-3">Negozio</th>}
                 <th className="px-4 py-3">Pagato</th>
                 <th className="px-4 py-3"></th>
@@ -121,7 +121,7 @@ export default function Riparazioni() {
                   <td className="px-4 py-3 text-xs text-slate-600" data-testid={`riparazione-lavorazione-${i}`}>{fmtDate(s.data_lavorazione)}</td>
                   <td className="px-4 py-3 text-xs text-slate-600" data-testid={`riparazione-uscita-${i}`}>{fmtDate(s.data_uscita)}</td>
                   <td className="px-4 py-3 font-semibold text-emerald-700">
-                    {s.prezzo_consigliato != null ? `€ ${s.prezzo_consigliato.toFixed(2)}` : "-"}
+                    {s.prezzo_finale != null ? `€ ${Number(s.prezzo_finale).toFixed(2)}` : s.prezzo_consigliato != null ? `€ ${s.prezzo_consigliato.toFixed(2)}` : "-"}
                   </td>
                   {canSeeAll && <td className="px-4 py-3 text-slate-600">{storeName(s.venditore_id)}</td>}
                   <td className="px-4 py-3">

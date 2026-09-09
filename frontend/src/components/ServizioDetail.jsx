@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, Recycle, FileDown, Ban } from "lucide-react";
+import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, Recycle, FileDown, Ban, Lock } from "lucide-react";
 import RitiroDaRiparazione from "./RitiroDaRiparazione";
 import WhatsAppLog from "./WhatsAppLog";
 import { toast } from "sonner";
@@ -10,25 +10,27 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 function PrezzoBreakdown({ s }) {
-  const minuti = Math.max(s.minuti_lavoro || 0, 30);
-  const lavoro = minuti * 0.22775;
-  const base = s.con_ricambio ? (s.costo_componente || 0) + 2 + lavoro + 60 : 30 + lavoro;
+  const costi = s.costi || { componente: 0, lavoro: 0, totale: 0 };
+  const finale = s.prezzo_finale ?? s.prezzo_consigliato ?? 0;
+  const margine = s.margine_reale ?? Math.round((finale / 1.22 - costi.totale) * 100) / 100;
   return (
     <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4" data-testid="servizio-prezzo-card">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Prezzo consigliato</p>
-      <p className="font-heading text-3xl font-bold text-emerald-800">€ {(s.prezzo_consigliato ?? 0).toFixed(2)}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-slate-500">{s.prezzo_finale != null ? "Prezzo finale" : "Prezzo consigliato"}</p>
+          <p className="font-heading text-3xl font-bold text-emerald-800" data-testid="servizio-prezzo-finale">€ {Number(finale).toFixed(2)}</p>
+          {s.prezzo_finale != null && <p className="text-xs text-slate-500">consigliato € {(s.prezzo_consigliato ?? 0).toFixed(2)}</p>}
+        </div>
+        <div className="text-right">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-slate-500">Margine reale</p>
+          <p className={`font-heading text-2xl font-bold ${margine < 0 ? "text-rose-700" : margine < 15 ? "text-amber-700" : "text-emerald-800"}`} data-testid="servizio-margine">€ {margine.toFixed(2)}</p>
+          <p className="text-xs text-slate-500">netto IVA, dopo costi</p>
+        </div>
+      </div>
       <div className="mt-2 space-y-0.5 text-xs text-slate-600">
-        {s.con_ricambio ? (
-          <>
-            <p>Componente: € {(s.costo_componente || 0).toFixed(2)}</p>
-            <p>Trasporto: € 2,00</p>
-            <p>Margine: € 60,00</p>
-          </>
-        ) : (
-          <p>Base senza ricambio: € 30,00</p>
-        )}
-        <p>Lavoro: {minuti} min × 0,22775€ = € {lavoro.toFixed(2)}</p>
-        <p>IVA 22% inclusa</p>
+        {s.con_ricambio && <p>{s.tipo_ricambio === "batteria" ? "Batteria" : "Componente"} + trasporto: € {costi.componente.toFixed(2)}</p>}
+        <p>Lavoro: € {costi.lavoro.toFixed(2)} ({s.minuti_lavoro || 0} min × 0,22775€)</p>
+        <p>Imponibile: € {(Number(finale) / 1.22).toFixed(2)} · IVA 22% inclusa</p>
       </div>
     </div>
   );
@@ -44,6 +46,12 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
   const [ricQty, setRicQty] = useState(1);
   const [ricPrezzo, setRicPrezzo] = useState("");
   const [ritiroOpen, setRitiroOpen] = useState(false);
+  const [segreti, setSegreti] = useState(null);
+
+  const mostraSegreti = async () => {
+    try { setSegreti((await api.get(`/servizi/${detail.id}/segreti`)).data); }
+    catch (e) { toast.error(apiError(e)); }
+  };
 
   const refresh = useCallback(async () => {
     if (!servizio) return;
@@ -307,10 +315,22 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     </div>
                     {detail.problema && <div className="col-span-2"><p className="text-xs text-slate-500">Problema</p><p className="font-medium whitespace-pre-wrap">{detail.problema}</p></div>}
                     {detail.codice_sblocco_tipo && detail.codice_sblocco_tipo !== "nessuno" && (
-                      <div><p className="text-xs text-slate-500">Codice sblocco</p><p className="font-medium" data-testid="servizio-sblocco-info">{detail.codice_sblocco_tipo}: {detail.codice_sblocco || "-"}</p></div>
+                      <div><p className="text-xs text-slate-500">Codice sblocco</p>
+                        <p className="font-medium" data-testid="servizio-sblocco-info">{detail.codice_sblocco_tipo}: {segreti ? (segreti.codice_sblocco || "-") : (detail.has_codice_sblocco ? "••••" : "-")}</p></div>
                     )}
                     {detail.account_email && (
-                      <div><p className="text-xs text-slate-500">Account dispositivo</p><p className="font-medium" data-testid="servizio-account-info">{detail.account_email}{detail.account_password ? ` · ${detail.account_password}` : ""}</p></div>
+                      <div><p className="text-xs text-slate-500">Account dispositivo</p>
+                        <p className="font-medium" data-testid="servizio-account-info">{detail.account_email}{segreti ? (segreti.account_password ? ` · ${segreti.account_password}` : "") : (detail.has_account_password ? " · ••••" : "")}</p></div>
+                    )}
+                    {(detail.has_codice_sblocco || detail.has_account_password) && !segreti && (
+                      <div className="col-span-2">
+                        <Button size="sm" variant="outline" onClick={mostraSegreti} className="gap-1" data-testid="servizio-mostra-codici">
+                          <Lock className="h-3.5 w-3.5" /> Mostra codici (accesso registrato)
+                        </Button>
+                      </div>
+                    )}
+                    {detail.segreti_cancellati_at && (
+                      <p className="col-span-2 text-xs text-slate-500" data-testid="servizio-segreti-cancellati">Codici dispositivo cancellati alla consegna ({fmtDate(detail.segreti_cancellati_at)}) per tutela privacy.</p>
                     )}
                     {detail.operazioni && <div className="col-span-2"><p className="text-xs text-slate-500">Operazioni svolte</p><p className="font-medium whitespace-pre-wrap" data-testid="servizio-operazioni-info">{detail.operazioni}</p></div>}
                   </>

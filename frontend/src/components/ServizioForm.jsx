@@ -94,6 +94,9 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
         data_ingresso: form.data_ingresso || null,
         data_lavorazione: form.data_lavorazione || null,
         data_uscita: form.data_uscita || null,
+        prezzo_finale: form.prezzo_finale === "" || form.prezzo_finale == null ? null : parseFloat(form.prezzo_finale),
+        codice_sblocco: form.codice_sblocco || "",
+        account_password: form.account_password || "",
       };
       if (isEdit) {
         await api.patch(`/servizi/${servizio.id}`, payload);
@@ -234,7 +237,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                   <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     {form.codice_sblocco_tipo === "simbolo" ? "Sequenza (es. 1-5-9-6)" : form.codice_sblocco_tipo === "pin" ? "PIN" : "Password"}
                   </Label>
-                  <Input value={form.codice_sblocco || ""} onChange={(e) => set("codice_sblocco", e.target.value)} data-testid="servizio-sblocco" />
+                  <Input value={form.codice_sblocco || ""} onChange={(e) => set("codice_sblocco", e.target.value)} placeholder={isEdit && servizio?.has_codice_sblocco ? "•••• salvato cifrato (lascia vuoto per non cambiare)" : ""} data-testid="servizio-sblocco" />
                 </div>
               )}
               <div className="space-y-1.5">
@@ -243,7 +246,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Password account dispositivo</Label>
-                <Input value={form.account_password || ""} onChange={(e) => set("account_password", e.target.value)} data-testid="servizio-account-password" />
+                <Input value={form.account_password || ""} onChange={(e) => set("account_password", e.target.value)} placeholder={isEdit && servizio?.has_account_password ? "•••• salvata cifrata (lascia vuoto per non cambiare)" : ""} data-testid="servizio-account-password" />
               </div>
               <div className="col-span-full space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Operazioni svolte</Label>
@@ -286,6 +289,24 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                       : "costo componente + 2€ trasporto + minuti × 0,22775€ + 60€ margine + IVA 22%")
                     : "30€ base + minuti × 0,22775€ + IVA 22%"}
                 </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-slate-600">Prezzo finale al cliente € (vuoto = consigliato)</Label>
+                    <Input type="number" step="0.01" value={form.prezzo_finale ?? ""} onChange={(e) => set("prezzo_finale", e.target.value)} placeholder={prezzo != null ? prezzo.toFixed(2) : ""} data-testid="servizio-prezzo-finale" />
+                  </div>
+                  <div className="rounded-lg bg-white/70 px-3 py-2" data-testid="servizio-margine-preview">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Margine reale (netto IVA)</p>
+                    {(() => {
+                      const finale = form.prezzo_finale !== "" && form.prezzo_finale != null ? parseFloat(form.prezzo_finale) : prezzo;
+                      if (finale == null || isNaN(finale)) return <p className="text-slate-400">-</p>;
+                      const minRaw = parseInt(form.minuti_lavoro) || 0;
+                      const bat = form.con_ricambio && form.tipo_ricambio === "batteria";
+                      const costi = (form.con_ricambio ? (parseFloat(form.costo_componente) || 0) + 2 : 0) + (bat ? minRaw : Math.max(minRaw, 30)) * 0.22775;
+                      const m = finale / 1.22 - costi;
+                      return <p className={`font-heading text-xl font-bold ${m < 0 ? "text-rose-700" : m < 15 ? "text-amber-700" : "text-emerald-800"}`}>€ {m.toFixed(2)}</p>;
+                    })()}
+                  </div>
+                </div>
               </div>
             </div>
           )}
