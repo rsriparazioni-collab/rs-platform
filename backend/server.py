@@ -45,6 +45,7 @@ api_router = APIRouter(prefix="/api")
 
 JWT_ALGORITHM = "HS256"
 security = HTTPBearer(auto_error=False)
+MFA_SETUP_ALLOWED = ("/api/auth/me", "/api/auth/logout", "/api/auth/2fa/")
 
 SUPPLIERS = [
     "Enel Energia", "Eni Plenitude", "A2A Energia", "Edison Energia", "Hera Comm",
@@ -140,6 +141,10 @@ async def get_current_user(request: Request, creds: HTTPAuthorizationCredentials
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
         if not user or not user.get("active", True):
             raise HTTPException(status_code=401, detail="Utente non trovato")
+        if not user.get("totp_enabled") and not request.url.path.startswith(MFA_SETUP_ALLOWED):
+            raise HTTPException(status_code=403, detail="Attiva la verifica in due passaggi per continuare",
+                                headers={"X-MFA-Setup-Required": "1"})
+        request.state.user = user
         return user
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Sessione scaduta")
@@ -387,7 +392,7 @@ class TotpDisableInput(BaseModel):
     code: str
 
 @api_router.post("/auth/login/mfa")
-async def login_mfa(input: MfaLoginInput):
+async def login_mfa(input: MfaLoginInput, request: Request):
     try:
         payload = jwt.decode(input.mfa_token, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
@@ -407,6 +412,7 @@ async def login_mfa(input: MfaLoginInput):
                                            upsert=True)
         raise HTTPException(status_code=401, detail="Codice non valido")
     await db.login_attempts.delete_one({"identifier": identifier})
+    request.state.mfa_user = user
     from fastapi.responses import JSONResponse
     token = create_token(user["id"])
     resp = JSONResponse({"token": token, "user": serialize_user(user)})
@@ -3312,6 +3318,109 @@ async def startup():
         logger.info("Object storage inizializzato")
     except Exception as e:
         logger.error(f"Storage init fallito: {e}")
+
+app.include_router(api_router)
+
+# ---------------- Registro accessi (audit GDPR) ----------------
+AUDIT_ENTITIES = [
+    (re.compile(r"^/api/clients/([^/]+)/whatsapp-log$"), "cliente", "view"),
+    (re.compile(r"^/api/clients/([^/]+)/messaggi-previsti$"), None, None),
+    (re.compile(r"^/api/clients/([^/]+)/blacklist-recensioni$"), "cliente", "update"),
+    (re.compile(r"^/api/clients/([^/]+)/(whatsapp|allegati|foto)"), "cliente", "update"),
+    (re.compile(r"^/api/clients/([^/]+)$"), "cliente", None),
+    (re.compile(r"^/api/clients$"), "cliente", None),
+    (re.compile(r"^/api/servizi/([^/]+)/whatsapp-log$"), "servizio", "view"),
+    (re.compile(r"^/api/servizi/([^/]+)/(whatsapp|allegati|foto|ricambi|scheda)"), "servizio", "update"),
+    (re.compile(r"^/api/servizi/([^/]+)$"), "servizio", None),
+    (re.compile(r"^/api/servizi$"), "servizio", None),
+    (re.compile(r"^/api/ritiri/([^/]+)/pdf$"), "ritiro", "export"),
+    (re.compile(r"^/api/ritiri/([^/]+)$"), "ritiro", None),
+    (re.compile(r"^/api/ritiri$"), "ritiro", None),
+    (re.compile(r"^/api/export/"), "clienti", "export"),
+    (re.compile(r"^/api/(magazzino|ritiri)/export$"), "export", "export"),
+    (re.compile(r"^/api/import/"), "clienti", "import"),
+    (re.compile(r"^/api/users/([^/]+)"), "utente", None),
+    (re.compile(r"^/api/users$"), "utente", None),
+    (re.compile(r"^/api/auth/login/mfa$"), "accesso", "login"),
+    (re.compile(r"^/api/auth/logout$"), "accesso", "logout"),
+    (re.compile(r"^/api/auth/2fa/(enroll/confirm|disable)$"), "sicurezza", "update"),
+]
+METHOD_ACTION = {"POST": "create", "PATCH": "update", "PUT": "update", "DELETE": "delete", "GET": "view"}
+
+def _audit_classify(method: str, path: str):
+    for rx, entity, action in AUDIT_ENTITIES:
+        m = rx.match(path)
+        if not m:
+            continue
+        if entity is None:
+            return None
+        act = action or METHOD_ACTION.get(method)
+        if act == "view" and not m.groups():
+            return None  # elenco: non tracciato (troppo rumore)
+        return entity, act, (m.group(1) if m.groups() else "")
+    return None
+
+@app.middleware("http")
+async def audit_middleware(request: Request, call_next):
+    response = await call_next(request)
+    if request.method == "OPTIONS" or response.status_code >= 400:
+        return response
+    cls = _audit_classify(request.method, request.url.path)
+    if not cls:
+        return response
+    user = getattr(request.state, "user", None)
+    if not user and request.url.path == "/api/auth/login/mfa":
+        user = getattr(request.state, "mfa_user", None)
+    if not user:
+        return response
+    entity, action, entity_id = cls
+    label = ""
+    try:
+        if entity == "cliente" and entity_id:
+            c = await db.clients.find_one({"id": entity_id}, {"_id": 0, "nome": 1, "cognome": 1})
+            label = f"{c.get('cognome', '')} {c.get('nome', '')}".strip() if c else ""
+        elif entity == "servizio" and entity_id:
+            s = await db.servizi.find_one({"id": entity_id}, {"_id": 0, "numero_riparazione": 1, "tipo": 1, "dispositivo": 1})
+            label = f"{s.get('numero_riparazione') or s.get('tipo', '')} {s.get('dispositivo', '')}".strip() if s else ""
+        elif entity == "ritiro" and entity_id:
+            r = await db.ritiri.find_one({"id": entity_id}, {"_id": 0, "numero": 1, "cognome": 1})
+            label = f"{r.get('numero', '')} {r.get('cognome', '')}".strip() if r else ""
+        elif entity == "utente" and entity_id:
+            u = await db.users.find_one({"id": entity_id}, {"_id": 0, "name": 1})
+            label = u.get("name", "") if u else ""
+    except Exception:
+        pass
+    fwd = request.headers.get("x-forwarded-for", "")
+    await db.audit_log.insert_one({
+        "id": str(uuid.uuid4()), "at": datetime.now(timezone.utc).isoformat(),
+        "user_id": user["id"], "user_name": user.get("name", ""), "user_role": user.get("role", ""),
+        "action": action, "entity": entity, "entity_id": entity_id, "label": label,
+        "method": request.method, "path": request.url.path[:200],
+        "ip": (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "")),
+    })
+    return response
+
+@api_router.get("/audit-log")
+async def audit_log_list(admin: dict = Depends(require_admin), q: str = "", user_id: str = "", action: str = "",
+                         entity: str = "", dal: str = "", al: str = "", limit: int = 200):
+    f: dict = {}
+    if user_id:
+        f["user_id"] = user_id
+    if action:
+        f["action"] = action
+    if entity:
+        f["entity"] = entity
+    if dal or al:
+        f["at"] = {}
+        if dal:
+            f["at"]["$gte"] = dal
+        if al:
+            f["at"]["$lte"] = al + "T23:59:59"
+    if q:
+        f["$or"] = [{"label": {"$regex": re.escape(q), "$options": "i"}}, {"user_name": {"$regex": re.escape(q), "$options": "i"}},
+                    {"path": {"$regex": re.escape(q), "$options": "i"}}]
+    rows = await db.audit_log.find(f, {"_id": 0}).sort("at", -1).to_list(min(max(limit, 1), 1000))
+    return rows
 
 app.include_router(api_router)
 

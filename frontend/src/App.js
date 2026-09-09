@@ -10,6 +10,7 @@ import Negozi from "./pages/Negozi";
 import Operatori from "./pages/Operatori";
 import Utenti from "./pages/Utenti";
 import Sicurezza from "./pages/Sicurezza";
+import RegistroAccessi from "./pages/RegistroAccessi";
 import WhatsApp from "./pages/WhatsApp";
 import Riparazioni from "./pages/Riparazioni";
 import Telefonia from "./pages/Telefonia";
@@ -29,6 +30,9 @@ function Protected({ children }) {
   }
   if (user === false) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+  if (!user.totp_enabled && location.pathname !== "/sicurezza") {
+    return <Navigate to="/sicurezza" replace />;
   }
   return children;
 }
@@ -64,6 +68,7 @@ function App() {
             <Route path="whatsapp" element={<RequireRole roles={["admin"]}><WhatsApp /></RequireRole>} />
             <Route path="utenti" element={<Utenti />} />
             <Route path="sicurezza" element={<Sicurezza />} />
+            <Route path="registro-accessi" element={<RequireRole roles={["admin"]}><RegistroAccessi /></RequireRole>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -9,7 +9,7 @@ import { Label } from "../components/ui/label";
 import { fmtDate } from "../lib/constants";
 
 export default function Sicurezza() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [status, setStatus] = useState(null);
   const [setup, setSetup] = useState(null);
   const [code, setCode] = useState("");
@@ -32,6 +32,7 @@ export default function Sicurezza() {
     try {
       const r = await api.post("/auth/2fa/enroll/confirm", { code });
       setRecovery(r.data.recovery_codes); setSetup(null); load();
+      setUser((u) => ({ ...u, totp_enabled: true }));
       toast.success("Autenticazione a due fattori attivata");
     } catch (err) { toast.error(apiError(err, "Codice non valido")); } finally { setBusy(false); }
   };
@@ -55,6 +56,12 @@ export default function Sicurezza() {
         <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">Sicurezza account</h1>
         <p className="mt-1 text-sm text-slate-500">{user.name} · {user.email}</p>
       </div>
+
+      {!status?.enabled && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-800" data-testid="2fa-mandatory-banner">
+          <b>La verifica in due passaggi è obbligatoria.</b> Per accedere al gestionale devi attivarla ora: bastano 2 minuti con l'app Authenticator sul telefono.
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm" data-testid="2fa-card">
         <div className="flex items-start gap-4">
