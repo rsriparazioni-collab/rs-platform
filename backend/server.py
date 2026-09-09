@@ -2561,6 +2561,39 @@ async def resend_whatsapp_log(log_id: str, user: dict = Depends(get_current_user
         await db.clients.update_one({"id": log["client_id"]}, {"$set": {field: now}})
     return {"status": "ok"}
 
+@api_router.get("/clients/{client_id}/messaggi-previsti")
+async def messaggi_previsti(client_id: str, user: dict = Depends(get_current_user)):
+    c = compute_dates(await get_scoped_client(client_id, user))
+    today = date.today()
+    items = []
+    if c.get("data_attivazione"):
+        att = date.fromisoformat(c["data_attivazione"])
+        d = att + timedelta(days=TRUFFE_DOPO_GIORNI)
+        items.append({"tipo": "truffe", "label": "Attenzione truffe", "data": d.isoformat(),
+                      "inviato_il": c.get("truffe_msg_sent_at"),
+                      "stato": "inviato" if c.get("truffe_msg_sent_at") else ("saltato" if (today - att).days > TRUFFE_FINESTRA_GIORNI else "previsto")})
+    if c.get("data_scadenza"):
+        scad = date.fromisoformat(c["data_scadenza"])
+        d = scad - timedelta(days=RINNOVO_PREAVVISO_GIORNI)
+        sent = c.get("rinnovo_msg_sent_for") == c["data_scadenza"]
+        items.append({"tipo": "rinnovo_energia", "label": "Rinnovo luce/gas", "data": d.isoformat(), "scadenza": c["data_scadenza"],
+                      "inviato_il": c.get("rinnovo_msg_sent_at") if sent else None,
+                      "stato": "inviato" if sent else ("saltato" if today > scad else "previsto")})
+    servizi = await db.servizi.find({"client_id": client_id, "tipo": {"$in": ["sim", "internet", "fisso"]}}, {"_id": 0}).to_list(100)
+    for s in servizi:
+        so = scadenza_offerta(s)
+        if not so:
+            continue
+        scad, annuale = so
+        d = scad - timedelta(days=VINCOLO_PREAVVISO_GIORNI)
+        sent = s.get("vincolo_msg_sent_for") == scad.isoformat()
+        items.append({"tipo": "offerta_annuale" if annuale else "vincolo",
+                      "label": f"{'Offerta annuale' if annuale else 'Scadenza vincolo'} {s.get('operatore_tel', '')} {s.get('numero', '')}".strip(),
+                      "data": d.isoformat(), "scadenza": scad.isoformat(),
+                      "inviato_il": s.get("vincolo_msg_sent_at") if sent else None,
+                      "stato": "inviato" if sent else ("saltato" if today > scad else "previsto")})
+    return sorted(items, key=lambda x: x["data"])
+
 @api_router.post("/clients/{client_id}/blacklist-recensioni")
 async def blacklist_recensioni(client_id: str, input: BlacklistInput, user: dict = Depends(get_current_user)):
     c = await db.clients.find_one({"id": client_id}, {"_id": 0, "id": 1})

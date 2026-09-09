@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban } from "lucide-react";
 import WhatsAppLog from "./WhatsAppLog";
+import MessaggiPrevisti from "./MessaggiPrevisti";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { lavorazioneLabel, lavorazioneBadge, fmtDate, servizioTipoLabel, ripStatoLabel, ripStatoBadge } from "../lib/constants";
@@ -291,6 +292,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                 </div>
               </div>
 
+              <MessaggiPrevisti clientId={detail.id} refreshKey={logKey} />
               <WhatsAppLog url={`/clients/${detail.id}/whatsapp-log`} refreshKey={logKey} onResent={refresh} />
 
               <div className="rounded-xl border border-slate-200 p-4" data-testid="attachments-card">
