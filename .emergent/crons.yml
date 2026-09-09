@@ -6,7 +6,7 @@ crons:
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     endpoint: "{{BASE_URL}}/api/cron/daily-digest"
   - name: riparazioni-ferme
-    description: "Ogni mattina alle 8:30: WhatsApp ai negozi con riparazioni ferme >7gg e promemoria ritiro ai clienti"
+    description: "Ogni mattina alle 8:30: avvisi WhatsApp (negozi, promemoria, vincoli, rinnovi, truffe) e pulizia GDPR clienti inattivi >5 anni"
     cron: "30 8 * * *"
     timezone: "Europe/Rome"
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.

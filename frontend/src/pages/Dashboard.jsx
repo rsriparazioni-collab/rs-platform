@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRight, Wrench, Smartphone, CalendarClock, Package, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
+import MarginiChart from "../components/MarginiChart";
 import { useAuth } from "../context/AuthContext";
 import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate } from "../lib/constants";
 import { Button } from "../components/ui/button";
@@ -376,6 +377,8 @@ export default function Dashboard() {
           </table>
         </div>
       )}
+
+      {user.role === "admin" && <MarginiChart />}
 
       {stats?.tempi_riparazione?.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="tempi-riparazione-panel">

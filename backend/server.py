@@ -1723,6 +1723,10 @@ async def anonimizza_cliente(client_id: str, admin: dict = Depends(require_admin
         raise HTTPException(status_code=404, detail="Cliente non trovato")
     if c.get("anonimizzato_at"):
         raise HTTPException(status_code=400, detail="Cliente già anonimizzato")
+    return await anonimizza_cliente_core(c, admin["id"])
+
+async def anonimizza_cliente_core(c: dict, by: str) -> dict:
+    client_id = c["id"]
     now = datetime.now(timezone.utc).isoformat()
     tel = c.get("telefono", "")
     atts = await db.attachments.find({"client_id": client_id}, {"_id": 0, "storage_path": 1}).to_list(500)
@@ -1740,9 +1744,60 @@ async def anonimizza_cliente(client_id: str, admin: dict = Depends(require_admin
     await db.audit_log.update_many({"entity": "cliente", "entity_id": client_id}, {"$set": {"label": "Cliente anonimizzato"}})
     await db.clients.update_one({"id": client_id}, {
         "$unset": {f: "" for f in ANON_CLIENT_FIELDS if f not in ("nome", "cognome")},
-        "$set": {"nome": "Anonimo", "cognome": f"GDPR-{client_id[:8].upper()}", "anonimizzato_at": now, "anonimizzato_da": admin["id"],
+        "$set": {"nome": "Anonimo", "cognome": f"GDPR-{client_id[:8].upper()}", "anonimizzato_at": now, "anonimizzato_da": by,
                  "no_recensioni": True}})
     return {"status": "ok", "allegati_eliminati": n_att, "messaggi_eliminati": n_wa, "servizi_anonimizzati": n_svc, "ritiri_anonimizzati": n_rit}
+
+RETENTION_ANNI = 5
+STATI_RIP_APERTI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "in_attesa_cliente", "preventivo", "in_lavorazione", "pronto"]
+
+async def pulizia_retention_gdpr() -> dict:
+    """Anonimizza i clienti senza alcuna attività (contratti, servizi, ritiri) negli ultimi RETENTION_ANNI anni."""
+    limite = (datetime.now(timezone.utc) - relativedelta(years=RETENTION_ANNI)).isoformat()
+    limite_d = limite[:10]
+    candidati = await db.clients.find({"anonimizzato_at": {"$in": [None]}, "created_at": {"$lt": limite, "$gte": "2000-01-01"}}, {"_id": 0}).to_list(50000)
+    report = []
+    for c in candidati:
+        compute_dates(c)
+        if (c.get("data_scadenza") or "") >= limite_d or (c.get("data_contratto") or "") >= limite_d or (c.get("updated_at") or "") >= limite:
+            continue
+        if await db.servizi.count_documents({"client_id": c["id"], "$or": [
+                {"stato": {"$in": STATI_RIP_APERTI}}, {"created_at": {"$gte": limite}}, {"updated_at": {"$gte": limite}},
+                {"data_uscita": {"$gte": limite_d}}, {"data_attivazione": {"$gte": limite_d}}]}):
+            continue
+        if await db.ritiri.count_documents({"client_id": c["id"], "created_at": {"$gte": limite}}):
+            continue
+        await anonimizza_cliente_core(c, "retention-automatica")
+        report.append(c["id"])
+    await db.cron_log.insert_one({"job": "retention-gdpr", "at": datetime.now(timezone.utc).isoformat(), "anonimizzati": len(report), "ids": report})
+    return {"anonimizzati": len(report)}
+
+@api_router.get("/admin/retention-anteprima")
+async def retention_anteprima(admin: dict = Depends(require_admin)):
+    limite = (datetime.now(timezone.utc) - relativedelta(years=RETENTION_ANNI)).isoformat()
+    n = await db.clients.count_documents({"anonimizzato_at": {"$in": [None]}, "created_at": {"$lt": limite, "$gte": "2000-01-01"}})
+    date_anomale = await db.clients.count_documents({"created_at": {"$lt": "2000-01-01"}})
+    ultimo = await db.cron_log.find_one({"job": "retention-gdpr"}, {"_id": 0}, sort=[("at", -1)])
+    return {"anni": RETENTION_ANNI, "candidati_per_data_registrazione": n, "date_anomale_ignorate": date_anomale, "ultima_esecuzione": ultimo}
+
+@api_router.get("/dashboard/margini-12-mesi")
+async def margini_12_mesi(admin: dict = Depends(require_admin)):
+    oggi = date.today().replace(day=1)
+    mesi = [(oggi - relativedelta(months=i)).strftime("%Y-%m") for i in range(11, -1, -1)]
+    rips = await db.servizi.find({"tipo": "riparazione", "stato": {"$in": ["consegnato", "pronto", "in_lavorazione"]}}, {"_id": 0}).to_list(50000)
+    stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)}
+    rows = {m: {"mese": m, "label": m[5:] + "/" + m[2:4]} for m in mesi}
+    usati = set()
+    for s in rips:
+        rif = (s.get("data_uscita") or s.get("created_at") or "")[:7]
+        if rif not in rows:
+            continue
+        costi = costi_riparazione(s) or {"totale": 0}
+        prezzo = float(s.get("prezzo_finale") if s.get("prezzo_finale") is not None else (calcola_prezzo_riparazione(s) or 0))
+        nome = stores.get(s.get("venditore_id"), "Altro")
+        usati.add(nome)
+        rows[rif][nome] = round(rows[rif].get(nome, 0.0) + prezzo / 1.22 - costi["totale"], 2)
+    return {"negozi": sorted(usati), "dati": [rows[m] for m in mesi]}
 
 async def get_scoped_client(client_id: str, user: dict) -> dict:
     scope = client_scope_filter(user)
@@ -3357,6 +3412,7 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
     background_tasks.add_task(invia_avvisi_vincolo)
     background_tasks.add_task(invia_avvisi_rinnovo_energia)
     background_tasks.add_task(invia_avvisi_truffe)
+    background_tasks.add_task(pulizia_retention_gdpr)
     return {"status": "accepted"}
 
 @api_router.get("/riparazioni-ferme")
