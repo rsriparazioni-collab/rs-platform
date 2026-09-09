@@ -1704,6 +1704,46 @@ def get_object(path: str):
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
+def delete_object(path: str) -> None:
+    try:
+        key = init_storage()
+        httpx.delete(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    except Exception as e:
+        logger.warning(f"Eliminazione oggetto storage fallita {path}: {e}")
+
+ANON_CLIENT_FIELDS = ["nome", "cognome", "codice_fiscale", "piva", "telefono", "email", "indirizzo", "iban", "pod_pdr",
+                      "note", "privacy_msg_sent_at", "review_msg_sent_at", "rinnovo_msg_sent_at", "truffe_msg_sent_at", "data_nascita"]
+ANON_SERVIZIO_FIELDS = ["numero", "iccid", "account_email", "problema", "operazioni", "note",
+                        "codice_sblocco", "account_password", "codice_sblocco_enc", "account_password_enc"]
+
+@api_router.post("/clients/{client_id}/anonimizza")
+async def anonimizza_cliente(client_id: str, admin: dict = Depends(require_admin)):
+    c = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    if c.get("anonimizzato_at"):
+        raise HTTPException(status_code=400, detail="Cliente già anonimizzato")
+    now = datetime.now(timezone.utc).isoformat()
+    tel = c.get("telefono", "")
+    atts = await db.attachments.find({"client_id": client_id}, {"_id": 0, "storage_path": 1}).to_list(500)
+    for a in atts:
+        if a.get("storage_path"):
+            delete_object(a["storage_path"])
+    n_att = (await db.attachments.delete_many({"client_id": client_id})).deleted_count
+    n_wa = (await db.wa_log.delete_many({"$or": [{"client_id": client_id}] + ([{"phone": tel}] if tel else [])})).deleted_count
+    await db.whatsapp_queue.delete_many({"client_id": client_id})
+    n_svc = (await db.servizi.update_many({"client_id": client_id},
+                                          {"$unset": {f: "" for f in ANON_SERVIZIO_FIELDS}, "$set": {"anonimizzato_at": now}})).modified_count
+    n_rit = (await db.ritiri.update_many({"client_id": client_id},
+                                         {"$set": {"nome": "Anonimo", "cognome": "Anonimo", "codice_fiscale": "", "numero_documento": "", "imei": "", "anonimizzato_at": now}})).modified_count
+    await db.lavorazioni_log.update_many({"client_id": client_id}, {"$set": {"note": ""}})
+    await db.audit_log.update_many({"entity": "cliente", "entity_id": client_id}, {"$set": {"label": "Cliente anonimizzato"}})
+    await db.clients.update_one({"id": client_id}, {
+        "$unset": {f: "" for f in ANON_CLIENT_FIELDS if f not in ("nome", "cognome")},
+        "$set": {"nome": "Anonimo", "cognome": f"GDPR-{client_id[:8].upper()}", "anonimizzato_at": now, "anonimizzato_da": admin["id"],
+                 "no_recensioni": True}})
+    return {"status": "ok", "allegati_eliminati": n_att, "messaggi_eliminati": n_wa, "servizi_anonimizzati": n_svc, "ritiri_anonimizzati": n_rit}
+
 async def get_scoped_client(client_id: str, user: dict) -> dict:
     scope = client_scope_filter(user)
     scope["id"] = client_id
@@ -2886,24 +2926,36 @@ async def client_gdpr_export(client_id: str, admin: dict = Depends(require_admin
 @api_router.get("/dashboard/margini-negozi")
 async def margini_negozi(admin: dict = Depends(require_admin), mese: str = ""):
     mese = mese or date.today().strftime("%Y-%m")
+    prec = (date.fromisoformat(mese + "-01") - relativedelta(months=1)).strftime("%Y-%m")
     rips = await db.servizi.find({"tipo": "riparazione", "stato": {"$in": ["consegnato", "pronto", "in_lavorazione"]}}, {"_id": 0}).to_list(20000)
     stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)}
     acc: dict = {}
+    prec_acc: dict = {}
     for s in rips:
         rif = (s.get("data_uscita") or s.get("created_at") or "")[:7]
-        if rif != mese:
+        if rif not in (mese, prec):
             continue
         costi = costi_riparazione(s) or {"totale": 0}
         prezzo = float(s.get("prezzo_finale") if s.get("prezzo_finale") is not None else (calcola_prezzo_riparazione(s) or 0))
         margine = prezzo / 1.22 - costi["totale"]
-        a = acc.setdefault(s.get("venditore_id", ""), {"store_id": s.get("venditore_id", ""), "store_name": stores.get(s.get("venditore_id"), "-"),
-                                                        "riparazioni": 0, "incasso": 0.0, "costi": 0.0, "margine": 0.0, "consegnate": 0})
+        sid = s.get("venditore_id", "")
+        if rif == prec:
+            prec_acc[sid] = prec_acc.get(sid, 0.0) + margine
+            continue
+        a = acc.setdefault(sid, {"store_id": sid, "store_name": stores.get(sid, "-"),
+                                 "riparazioni": 0, "incasso": 0.0, "costi": 0.0, "margine": 0.0, "consegnate": 0})
         a["riparazioni"] += 1; a["incasso"] += prezzo; a["costi"] += costi["totale"]; a["margine"] += margine
         if s.get("stato") == "consegnato":
             a["consegnate"] += 1
-    out = [{**a, "incasso": round(a["incasso"], 2), "costi": round(a["costi"], 2), "margine": round(a["margine"], 2)} for a in acc.values()]
-    return {"mese": mese, "negozi": sorted(out, key=lambda x: -x["margine"]),
-            "totale": round(sum(a["margine"] for a in out), 2)}
+    for sid in prec_acc:
+        acc.setdefault(sid, {"store_id": sid, "store_name": stores.get(sid, "-"), "riparazioni": 0, "incasso": 0.0, "costi": 0.0, "margine": 0.0, "consegnate": 0})
+    out = []
+    for a in acc.values():
+        mp = round(prec_acc.get(a["store_id"], 0.0), 2)
+        out.append({**a, "incasso": round(a["incasso"], 2), "costi": round(a["costi"], 2), "margine": round(a["margine"], 2),
+                    "margine_precedente": mp, "delta": round(a["margine"] - mp, 2)})
+    return {"mese": mese, "mese_precedente": prec, "negozi": sorted(out, key=lambda x: -x["margine"]),
+            "totale": round(sum(a["margine"] for a in out), 2), "totale_precedente": round(sum(prec_acc.values()), 2)}
 
 @api_router.post("/clients/{client_id}/blacklist-recensioni")
 async def blacklist_recensioni(client_id: str, input: BlacklistInput, user: dict = Depends(get_current_user)):
@@ -3497,6 +3549,7 @@ async def migra_segreti_in_chiaro() -> None:
         logger.info(f"Segreti dispositivi migrati/cancellati: {n}")
 
 AUDIT_ENTITIES = [
+    (re.compile(r"^/api/clients/([^/]+)/anonimizza$"), "cliente", "delete"),
     (re.compile(r"^/api/clients/([^/]+)/gdpr-export$"), "cliente", "export"),
     (re.compile(r"^/api/clients/([^/]+)/whatsapp-log$"), "cliente", "view"),
     (re.compile(r"^/api/clients/([^/]+)/messaggi-previsti$"), None, None),

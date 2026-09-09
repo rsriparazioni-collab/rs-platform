@@ -156,6 +156,19 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
     }
   };
 
+  const anonimizza = async () => {
+    const ok = window.prompt(`ANONIMIZZAZIONE GDPR di ${detail.cognome} ${detail.nome}.\nVerranno cancellati per sempre: dati personali, allegati, messaggi WhatsApp, codici dispositivo. Restano solo i dati statistici (servizi, importi, date).\n\nScrivi ANONIMIZZA per confermare:`);
+    if (ok !== "ANONIMIZZA") return;
+    try {
+      const r = await api.post(`/clients/${detail.id}/anonimizza`);
+      toast.success(`Cliente anonimizzato: ${r.data.allegati_eliminati} allegati e ${r.data.messaggi_eliminati} messaggi eliminati`);
+      onClose();
+      onChanged();
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+  };
+
   return (
     <Sheet open={Boolean(client)} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl" data-testid="client-detail-sheet">
@@ -177,6 +190,9 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300">
                     <ShieldCheck className="h-3 w-3" /> Privacy firmata
                   </span>
+                )}
+                {detail.anonimizzato_at && (
+                  <span className="status-badge bg-slate-500/15 text-slate-700 border-slate-300" data-testid="client-anonimizzato-badge">Anonimizzato {fmtDate(detail.anonimizzato_at)}</span>
                 )}
                 {detail.no_recensioni && (
                   <span className="status-badge bg-slate-500/15 text-slate-700 border-slate-300" data-testid="client-blacklist-badge">
@@ -349,6 +365,12 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   <Button size="sm" variant="outline" data-testid="detail-delete-button"
                           className="text-rose-600 hover:text-rose-700" onClick={remove}>
                     <Trash2 className="mr-2 h-4 w-4" /> Elimina
+                  </Button>
+                )}
+                {isAdmin && !detail.anonimizzato_at && (
+                  <Button size="sm" variant="outline" data-testid="detail-anonimizza-button"
+                          className="text-slate-600" onClick={anonimizza} title="Cancellazione dati personali (art. 17 GDPR)">
+                    <ShieldCheck className="mr-2 h-4 w-4" /> Anonimizza (GDPR)
                   </Button>
                 )}
               </div>

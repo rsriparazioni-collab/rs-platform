@@ -30,6 +30,12 @@ export default function Dashboard() {
   const [waStatus, setWaStatus] = useState(null);
   const [ferme, setFerme] = useState([]);
   const [margini, setMargini] = useState(null);
+  const [meseMargini, setMeseMargini] = useState(new Date().toISOString().slice(0, 7));
+
+  useEffect(() => {
+    if (user.role !== "admin") return;
+    api.get("/dashboard/margini-negozi", { params: { mese: meseMargini } }).then((r) => setMargini(r.data)).catch(() => {});
+  }, [user.role, meseMargini]);
   const [sendingFerme, setSendingFerme] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -51,7 +57,6 @@ export default function Dashboard() {
     api.get("/alerts").then((r) => setAlerts(r.data)).catch(() => {});
     api.get("/scadenze-settimana").then((r) => setScadenze(r.data)).catch(() => {});
     api.get("/riparazioni-ferme").then((r) => setFerme(r.data)).catch(() => {});
-    if (user.role === "admin") api.get("/dashboard/margini-negozi").then((r) => setMargini(r.data)).catch(() => {});
     if (user.role === "admin") {
       api.get("/whatsapp/sessions-summary").then((r) => setWaStatus(r.data)).catch(() => {});
     }
@@ -337,14 +342,21 @@ export default function Dashboard() {
         <div className="rounded-xl border border-emerald-200 bg-white shadow-sm" data-testid="margini-negozi-panel">
           <div className="flex flex-wrap items-center gap-2 border-b border-emerald-100 px-5 py-4">
             <Wallet className="h-4 w-4 text-emerald-700" />
-            <h2 className="font-heading text-lg font-semibold text-slate-800">Margine reale riparazioni · {margini.mese.split("-").reverse().join("/")}</h2>
-            <span className="ml-auto font-heading text-xl font-bold text-emerald-800" data-testid="margini-totale">€ {margini.totale.toFixed(2)}</span>
+            <h2 className="font-heading text-lg font-semibold text-slate-800">Margine reale riparazioni</h2>
+            <input type="month" value={meseMargini} onChange={(e) => setMeseMargini(e.target.value)} max={new Date().toISOString().slice(0, 7)}
+                   className="rounded-md border border-slate-200 px-2 py-1 text-sm" data-testid="margini-mese-input" />
+            <div className="ml-auto text-right">
+              <span className="font-heading text-xl font-bold text-emerald-800" data-testid="margini-totale">€ {margini.totale.toFixed(2)}</span>
+              <p className={`text-xs font-medium ${margini.totale - margini.totale_precedente >= 0 ? "text-emerald-700" : "text-rose-700"}`} data-testid="margini-delta-totale">
+                {margini.totale - margini.totale_precedente >= 0 ? "▲" : "▼"} € {Math.abs(margini.totale - margini.totale_precedente).toFixed(2)} vs {margini.mese_precedente.split("-").reverse().join("/")} (€ {margini.totale_precedente.toFixed(2)})
+              </p>
+            </div>
           </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <th className="px-5 py-2.5">Negozio</th><th className="px-5 py-2.5">Riparazioni</th><th className="px-5 py-2.5">Incasso (IVA incl.)</th>
-                <th className="px-5 py-2.5">Costi</th><th className="px-5 py-2.5">Margine netto</th>
+                <th className="px-5 py-2.5">Costi</th><th className="px-5 py-2.5">Margine netto</th><th className="px-5 py-2.5">Mese prec.</th><th className="px-5 py-2.5">Variazione</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -355,9 +367,11 @@ export default function Dashboard() {
                   <td className="px-5 py-2.5 text-slate-600">€ {m.incasso.toFixed(2)}</td>
                   <td className="px-5 py-2.5 text-slate-600">€ {m.costi.toFixed(2)}</td>
                   <td className={`px-5 py-2.5 font-bold ${m.margine < 0 ? "text-rose-700" : "text-emerald-800"}`}>€ {m.margine.toFixed(2)}</td>
+                  <td className="px-5 py-2.5 text-slate-500">€ {m.margine_precedente.toFixed(2)}</td>
+                  <td className={`px-5 py-2.5 font-semibold ${m.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{m.delta >= 0 ? "▲" : "▼"} € {Math.abs(m.delta).toFixed(2)}</td>
                 </tr>
               ))}
-              {margini.negozi.length === 0 && <tr><td colSpan={5} className="px-5 py-6 text-center text-sm text-slate-500">Nessuna riparazione nel mese corrente</td></tr>}
+              {margini.negozi.length === 0 && <tr><td colSpan={7} className="px-5 py-6 text-center text-sm text-slate-500">Nessuna riparazione nel mese selezionato</td></tr>}
             </tbody>
           </table>
         </div>
