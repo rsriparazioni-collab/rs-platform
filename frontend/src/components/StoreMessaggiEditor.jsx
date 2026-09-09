@@ -9,6 +9,8 @@ const CAMPI = [
   { key: "msg_pronto", label: "Messaggio 'pronto per il ritiro'", hint: "Inviato quando la riparazione passa a Pronto" },
   { key: "msg_promemoria", label: "Promemoria ritiro (dopo 7 giorni)", hint: "Se il cliente non ritira entro 7 giorni dall'avviso" },
   { key: "msg_recensione", label: "Richiesta recensione", hint: "Inviata 2 minuti dopo la consegna del dispositivo" },
+  { key: "msg_vincolo", label: "Scadenza vincolo telefonia (30 gg prima)", hint: "Per Mobile/Fisso con vincolo > 0 mesi" },
+  { key: "msg_offerta_annuale", label: "Scadenza offerta annuale (30 gg prima)", hint: "Per Mobile/Fisso con vincolo 0: ogni anno dall'attivazione" },
 ];
 
 export default function StoreMessaggiEditor({ form, setForm }) {

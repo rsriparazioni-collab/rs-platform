@@ -118,7 +118,7 @@ export default function Telefonia() {
                       <td className="px-4 py-3"><span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300"><sez.icon className="h-3 w-3" /> {s.operatore_tel || "-"}</span></td>
                       <td className="px-4 py-3 text-slate-600">{s.numero || "-"}</td>
                       <td className="px-4 py-3 text-slate-600">{fmtDate(s.data_attivazione)}</td>
-                      <td className="px-4 py-3 text-slate-600">{s.vincolo_mesi != null ? `${s.vincolo_mesi} mesi` : "-"}</td>
+                      <td className="px-4 py-3 text-slate-600">{s.vincolo_mesi ? `${s.vincolo_mesi} mesi` : (s.data_attivazione ? "Annuale" : "-")}</td>
                       <td className="px-4 py-3"><VincoloBadge s={s} /></td>
                       {canSeeAll && <td className="px-4 py-3 text-slate-600">{storeName(s.venditore_id)}</td>}
                       <td className="px-4 py-3">
@@ -147,7 +147,7 @@ export default function Telefonia() {
 
       {tab === "vincoli" && (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="vincoli-table">
-          <p className="border-b border-slate-200 px-4 py-3 text-xs text-slate-500">Alla scadenza del vincolo avvisa il cliente: ci sono nuove offerte. In evidenza quelli entro 60 giorni o già scaduti.</p>
+          <p className="border-b border-slate-200 px-4 py-3 text-xs text-slate-500">30 giorni prima della scadenza (vincolo, oppure anniversario annuale se vincolo 0) il cliente riceve automaticamente un WhatsApp con l'invito a passare in negozio. In evidenza quelli entro 60 giorni o già scaduti.</p>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -162,8 +162,8 @@ export default function Telefonia() {
                   <td className="px-4 py-3">{s.tipo === "sim" ? "Mobile" : "Fisso"}</td>
                   <td className="px-4 py-3 text-slate-600">{s.operatore_tel || "-"}</td>
                   <td className="px-4 py-3 text-slate-600">{fmtDate(s.data_attivazione)}</td>
-                  <td className="px-4 py-3 text-slate-600">{s.vincolo_mesi} mesi</td>
-                  <td className="px-4 py-3 font-medium">{fmtDate(s.scadenza_vincolo)}</td>
+                  <td className="px-4 py-3 text-slate-600">{s.vincolo_mesi ? `${s.vincolo_mesi} mesi` : "Offerta annuale"}</td>
+                  <td className="px-4 py-3 font-medium">{fmtDate(s.scadenza_vincolo)}{s.vincolo_msg_sent_for === s.scadenza_vincolo && <span className="ml-1 text-[10px] text-emerald-700">✓ avvisato</span>}</td>
                   <td className="px-4 py-3"><VincoloBadge s={s} /></td>
                 </tr>
               ))}

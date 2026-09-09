@@ -414,6 +414,8 @@ class StoreCreate(BaseModel):
     msg_pronto: str = ""
     msg_recensione: str = ""
     msg_promemoria: str = ""
+    msg_vincolo: str = ""
+    msg_offerta_annuale: str = ""
 
 class StoreUpdate(BaseModel):
     nome: Optional[str] = None
@@ -426,6 +428,8 @@ class StoreUpdate(BaseModel):
     msg_pronto: Optional[str] = None
     msg_recensione: Optional[str] = None
     msg_promemoria: Optional[str] = None
+    msg_vincolo: Optional[str] = None
+    msg_offerta_annuale: Optional[str] = None
 
 MSG_DEFAULTS = {
     "msg_privacy": """RS Group – Grazie per averci scelto!
@@ -443,12 +447,15 @@ RS Group""",
                        "Basta un clic qui\n{link}\nGrazie per il supporto"),
     "msg_promemoria": ("Ciao {nome}, ti ricordiamo che il tuo {dispositivo} (riparazione N. {numero}) è pronto da alcuni giorni "
                        "presso RS Riparazioni {negozio}.\nPassa a ritirarlo quando vuoi negli orari di apertura. Grazie!"),
+    "msg_vincolo": ("Ciao {nome} {cognome}, il vincolo sulla tua offerta sta per scadere: passa in negozio per valutare il tuo prossimo risparmio."),
+    "msg_offerta_annuale": ("Ciao {nome} {cognome}, la tua offerta sta per scadere: contattaci o passa in negozio per il tuo prossimo risparmio, "
+                            "abbiamo offerte dedicate per te."),
 }
-MSG_PLACEHOLDERS = ["{nome}", "{dispositivo}", "{numero}", "{negozio}", "{link}"]
+MSG_PLACEHOLDERS = ["{nome}", "{cognome}", "{dispositivo}", "{numero}", "{negozio}", "{link}"]
 
 def store_msg(store: Optional[dict], key: str, **vals) -> str:
     tpl = (store or {}).get(key) or MSG_DEFAULTS[key]
-    vals = {"nome": "", "dispositivo": "", "numero": "", "negozio": (store or {}).get("nome", ""),
+    vals = {"nome": "", "cognome": "", "dispositivo": "", "numero": "", "negozio": (store or {}).get("nome", ""),
             "link": (store or {}).get("review_link", ""), **vals}
     try:
         return tpl.format(**vals)
@@ -2306,16 +2313,30 @@ def calcola_prezzo_riparazione(s: dict) -> Optional[float]:
         base = 30.0 + lavoro
     return round(base * 1.22, 2)
 
+def scadenza_offerta(s: dict) -> Optional[tuple]:
+    """(scadenza, annuale). Vincolo>0: attivazione+mesi. Vincolo 0/None: prossimo anniversario annuale."""
+    if s.get("tipo") not in ("sim", "internet", "fisso") or not s.get("data_attivazione"):
+        return None
+    try:
+        att = date.fromisoformat(str(s["data_attivazione"])[:10])
+    except (ValueError, TypeError):
+        return None
+    mesi = int(s.get("vincolo_mesi") or 0)
+    if mesi > 0:
+        return att + relativedelta(months=mesi), False
+    scad = att + relativedelta(years=1)
+    while scad < date.today() - timedelta(days=30):
+        scad += relativedelta(years=1)
+    return scad, True
+
 def serialize_servizio(s: dict, client_name: str = "") -> dict:
     out = {k: v for k, v in s.items() if k != "_id"}
     out["client_name"] = client_name
-    if s.get("data_attivazione") and s.get("vincolo_mesi"):
-        try:
-            scad = date.fromisoformat(str(s["data_attivazione"])[:10]) + relativedelta(months=int(s["vincolo_mesi"]))
-            out["scadenza_vincolo"] = scad.isoformat()
-            out["giorni_alla_scadenza"] = (scad - date.today()).days
-        except (ValueError, TypeError):
-            pass
+    so = scadenza_offerta(s)
+    if so:
+        out["scadenza_vincolo"] = so[0].isoformat()
+        out["giorni_alla_scadenza"] = (so[0] - date.today()).days
+        out["offerta_annuale"] = so[1]
     out["prezzo_consigliato"] = calcola_prezzo_riparazione(s)
     if s.get("tipo") == "riparazione" and not s.get("data_ingresso") and s.get("created_at"):
         out["data_ingresso"] = str(s["created_at"])[:10]
@@ -2544,6 +2565,42 @@ async def invia_promemoria_ritiro() -> dict:
         await db.cron_log.insert_one({"job": "promemoria-ritiro", "at": datetime.now(timezone.utc).isoformat(), "report": report})
     return {"report": report}
 
+VINCOLO_PREAVVISO_GIORNI = 30
+
+async def invia_avvisi_vincolo() -> dict:
+    svcs = await db.servizi.find({"tipo": {"$in": ["sim", "internet", "fisso"]}, "data_attivazione": {"$nin": [None, ""]}},
+                                 {"_id": 0}).to_list(10000)
+    report = []
+    for svc in svcs:
+        so = scadenza_offerta(svc)
+        if not so:
+            continue
+        scad, annuale = so
+        giorni = (scad - date.today()).days
+        if not (0 <= giorni <= VINCOLO_PREAVVISO_GIORNI) or svc.get("vincolo_msg_sent_for") == scad.isoformat():
+            continue
+        client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "cognome": 1, "telefono": 1})
+        if not client_doc or not client_doc.get("telefono"):
+            continue
+        store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
+        msg = store_msg(store, "msg_offerta_annuale" if annuale else "msg_vincolo",
+                        nome=client_doc.get("nome", ""), cognome=client_doc.get("cognome", ""))
+        try:
+            await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default",
+                          tipo="offerta_annuale" if annuale else "vincolo", client_id=svc["client_id"], servizio_id=svc["id"])
+            await db.servizi.update_one({"id": svc["id"]}, {"$set": {"vincolo_msg_sent_for": scad.isoformat(),
+                                                                     "vincolo_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
+            report.append({"servizio": svc["id"], "inviato": True, "annuale": annuale, "scadenza": scad.isoformat()})
+        except HTTPException as e:
+            report.append({"servizio": svc["id"], "inviato": False, "errore": str(e.detail)})
+    if report:
+        await db.cron_log.insert_one({"job": "avvisi-vincolo", "at": datetime.now(timezone.utc).isoformat(), "report": report})
+    return {"report": report}
+
+@api_router.post("/telefonia/avvisi-vincolo/invia-ora")
+async def avvisi_vincolo_ora(admin: dict = Depends(require_admin)):
+    return await invia_avvisi_vincolo()
+
 PRONTO_MSG = MSG_DEFAULTS["msg_pronto"]
 
 async def invia_avviso_pronto(svc: dict) -> None:
@@ -2686,7 +2743,7 @@ async def report_vincoli(user: dict = Depends(get_current_user), giorni: int = 9
     if "telefonia" not in user_sections(user):
         raise HTTPException(status_code=403, detail="Sezione non abilitata")
     scope = servizio_scope(user)
-    scope["vincolo_mesi"] = {"$nin": [None, 0]}
+    scope["tipo"] = {"$in": [t for t in ["sim", "internet", "fisso"] if t in (scope["tipo"].get("$in", []) if isinstance(scope.get("tipo"), dict) else [scope.get("tipo")])]}
     scope["data_attivazione"] = {"$ne": None}
     servizi = await db.servizi.find(scope, {"_id": 0}).to_list(5000)
     names = await clients_name_map(list({s["client_id"] for s in servizi}))
@@ -2809,6 +2866,7 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(invia_avvisi_riparazioni_ferme)
     background_tasks.add_task(invia_promemoria_ritiro)
+    background_tasks.add_task(invia_avvisi_vincolo)
     return {"status": "accepted"}
 
 @api_router.get("/riparazioni-ferme")
