@@ -287,6 +287,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   {detail.privacy_msg_sent_at && <p data-testid="wa-privacy-sent">Privacy inviata il {fmtDate(detail.privacy_msg_sent_at)}</p>}
                   {detail.review_msg_sent_at && <p data-testid="wa-review-sent">Recensione richiesta il {fmtDate(detail.review_msg_sent_at)}</p>}
                   {detail.rinnovo_msg_sent_at && <p data-testid="wa-rinnovo-sent">Avviso rinnovo luce/gas inviato il {fmtDate(detail.rinnovo_msg_sent_at)}</p>}
+                  {detail.truffe_msg_sent_at && <p data-testid="wa-truffe-sent">Avviso anti-truffa inviato il {fmtDate(detail.truffe_msg_sent_at)}</p>}
                 </div>
               </div>
 

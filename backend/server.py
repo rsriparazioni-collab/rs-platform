@@ -417,6 +417,7 @@ class StoreCreate(BaseModel):
     msg_vincolo: str = ""
     msg_offerta_annuale: str = ""
     msg_rinnovo_energia: str = ""
+    msg_truffe: str = ""
 
 class StoreUpdate(BaseModel):
     nome: Optional[str] = None
@@ -432,6 +433,7 @@ class StoreUpdate(BaseModel):
     msg_vincolo: Optional[str] = None
     msg_offerta_annuale: Optional[str] = None
     msg_rinnovo_energia: Optional[str] = None
+    msg_truffe: Optional[str] = None
 
 MSG_DEFAULTS = {
     "msg_privacy": """RS Group – Grazie per averci scelto!
@@ -457,6 +459,16 @@ Ti informiamo che il tuo contratto utenze è in prossima scadenza. Nei prossimi 
 Per effettuare un'analisi ancora più precisa, puoi inviarci direttamente qui le tue ultime bollette.
 Come sempre, valuteremo le tue abitudini di consumo per garantirti la soluzione più conveniente e il miglior prezzo disponibile sul mercato.
 A presto""",
+    "msg_truffe": """Ciao {nome},
+le truffe telefoniche sono sempre più frequenti. Se ricevi una chiamata da chi si presenta come operatore di luce, gas, telefonia, banca o altri servizi...
+*Non prendere decisioni di fretta.*
+*Non comunicare codici, dati personali o bancari.*
+*Non dire "SÌ" senza aver capito con chi stai parlando.*
+*Hai già i tuoi consulenti di fiducia.*
+Prima di firmare, confermare o accettare qualsiasi proposta, *contatta noi*. Ti diremo gratuitamente se la chiamata è affidabile oppure se potrebbe trattarsi di un tentativo di truffa o di una proposta poco conveniente.
+Un messaggio o una telefonata possono evitarti problemi e costi inutili.
+*CambiaOra*
+_Siamo al tuo fianco per aiutarti a scegliere in sicurezza._""",
 }
 MSG_PLACEHOLDERS = ["{nome}", "{cognome}", "{dispositivo}", "{numero}", "{negozio}", "{link}"]
 
@@ -2651,6 +2663,36 @@ async def invia_avvisi_rinnovo_energia() -> dict:
 async def avvisi_rinnovo_ora(admin: dict = Depends(require_admin)):
     return await invia_avvisi_rinnovo_energia()
 
+TRUFFE_DOPO_GIORNI = 10
+TRUFFE_FINESTRA_GIORNI = 40
+
+async def invia_avvisi_truffe() -> dict:
+    clients = await db.clients.find({"data_contratto": {"$nin": [None, ""]}, "telefono": {"$nin": [None, ""]},
+                                     "truffe_msg_sent_at": {"$in": [None]}}, {"_id": 0}).to_list(20000)
+    report = []
+    for c in clients:
+        compute_dates(c)
+        if not c.get("data_attivazione"):
+            continue
+        giorni = (date.today() - date.fromisoformat(c["data_attivazione"])).days
+        if not (TRUFFE_DOPO_GIORNI <= giorni <= TRUFFE_FINESTRA_GIORNI):
+            continue
+        store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
+        msg = store_msg(store, "msg_truffe", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
+        try:
+            await wa_send(c["telefono"], msg, session=c.get("venditore_id") or "default", tipo="truffe", client_id=c["id"])
+            await db.clients.update_one({"id": c["id"]}, {"$set": {"truffe_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
+            report.append({"client_id": c["id"], "inviato": True})
+        except HTTPException as e:
+            report.append({"client_id": c["id"], "inviato": False, "errore": str(e.detail)})
+    if report:
+        await db.cron_log.insert_one({"job": "avviso-truffe", "at": datetime.now(timezone.utc).isoformat(), "report": report})
+    return {"report": report}
+
+@api_router.post("/energia/avvisi-truffe/invia-ora")
+async def avvisi_truffe_ora(admin: dict = Depends(require_admin)):
+    return await invia_avvisi_truffe()
+
 PRONTO_MSG = MSG_DEFAULTS["msg_pronto"]
 
 async def invia_avviso_pronto(svc: dict) -> None:
@@ -2918,6 +2960,7 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
     background_tasks.add_task(invia_promemoria_ritiro)
     background_tasks.add_task(invia_avvisi_vincolo)
     background_tasks.add_task(invia_avvisi_rinnovo_energia)
+    background_tasks.add_task(invia_avvisi_truffe)
     return {"status": "accepted"}
 
 @api_router.get("/riparazioni-ferme")

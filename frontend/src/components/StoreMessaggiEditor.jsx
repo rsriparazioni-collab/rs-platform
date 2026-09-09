@@ -12,6 +12,7 @@ const CAMPI = [
   { key: "msg_vincolo", label: "Scadenza vincolo telefonia (30 gg prima)", hint: "Per Mobile/Fisso con vincolo > 0 mesi" },
   { key: "msg_offerta_annuale", label: "Scadenza offerta annuale (30 gg prima)", hint: "Per Mobile/Fisso con vincolo 0: ogni anno dall'attivazione" },
   { key: "msg_rinnovo_energia", label: "Rinnovo contratto luce/gas (60 gg prima)", hint: "Inviato al 10° mese dall'attivazione del contratto energia" },
+  { key: "msg_truffe", label: "Attenzione alle truffe (10 gg dopo attivazione)", hint: "Inviato una volta, 10 giorni dopo l'attivazione del contratto energia. *testo* = grassetto, _testo_ = corsivo" },
 ];
 
 export default function StoreMessaggiEditor({ form, setForm }) {
