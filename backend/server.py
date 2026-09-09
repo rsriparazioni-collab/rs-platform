@@ -2809,6 +2809,102 @@ async def messaggi_previsti(client_id: str, user: dict = Depends(get_current_use
                       "stato": "inviato" if sent else ("saltato" if today > scad else "previsto")})
     return sorted(items, key=lambda x: x["data"])
 
+@api_router.get("/clients/{client_id}/gdpr-export")
+async def client_gdpr_export(client_id: str, admin: dict = Depends(require_admin)):
+    c = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    compute_dates(c)
+    stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)}
+    servizi = await db.servizi.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    ritiri = await db.ritiri.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    allegati = await db.attachments.find({"client_id": client_id}, {"_id": 0, "original_filename": 1, "created_at": 1}).to_list(200)
+    wa = await db.wa_log.find({"$or": [{"client_id": client_id}, {"phone": c.get("telefono", "__")}]}, {"_id": 0}).sort("at", -1).to_list(500)
+    audit = await db.audit_log.find({"entity": "cliente", "entity_id": client_id}, {"_id": 0}).sort("at", -1).to_list(500)
+
+    def _riga(pdf_, txt):
+        pdf_.set_x(pdf_.l_margin)
+        pdf_.multi_cell(0, 5, txt)
+
+    pdf = _new_pdf("Estratto dati personali (art. 15 GDPR)",
+                   f"{c.get('cognome', '')} {c.get('nome', '')}  -  generato il {date.today().strftime('%d/%m/%Y')}")
+    pdf.set_font("helvetica", "B", 11); pdf.set_x(pdf.l_margin); pdf.cell(0, 7, "1. Dati anagrafici e di contatto", new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10)
+    for label, key in [("Nome", "nome"), ("Cognome", "cognome"), ("Codice fiscale", "codice_fiscale"), ("Partita IVA", "piva"),
+                       ("Telefono", "telefono"), ("Email", "email"), ("Indirizzo", "indirizzo"), ("IBAN", "iban"),
+                       ("Tipo cliente", "tipo_cliente"), ("Negozio di riferimento", None), ("Registrato il", "created_at")]:
+        if key is None:
+            val = stores.get(c.get("venditore_id"), "-")
+        elif key == "created_at":
+            val = _fmt_it(c.get(key))
+        else:
+            val = c.get(key) or "-"
+        _pdf_field(pdf, label, str(val))
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11); pdf.set_x(pdf.l_margin); pdf.cell(0, 7, "2. Consensi e comunicazioni", new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10)
+    _pdf_field(pdf, "Privacy firmata", "Si" if c.get("privacy_firmata") else "No")
+    _pdf_field(pdf, "Privacy inviata via WhatsApp il", _fmt_it(c.get("privacy_msg_sent_at")) or "-")
+    _pdf_field(pdf, "Richieste recensione", "Bloccate (blacklist)" if c.get("no_recensioni") else "Consentite")
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11); pdf.set_x(pdf.l_margin); pdf.cell(0, 7, "3. Contratto energia", new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10)
+    for label, key in [("Tipo bolletta", "tipo_bolletta"), ("Fornitore attuale", "fornitore_attuale"), ("Nuovo fornitore", "nuovo_fornitore"),
+                       ("Lavorazione", "lavorazione"), ("Data contratto", "data_contratto"), ("Attivazione", "data_attivazione"),
+                       ("Scadenza", "data_scadenza"), ("POD/PDR", "pod_pdr")]:
+        v = c.get(key)
+        if v:
+            _pdf_field(pdf, label, _fmt_it(v) if key.startswith("data_") else str(v))
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11); pdf.set_x(pdf.l_margin); pdf.cell(0, 7, f"4. Servizi (riparazioni / telefonia): {len(servizi)}", new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10)
+    for s in servizi:
+        riga = f"{_fmt_it(s.get('created_at'))} - {s.get('tipo', '')} {s.get('numero_riparazione') or s.get('numero') or ''} - {s.get('dispositivo') or s.get('operatore_tel') or ''} - stato {s.get('stato', '')}"
+        if s.get("problema"):
+            riga += f" - {s['problema'][:80]}"
+        _riga(pdf, riga); pdf.ln(0.5)
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11); pdf.set_x(pdf.l_margin); pdf.cell(0, 7, f"5. Bolle di ritiro usato: {len(ritiri)}", new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10)
+    for r in ritiri:
+        _riga(pdf, f"{_fmt_it(r.get('created_at'))} - {r.get('numero', '')} - {r.get('articolo', '')} IMEI {r.get('imei') or '-'} - EUR {r.get('prezzo_ritiro') or 0}")
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11); pdf.set_x(pdf.l_margin); pdf.cell(0, 7, f"6. Documenti allegati: {len(allegati)}", new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10)
+    for a in allegati:
+        _riga(pdf, f"{_fmt_it(a.get('created_at'))} - {a.get('original_filename', '')}")
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11); pdf.set_x(pdf.l_margin); pdf.cell(0, 7, f"7. Messaggi WhatsApp inviati: {len(wa)}", new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10)
+    for m in wa:
+        _riga(pdf, f"{_fmt_it(m.get('at'))} - {m.get('tipo') or 'messaggio'} - {'inviato' if m.get('ok') else 'non inviato'}")
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11); pdf.set_x(pdf.l_margin); pdf.cell(0, 7, f"8. Accessi ai dati da parte del personale: {len(audit)}", new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10)
+    for a in audit[:200]:
+        _riga(pdf, f"{_fmt_it(a.get('at'))} - {a.get('user_name', '')} - {a.get('action', '')}")
+    pdf.ln(4)
+    pdf.set_font("helvetica", "I", 8)
+    _riga(pdf, "Titolare del trattamento: RS Riparazioni / CambiaOra. Documento generato dal gestionale in risposta a richiesta di accesso ai dati "
+                         "(art. 15 Reg. UE 2016/679). Le password e i codici di sblocco dei dispositivi non sono inclusi e vengono cancellati alla consegna.")
+    buf = io.BytesIO(bytes(pdf.output()))
+    fname = f"dati_personali_{c.get('cognome', '')}_{c.get('nome', '')}.pdf".replace(" ", "_")
+    return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+@api_router.get("/dashboard/margini-negozi")
+async def margini_negozi(admin: dict = Depends(require_admin), mese: str = ""):
+    mese = mese or date.today().strftime("%Y-%m")
+    rips = await db.servizi.find({"tipo": "riparazione", "stato": {"$in": ["consegnato", "pronto", "in_lavorazione"]}}, {"_id": 0}).to_list(20000)
+    stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)}
+    acc: dict = {}
+    for s in rips:
+        rif = (s.get("data_uscita") or s.get("created_at") or "")[:7]
+        if rif != mese:
+            continue
+        costi = costi_riparazione(s) or {"totale": 0}
+        prezzo = float(s.get("prezzo_finale") if s.get("prezzo_finale") is not None else (calcola_prezzo_riparazione(s) or 0))
+        margine = prezzo / 1.22 - costi["totale"]
+        a = acc.setdefault(s.get("venditore_id", ""), {"store_id": s.get("venditore_id", ""), "store_name": stores.get(s.get("venditore_id"), "-"),
+                                                        "riparazioni": 0, "incasso": 0.0, "costi": 0.0, "margine": 0.0, "consegnate": 0})
+        a["riparazioni"] += 1; a["incasso"] += prezzo; a["costi"] += costi["totale"]; a["margine"] += margine
+        if s.get("stato") == "consegnato":
+            a["consegnate"] += 1
+    out = [{**a, "incasso": round(a["incasso"], 2), "costi": round(a["costi"], 2), "margine": round(a["margine"], 2)} for a in acc.values()]
+    return {"mese": mese, "negozi": sorted(out, key=lambda x: -x["margine"]),
+            "totale": round(sum(a["margine"] for a in out), 2)}
+
 @api_router.post("/clients/{client_id}/blacklist-recensioni")
 async def blacklist_recensioni(client_id: str, input: BlacklistInput, user: dict = Depends(get_current_user)):
     c = await db.clients.find_one({"id": client_id}, {"_id": 0, "id": 1})
@@ -3401,6 +3497,7 @@ async def migra_segreti_in_chiaro() -> None:
         logger.info(f"Segreti dispositivi migrati/cancellati: {n}")
 
 AUDIT_ENTITIES = [
+    (re.compile(r"^/api/clients/([^/]+)/gdpr-export$"), "cliente", "export"),
     (re.compile(r"^/api/clients/([^/]+)/whatsapp-log$"), "cliente", "view"),
     (re.compile(r"^/api/clients/([^/]+)/messaggi-previsti$"), None, None),
     (re.compile(r"^/api/clients/([^/]+)/blacklist-recensioni$"), "cliente", "update"),

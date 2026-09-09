@@ -293,6 +293,12 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
               </div>
 
               <MessaggiPrevisti clientId={detail.id} refreshKey={logKey} />
+              {isAdmin && (
+                <Button size="sm" variant="outline" className="w-full gap-2" data-testid="client-gdpr-export-button"
+                        onClick={() => downloadBlob(`/clients/${detail.id}/gdpr-export`, `dati_personali_${detail.cognome}.pdf`)}>
+                  <FileText className="h-4 w-4" /> Esporta pacchetto dati GDPR (PDF)
+                </Button>
+              )}
               <WhatsAppLog url={`/clients/${detail.id}/whatsapp-log`} refreshKey={logKey} onResent={refresh} />
 
               <div className="rounded-xl border border-slate-200 p-4" data-testid="attachments-card">

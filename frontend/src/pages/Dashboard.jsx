@@ -29,6 +29,7 @@ export default function Dashboard() {
   const [scadenze, setScadenze] = useState(null);
   const [waStatus, setWaStatus] = useState(null);
   const [ferme, setFerme] = useState([]);
+  const [margini, setMargini] = useState(null);
   const [sendingFerme, setSendingFerme] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -50,6 +51,7 @@ export default function Dashboard() {
     api.get("/alerts").then((r) => setAlerts(r.data)).catch(() => {});
     api.get("/scadenze-settimana").then((r) => setScadenze(r.data)).catch(() => {});
     api.get("/riparazioni-ferme").then((r) => setFerme(r.data)).catch(() => {});
+    if (user.role === "admin") api.get("/dashboard/margini-negozi").then((r) => setMargini(r.data)).catch(() => {});
     if (user.role === "admin") {
       api.get("/whatsapp/sessions-summary").then((r) => setWaStatus(r.data)).catch(() => {});
     }
@@ -328,6 +330,36 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {user.role === "admin" && margini && (
+        <div className="rounded-xl border border-emerald-200 bg-white shadow-sm" data-testid="margini-negozi-panel">
+          <div className="flex flex-wrap items-center gap-2 border-b border-emerald-100 px-5 py-4">
+            <Wallet className="h-4 w-4 text-emerald-700" />
+            <h2 className="font-heading text-lg font-semibold text-slate-800">Margine reale riparazioni · {margini.mese.split("-").reverse().join("/")}</h2>
+            <span className="ml-auto font-heading text-xl font-bold text-emerald-800" data-testid="margini-totale">€ {margini.totale.toFixed(2)}</span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-5 py-2.5">Negozio</th><th className="px-5 py-2.5">Riparazioni</th><th className="px-5 py-2.5">Incasso (IVA incl.)</th>
+                <th className="px-5 py-2.5">Costi</th><th className="px-5 py-2.5">Margine netto</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {margini.negozi.map((m) => (
+                <tr key={m.store_id} data-testid={`margine-negozio-${m.store_id}`}>
+                  <td className="px-5 py-2.5 font-medium text-slate-900">{m.store_name}</td>
+                  <td className="px-5 py-2.5 text-slate-600">{m.riparazioni} <span className="text-xs text-slate-400">({m.consegnate} consegnate)</span></td>
+                  <td className="px-5 py-2.5 text-slate-600">€ {m.incasso.toFixed(2)}</td>
+                  <td className="px-5 py-2.5 text-slate-600">€ {m.costi.toFixed(2)}</td>
+                  <td className={`px-5 py-2.5 font-bold ${m.margine < 0 ? "text-rose-700" : "text-emerald-800"}`}>€ {m.margine.toFixed(2)}</td>
+                </tr>
+              ))}
+              {margini.negozi.length === 0 && <tr><td colSpan={5} className="px-5 py-6 text-center text-sm text-slate-500">Nessuna riparazione nel mese corrente</td></tr>}
+            </tbody>
+          </table>
         </div>
       )}
 
