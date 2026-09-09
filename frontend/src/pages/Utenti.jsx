@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, ShieldCheck, Store, KeyRound, Power } from "lucide-react";
+import { Plus, ShieldCheck, Store, KeyRound, Power, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -61,6 +61,17 @@ export default function Utenti() {
       load();
     } catch (err) {
       toast.error(apiError(err));
+    }
+  };
+
+  const reset2fa = async (u) => {
+    if (!window.confirm(`Reset della verifica in due passaggi per ${u.name}? Dovrà riconfigurarla dalla pagina Sicurezza.`)) return;
+    try {
+      await api.post(`/users/${u.id}/2fa/reset`);
+      toast.success("2FA reimpostata");
+      load();
+    } catch (e) {
+      toast.error(apiError(e));
     }
   };
 
@@ -133,9 +144,17 @@ export default function Utenti() {
                     <span className={`status-badge ${u.active ? "bg-emerald-500/15 text-emerald-700 border-emerald-300" : "bg-rose-500/15 text-rose-700 border-rose-300"}`}>
                       {u.active ? "Attivo" : "Disattivato"}
                     </span>
+                    <span className={`status-badge ml-1 ${u.totp_enabled ? "bg-sky-500/15 text-sky-700 border-sky-300" : "bg-slate-500/10 text-slate-500 border-slate-200"}`} data-testid={`user-2fa-${i}`}>
+                      {u.totp_enabled ? "2FA attiva" : "2FA off"}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
+                      {isAdmin && u.totp_enabled && (
+                        <Button variant="ghost" size="icon" title="Reset 2FA (telefono perso)" data-testid={`user-reset-2fa-${i}`} onClick={() => reset2fa(u)}>
+                          <ShieldOff className="h-4 w-4 text-amber-600" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" title="Reimposta password" data-testid={`user-reset-pwd-${i}`} onClick={() => resetPassword(u)}>
                         <KeyRound className="h-4 w-4 text-slate-500" />
                       </Button>

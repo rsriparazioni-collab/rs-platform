@@ -8,22 +8,40 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, loginMfa } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mfaToken, setMfaToken] = useState("");
+  const [code, setCode] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
+      const res = await login(email, password);
+      if (res?.mfaToken) { setMfaToken(res.mfaToken); return; }
       navigate("/");
     } catch (err) {
       setError(apiError(err, "Accesso fallito"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitMfa = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await loginMfa(mfaToken, code);
+      navigate("/");
+    } catch (err) {
+      setError(apiError(err, "Codice non valido"));
+      if (err?.response?.status === 401 && /scaduta/i.test(err?.response?.data?.detail || "")) { setMfaToken(""); setCode(""); }
     } finally {
       setLoading(false);
     }
@@ -67,7 +85,26 @@ export default function Login() {
             </div>
           </div>
           <h2 className="font-heading text-2xl font-bold text-slate-900">Accedi</h2>
-          <p className="mt-1 text-sm text-slate-500">Inserisci le tue credenziali per continuare</p>
+          <p className="mt-1 text-sm text-slate-500">{mfaToken ? "Inserisci il codice dell'app Authenticator" : "Inserisci le tue credenziali per continuare"}</p>
+          {mfaToken ? (
+          <form onSubmit={submitMfa} className="mt-8 space-y-5" data-testid="mfa-form">
+            <div className="space-y-2">
+              <Label htmlFor="code">Codice a 6 cifre (o codice di recupero)</Label>
+              <Input id="code" autoFocus inputMode="numeric" autoComplete="one-time-code" required value={code} data-testid="mfa-code-input"
+                     onChange={(e) => setCode(e.target.value)} placeholder="123456" className="h-11 text-center text-lg tracking-widest" />
+            </div>
+            {error && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" data-testid="mfa-error">{error}</div>
+            )}
+            <Button type="submit" disabled={loading} data-testid="mfa-submit-button"
+                    className="h-11 w-full bg-gradient-to-r from-fuchsia-600 to-blue-700 text-white hover:opacity-90">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verifica"}
+            </Button>
+            <button type="button" onClick={() => { setMfaToken(""); setCode(""); setError(""); }} className="w-full text-center text-xs text-slate-500 hover:text-slate-800" data-testid="mfa-back-button">
+              Torna al login
+            </button>
+          </form>
+          ) : (
           <form onSubmit={submit} className="mt-8 space-y-5" data-testid="login-form">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -89,6 +126,7 @@ export default function Login() {
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Accedi"}
             </Button>
           </form>
+          )}
         </div>
       </div>
     </div>

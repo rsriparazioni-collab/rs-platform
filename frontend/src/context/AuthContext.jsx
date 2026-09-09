@@ -14,6 +14,13 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const res = await api.post("/auth/login", { email, password });
+    if (res.data.mfa_required) return { mfaToken: res.data.mfa_token };
+    setUser(res.data.user);
+    return res.data.user;
+  };
+
+  const loginMfa = async (mfaToken, code) => {
+    const res = await api.post("/auth/login/mfa", { mfa_token: mfaToken, code });
     setUser(res.data.user);
     return res.data.user;
   };
@@ -27,7 +34,7 @@ export function AuthProvider({ children }) {
     setUser(false);
   };
 
-  const value = useMemo(() => ({ user, login, logout }), [user]);
+  const value = useMemo(() => ({ user, login, loginMfa, logout }), [user]);
 
   return (
     <AuthContext.Provider value={value}>

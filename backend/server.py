@@ -18,6 +18,11 @@ import csv
 import bcrypt
 import jwt
 import httpx
+import pyotp
+import qrcode
+import base64
+import secrets as pysecrets
+from cryptography.fernet import Fernet
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, BackgroundTasks, UploadFile, File
@@ -74,8 +79,57 @@ def create_token(user_id: str) -> str:
 def serialize_user(u: dict) -> dict:
     return {"id": u["id"], "name": u["name"], "email": u["email"], "role": u["role"],
             "store_ids": u.get("store_ids", []), "can_view_all": u.get("can_view_all", False),
-            "active": u.get("active", True),
+            "active": u.get("active", True), "totp_enabled": bool(u.get("totp_enabled")),
             "sections": u.get("sections") or ["energia", "riparazioni", "telefonia"]}
+
+# ---------------- 2FA (TOTP, Google/Microsoft Authenticator) ----------------
+TOTP_ISSUER = "Gestionale RS & CambiaOra"
+TOTP_CODE_RE = re.compile(r"^\d{6}$")
+
+def _fernet() -> Fernet:
+    return Fernet(os.environ["TOTP_ENCRYPTION_KEY"].encode())
+
+def totp_encrypt(secret: str) -> str:
+    return _fernet().encrypt(secret.encode()).decode()
+
+def totp_decrypt(value: str) -> str:
+    return _fernet().decrypt(value.encode()).decode()
+
+def totp_qr_data_uri(uri: str) -> str:
+    buf = io.BytesIO()
+    qrcode.make(uri).save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+def make_recovery_codes(count: int = 8) -> tuple:
+    plain = [pysecrets.token_hex(4).upper() + "-" + pysecrets.token_hex(4).upper() for _ in range(count)]
+    stored = [{"hash": hash_password(c), "used_at": None} for c in plain]
+    return plain, stored
+
+def create_mfa_token(user_id: str) -> str:
+    payload = {"sub": user_id, "type": "mfa", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)}
+    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
+
+async def verify_totp_or_recovery(user: dict, supplied: str) -> bool:
+    supplied = supplied.strip().upper().replace(" ", "")
+    if TOTP_CODE_RE.fullmatch(supplied):
+        totp = pyotp.TOTP(totp_decrypt(user["totp_secret_enc"]), interval=30)
+        now = datetime.now(timezone.utc)
+        if not totp.verify(supplied, for_time=now, valid_window=1):
+            return False
+        current = totp.timecode(now)
+        previous = user.get("totp_last_timecode", -1)
+        if current <= previous:
+            return False
+        res = await db.users.update_one({"id": user["id"], "totp_last_timecode": user.get("totp_last_timecode")},
+                                        {"$set": {"totp_last_timecode": current}})
+        return res.modified_count == 1
+    for item in user.get("recovery_codes", []):
+        if item.get("used_at") is None and verify_password(supplied, item["hash"]):
+            res = await db.users.update_one(
+                {"id": user["id"], "recovery_codes": {"$elemMatch": {"hash": item["hash"], "used_at": None}}},
+                {"$set": {"recovery_codes.$.used_at": datetime.now(timezone.utc).isoformat()}})
+            return res.modified_count == 1
+    return False
 
 async def get_current_user(request: Request, creds: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     token = request.cookies.get("gu_token") or (creds.credentials if creds else None)
@@ -314,10 +368,102 @@ async def login(input: LoginInput):
         raise HTTPException(status_code=403, detail="Account disattivato")
     await db.login_attempts.delete_one({"identifier": identifier})
     from fastapi.responses import JSONResponse
+    if user.get("totp_enabled"):
+        return JSONResponse({"mfa_required": True, "mfa_token": create_mfa_token(user["id"])})
     token = create_token(user["id"])
     resp = JSONResponse({"token": token, "user": serialize_user(user)})
     resp.set_cookie("gu_token", token, httponly=True, secure=True, samesite="lax", max_age=86400)
     return resp
+
+class MfaLoginInput(BaseModel):
+    mfa_token: str
+    code: str
+
+class TotpCodeInput(BaseModel):
+    code: str
+
+class TotpDisableInput(BaseModel):
+    password: str
+    code: str
+
+@api_router.post("/auth/login/mfa")
+async def login_mfa(input: MfaLoginInput):
+    try:
+        payload = jwt.decode(input.mfa_token, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Verifica scaduta, ripeti l'accesso")
+    if payload.get("type") != "mfa":
+        raise HTTPException(status_code=401, detail="Token non valido")
+    identifier = f"mfa:{payload['sub']}"
+    attempts = await db.login_attempts.find_one({"identifier": identifier}, {"_id": 0})
+    if attempts and attempts.get("count", 0) >= 5 and attempts.get("locked_until") \
+            and datetime.fromisoformat(attempts["locked_until"]) > datetime.now(timezone.utc):
+        raise HTTPException(status_code=429, detail="Troppi tentativi. Riprova tra 15 minuti.")
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+    if not user or not user.get("totp_enabled") or not await verify_totp_or_recovery(user, input.code):
+        await db.login_attempts.update_one({"identifier": identifier},
+                                           {"$inc": {"count": 1},
+                                            "$set": {"locked_until": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()}},
+                                           upsert=True)
+        raise HTTPException(status_code=401, detail="Codice non valido")
+    await db.login_attempts.delete_one({"identifier": identifier})
+    from fastapi.responses import JSONResponse
+    token = create_token(user["id"])
+    resp = JSONResponse({"token": token, "user": serialize_user(user)})
+    resp.set_cookie("gu_token", token, httponly=True, secure=True, samesite="lax", max_age=86400)
+    return resp
+
+@api_router.post("/auth/2fa/enroll")
+async def totp_enroll(user: dict = Depends(get_current_user)):
+    if user.get("totp_enabled"):
+        raise HTTPException(status_code=409, detail="Autenticazione a due fattori già attiva")
+    secret = pyotp.random_base32()
+    uri = pyotp.TOTP(secret, interval=30).provisioning_uri(name=user["email"], issuer_name=TOTP_ISSUER)
+    await db.users.update_one({"id": user["id"]}, {"$set": {"totp_pending_secret_enc": totp_encrypt(secret)}})
+    return {"qr_data_uri": totp_qr_data_uri(uri), "manual_key": secret}
+
+@api_router.post("/auth/2fa/enroll/confirm")
+async def totp_enroll_confirm(input: TotpCodeInput, user: dict = Depends(get_current_user)):
+    code = input.code.strip()
+    if not TOTP_CODE_RE.fullmatch(code):
+        raise HTTPException(status_code=400, detail="Il codice deve avere 6 cifre")
+    enc = user.get("totp_pending_secret_enc")
+    if not enc:
+        raise HTTPException(status_code=400, detail="Avvia prima la configurazione")
+    totp = pyotp.TOTP(totp_decrypt(enc), interval=30)
+    if not totp.verify(code, valid_window=1):
+        raise HTTPException(status_code=400, detail="Codice non valido: controlla l'ora del telefono e riprova")
+    plain, stored = make_recovery_codes()
+    await db.users.update_one({"id": user["id"]}, {
+        "$set": {"totp_enabled": True, "totp_secret_enc": enc, "recovery_codes": stored,
+                 "totp_last_timecode": totp.timecode(datetime.now(timezone.utc)),
+                 "totp_enabled_at": datetime.now(timezone.utc).isoformat()},
+        "$unset": {"totp_pending_secret_enc": ""}})
+    return {"recovery_codes": plain}
+
+@api_router.post("/auth/2fa/disable")
+async def totp_disable(input: TotpDisableInput, user: dict = Depends(get_current_user)):
+    if not user.get("totp_enabled"):
+        raise HTTPException(status_code=400, detail="2FA non attiva")
+    if not verify_password(input.password, user["password_hash"]) or not await verify_totp_or_recovery(user, input.code):
+        raise HTTPException(status_code=401, detail="Password o codice non validi")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"totp_enabled": False},
+                                                   "$unset": {"totp_secret_enc": "", "recovery_codes": "", "totp_last_timecode": ""}})
+    return {"status": "ok"}
+
+@api_router.get("/auth/2fa/status")
+async def totp_status(user: dict = Depends(get_current_user)):
+    codes = user.get("recovery_codes", [])
+    return {"enabled": bool(user.get("totp_enabled")), "enabled_at": user.get("totp_enabled_at"),
+            "recovery_codes_left": sum(1 for c in codes if c.get("used_at") is None)}
+
+@api_router.post("/users/{user_id}/2fa/reset")
+async def admin_reset_2fa(user_id: str, admin: dict = Depends(require_admin)):
+    res = await db.users.update_one({"id": user_id}, {"$set": {"totp_enabled": False},
+                                                      "$unset": {"totp_secret_enc": "", "recovery_codes": "", "totp_last_timecode": "", "totp_pending_secret_enc": ""}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    return {"status": "ok"}
 
 @api_router.get("/auth/me")
 async def auth_me(user: dict = Depends(get_current_user)):
