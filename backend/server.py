@@ -2490,7 +2490,11 @@ def servizio_scope(user: dict, tipo: str = "") -> dict:
 def calcola_prezzo_riparazione(s: dict) -> Optional[float]:
     if s.get("tipo") != "riparazione":
         return None
-    minuti = max(int(s.get("minuti_lavoro") or 0), 30)
+    minuti_raw = int(s.get("minuti_lavoro") or 0)
+    if s.get("con_ricambio") and s.get("tipo_ricambio") == "batteria":
+        base = float(s.get("costo_componente") or 0) + 2.0 + minuti_raw * 0.22775 + 20.0
+        return round(base * 1.22, 2)
+    minuti = max(minuti_raw, 30)
     lavoro = minuti * 0.22775
     if s.get("con_ricambio"):
         base = float(s.get("costo_componente") or 0) + 2.0 + lavoro + 60.0
@@ -2550,6 +2554,7 @@ class ServizioInput(BaseModel):
     dispositivo: str = ""
     problema: str = ""
     con_ricambio: bool = False
+    tipo_ricambio: str = "altro"
     costo_componente: Optional[float] = None
     minuti_lavoro: Optional[int] = None
     prodotto: str = ""

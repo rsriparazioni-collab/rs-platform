@@ -12,9 +12,13 @@ import { Switch } from "./ui/switch";
 
 const EMPTY_NEW_CLIENT = { nome: "", cognome: "", telefono: "", email: "", codice_fiscale: "" };
 
-function prezzoConsigliato(tipo, conRicambio, costo, minuti) {
+function prezzoConsigliato(tipo, conRicambio, costo, minuti, tipoRicambio) {
   if (tipo !== "riparazione") return null;
-  const min = Math.max(parseInt(minuti) || 0, 30);
+  const minRaw = parseInt(minuti) || 0;
+  if (conRicambio && tipoRicambio === "batteria") {
+    return Math.round(((parseFloat(costo) || 0) + 2 + minRaw * 0.22775 + 20) * 1.22 * 100) / 100;
+  }
+  const min = Math.max(minRaw, 30);
   const lavoro = min * 0.22775;
   const base = conRicambio ? (parseFloat(costo) || 0) + 2 + lavoro + 60 : 30 + lavoro;
   return Math.round(base * 1.22 * 100) / 100;
@@ -62,8 +66,8 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
   const isTel = ["sim", "internet", "fisso"].includes(tipo);
   const isShop = ["accessori", "vendita"].includes(tipo);
   const prezzo = useMemo(
-    () => prezzoConsigliato(tipo, form.con_ricambio, form.costo_componente, form.minuti_lavoro),
-    [tipo, form.con_ricambio, form.costo_componente, form.minuti_lavoro]
+    () => prezzoConsigliato(tipo, form.con_ricambio, form.costo_componente, form.minuti_lavoro, form.tipo_ricambio),
+    [tipo, form.con_ricambio, form.costo_componente, form.minuti_lavoro, form.tipo_ricambio]
   );
 
   const submit = async (e) => {
@@ -251,13 +255,25 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
               </div>
               <div />
               {form.con_ricambio ? (
+                <>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Costo componente €</Label>
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo ricambio</Label>
+                  <Select value={form.tipo_ricambio || "altro"} onValueChange={(v) => set("tipo_ricambio", v)}>
+                    <SelectTrigger data-testid="servizio-tipo-ricambio"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="altro">Display / altro componente</SelectItem>
+                      <SelectItem value="batteria">Batteria</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Costo {form.tipo_ricambio === "batteria" ? "batteria" : "componente"} €</Label>
                   <Input type="number" step="0.01" value={form.costo_componente ?? ""} onChange={(e) => set("costo_componente", e.target.value)} data-testid="servizio-costo" />
                 </div>
+                </>
               ) : null}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Minuti di lavoro (min. 30)</Label>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Minuti di lavoro {form.con_ricambio && form.tipo_ricambio === "batteria" ? "(reali, senza minimo)" : "(min. 30)"}</Label>
                 <Input type="number" value={form.minuti_lavoro ?? ""} onChange={(e) => set("minuti_lavoro", e.target.value)} data-testid="servizio-minuti" />
               </div>
               <div className="col-span-full rounded-lg bg-emerald-50 px-4 py-3" data-testid="servizio-prezzo-preview">
@@ -265,7 +281,9 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                 <p className="font-heading text-2xl font-bold text-emerald-800">€ {prezzo != null ? prezzo.toFixed(2) : "-"}</p>
                 <p className="text-xs text-emerald-700">
                   {form.con_ricambio
-                    ? "costo componente + 2€ trasporto + minuti × 0,22775€ + 60€ margine + IVA 22%"
+                    ? (form.tipo_ricambio === "batteria"
+                      ? "costo batteria + 2€ trasporto + minuti reali × 0,22775€ + 20€ margine + IVA 22%"
+                      : "costo componente + 2€ trasporto + minuti × 0,22775€ + 60€ margine + IVA 22%")
                     : "30€ base + minuti × 0,22775€ + IVA 22%"}
                 </p>
               </div>

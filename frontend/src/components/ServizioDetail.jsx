@@ -299,7 +299,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                 {isRip && (
                   <>
                     <div><p className="text-xs text-slate-500">Dispositivo</p><p className="font-medium">{detail.dispositivo || "-"}</p></div>
-                    <div><p className="text-xs text-slate-500">Ricambio</p><p className="font-medium">{detail.con_ricambio ? "Da ordinare" : "Non necessario"}</p></div>
+                    <div><p className="text-xs text-slate-500">Ricambio</p><p className="font-medium">{detail.con_ricambio ? (detail.tipo_ricambio === "batteria" ? "Batteria" : "Da ordinare") : "Non necessario"}</p></div>
                     <div className="col-span-2 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3" data-testid="servizio-date-info">
                       <div><p className="text-xs text-slate-500">Ingresso</p><p className="font-medium" data-testid="servizio-data-ingresso-info">{fmtDate(detail.data_ingresso)}</p></div>
                       <div><p className="text-xs text-slate-500">Lavorazione</p><p className="font-medium" data-testid="servizio-data-lavorazione-info">{fmtDate(detail.data_lavorazione)}</p></div>
