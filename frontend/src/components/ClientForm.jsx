@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
+import { apriPortaleDopoSalvataggio } from "./PortaleBox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -95,6 +96,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
       } else {
         await api.post("/clients", payload);
         toast.success("Cliente inserito");
+        if (payload.nuovo_fornitore) api.get("/portali").then((r) => apriPortaleDopoSalvataggio(r.data, "energia", payload.nuovo_fornitore)).catch(() => {});
       }
       setForm(EMPTY);
       setBaseline(EMPTY);

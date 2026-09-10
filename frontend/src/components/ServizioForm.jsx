@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
+import { apriPortaleDopoSalvataggio } from "./PortaleBox";
 import { SERVIZIO_TIPI, RIP_STATI, TEL_OPERATORS, SBLOCCO_TIPI } from "../lib/constants";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -104,6 +105,8 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
       } else {
         await api.post("/servizi", payload);
         toast.success("Servizio inserito");
+        const sez = { sim: "mobile", internet: "fisso", fisso: "fisso", riparazione: "riparazioni" }[tipo];
+        api.get("/portali").then((r) => apriPortaleDopoSalvataggio(r.data, sez, payload.operatore_tel || payload.fornitore_ricambio)).catch(() => {});
       }
       onSaved();
       onClose();

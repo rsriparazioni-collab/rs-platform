@@ -4,6 +4,7 @@ import RitiroDaRiparazione from "./RitiroDaRiparazione";
 import WhatsAppLog from "./WhatsAppLog";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
+import PortaleBox from "./PortaleBox";
 import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI, magazzinoCategoriaLabel } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -486,6 +487,8 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                   <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{detail.note}</p></div>
               )}
 
+              <PortaleBox kind="servizio" id={detail.id} tipo={detail.tipo} operatore={detail.operatore_tel || detail.fornitore_ricambio}
+                          insertedAt={detail.portale_inserito_at} insertedBy={detail.portale_inserito_da} onChanged={refresh} />
               {isRip && (
                 <WhatsAppLog url={`/servizi/${detail.id}/whatsapp-log`} refreshKey={detail.updated_at} onResent={refresh}
                              title="WhatsApp di questa riparazione" />

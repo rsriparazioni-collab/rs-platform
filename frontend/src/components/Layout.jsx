@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText } from "lucide-react";
+import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText, Link2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { RUOLI } from "../lib/constants";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -21,6 +21,7 @@ const NAV = [
   { to: "/utenti", label: "Utenti", icon: ShieldCheck, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-utenti" },
   { to: "/sicurezza", label: "Sicurezza", icon: Lock, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-sicurezza" },
   { to: "/registro-accessi", label: "Registro Accessi", icon: ScrollText, roles: ["admin"], testid: "nav-registro-accessi" },
+  { to: "/portali", label: "Portali Operatori", icon: Link2, roles: ["admin"], testid: "nav-portali" },
 ];
 
 function NavItems({ onNavigate, mobile }) {

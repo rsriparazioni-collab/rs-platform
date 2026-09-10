@@ -11,6 +11,7 @@ import Operatori from "./pages/Operatori";
 import Utenti from "./pages/Utenti";
 import Sicurezza from "./pages/Sicurezza";
 import RegistroAccessi from "./pages/RegistroAccessi";
+import Portali from "./pages/Portali";
 import WhatsApp from "./pages/WhatsApp";
 import Riparazioni from "./pages/Riparazioni";
 import Telefonia from "./pages/Telefonia";
@@ -69,6 +70,7 @@ function App() {
             <Route path="utenti" element={<Utenti />} />
             <Route path="sicurezza" element={<Sicurezza />} />
             <Route path="registro-accessi" element={<RequireRole roles={["admin"]}><RegistroAccessi /></RequireRole>} />
+            <Route path="portali" element={<RequireRole roles={["admin"]}><Portali /></RequireRole>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

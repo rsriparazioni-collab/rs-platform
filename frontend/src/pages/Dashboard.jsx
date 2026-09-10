@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRight, Wrench, Smartphone, CalendarClock, Package, MessageCircle } from "lucide-react";
+import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRight, Wrench, Smartphone, CalendarClock, Package, MessageCircle, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import MarginiChart from "../components/MarginiChart";
@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [scadenze, setScadenze] = useState(null);
   const [waStatus, setWaStatus] = useState(null);
   const [ferme, setFerme] = useState([]);
+  const [daInserire, setDaInserire] = useState([]);
   const [margini, setMargini] = useState(null);
   const [meseMargini, setMeseMargini] = useState(new Date().toISOString().slice(0, 7));
 
@@ -58,6 +59,7 @@ export default function Dashboard() {
     api.get("/alerts").then((r) => setAlerts(r.data)).catch(() => {});
     api.get("/scadenze-settimana").then((r) => setScadenze(r.data)).catch(() => {});
     api.get("/riparazioni-ferme").then((r) => setFerme(r.data)).catch(() => {});
+    api.get("/portali/da-inserire").then((r) => setDaInserire(r.data)).catch(() => {});
     if (user.role === "admin") {
       api.get("/whatsapp/sessions-summary").then((r) => setWaStatus(r.data)).catch(() => {});
     }
@@ -302,6 +304,25 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {daInserire.length > 0 && (
+        <div className="rounded-xl border border-sky-200 bg-white shadow-sm" data-testid="da-inserire-panel">
+          <div className="flex items-center gap-2 border-b border-sky-100 px-5 py-4">
+            <Link2 className="h-4 w-4 text-sky-700" />
+            <h2 className="font-heading text-lg font-semibold text-slate-800">Da inserire sui portali operatori</h2>
+            <span className="text-xs text-slate-500">({daInserire.length})</span>
+          </div>
+          <div className="grid gap-2 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {daInserire.slice(0, 12).map((d) => (
+              <Link key={d.id} to={d.kind === "cliente" ? "/clienti" : d.sezione === "riparazioni" ? "/riparazioni" : "/telefonia"}
+                    className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50" data-testid={`da-inserire-${d.id}`}>
+                <span className="truncate font-medium text-slate-800">{d.client_name}</span>
+                <span className="ml-2 shrink-0 status-badge bg-sky-500/15 text-sky-700 border-sky-300">{d.operatore}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {ferme.length > 0 && (
         <div className="rounded-xl border border-rose-200 bg-white shadow-sm" data-testid="riparazioni-ferme-panel">

@@ -3012,6 +3012,93 @@ async def margini_negozi(admin: dict = Depends(require_admin), mese: str = ""):
     return {"mese": mese, "mese_precedente": prec, "negozi": sorted(out, key=lambda x: -x["margine"]),
             "totale": round(sum(a["margine"] for a in out), 2), "totale_precedente": round(sum(prec_acc.values()), 2)}
 
+# ---------------- Portali operatori ----------------
+class PortaleInput(BaseModel):
+    sezione: str  # energia | mobile | fisso | riparazioni
+    operatore: str
+    nome: str = ""
+    url: str
+    note: str = ""
+
+PORTALE_SEZIONE_BY_TIPO = {"sim": "mobile", "internet": "fisso", "fisso": "fisso", "riparazione": "riparazioni"}
+
+@api_router.get("/portali")
+async def list_portali(user: dict = Depends(get_current_user)):
+    return await db.portali.find({}, {"_id": 0}).sort([("sezione", 1), ("operatore", 1)]).to_list(500)
+
+@api_router.post("/portali")
+async def create_portale(input: PortaleInput, admin: dict = Depends(require_admin)):
+    data = input.model_dump()
+    data["operatore"] = data["operatore"].strip().upper()
+    data.update({"id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()})
+    await db.portali.insert_one(data)
+    data.pop("_id", None)
+    return data
+
+@api_router.patch("/portali/{portale_id}")
+async def update_portale(portale_id: str, input: PortaleInput, admin: dict = Depends(require_admin)):
+    data = input.model_dump()
+    data["operatore"] = data["operatore"].strip().upper()
+    res = await db.portali.update_one({"id": portale_id}, {"$set": data})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Portale non trovato")
+    return await db.portali.find_one({"id": portale_id}, {"_id": 0})
+
+@api_router.delete("/portali/{portale_id}")
+async def delete_portale(portale_id: str, admin: dict = Depends(require_admin)):
+    await db.portali.delete_one({"id": portale_id})
+    return {"status": "ok"}
+
+async def portale_per(sezione: str, operatore: str) -> Optional[dict]:
+    if not operatore:
+        return None
+    return await db.portali.find_one({"sezione": sezione, "operatore": operatore.strip().upper()}, {"_id": 0})
+
+class PortaleFlagInput(BaseModel):
+    inserito: bool
+
+@api_router.post("/servizi/{servizio_id}/portale-inserito")
+async def servizio_portale_inserito(servizio_id: str, input: PortaleFlagInput, user: dict = Depends(get_current_user)):
+    await get_scoped_servizio(servizio_id, user)
+    now = datetime.now(timezone.utc).isoformat()
+    upd = {"$set": {"portale_inserito_at": now, "portale_inserito_da": user["name"]}} if input.inserito else {"$unset": {"portale_inserito_at": "", "portale_inserito_da": ""}}
+    await db.servizi.update_one({"id": servizio_id}, upd)
+    return {"status": "ok"}
+
+@api_router.post("/clients/{client_id}/portale-inserito")
+async def client_portale_inserito(client_id: str, input: PortaleFlagInput, user: dict = Depends(get_current_user)):
+    await get_scoped_client(client_id, user)
+    now = datetime.now(timezone.utc).isoformat()
+    upd = {"$set": {"portale_inserito_at": now, "portale_inserito_da": user["name"]}} if input.inserito else {"$unset": {"portale_inserito_at": "", "portale_inserito_da": ""}}
+    await db.clients.update_one({"id": client_id}, upd)
+    return {"status": "ok"}
+
+@api_router.get("/portali/da-inserire")
+async def portali_da_inserire(user: dict = Depends(get_current_user)):
+    portali = await db.portali.find({}, {"_id": 0}).to_list(500)
+    if not portali:
+        return []
+    keys = {(p["sezione"], p["operatore"]) for p in portali}
+    out = []
+    scope = servizio_scope(user)
+    scope["tipo"] = {"$in": ["sim", "internet", "fisso"]}
+    scope["portale_inserito_at"] = {"$in": [None]}
+    svcs = await db.servizi.find(scope, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    names = await clients_name_map(list({s["client_id"] for s in svcs}))
+    for s in svcs:
+        sez = PORTALE_SEZIONE_BY_TIPO.get(s["tipo"])
+        if (sez, (s.get("operatore_tel") or "").upper()) in keys:
+            out.append({"kind": "servizio", "id": s["id"], "client_id": s["client_id"], "client_name": names.get(s["client_id"], ""),
+                        "sezione": sez, "operatore": s.get("operatore_tel", ""), "created_at": s.get("created_at")})
+    cscope = client_scope_filter(user)
+    cscope.update({"nuovo_fornitore": {"$nin": [None, ""]}, "portale_inserito_at": {"$in": [None]},
+                   "lavorazione": {"$in": ["da_inserire", "inserito", "da_quotare", "quotato"]}})
+    for c in await db.clients.find(cscope, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nuovo_fornitore": 1, "created_at": 1}).sort("created_at", -1).to_list(2000):
+        if ("energia", (c.get("nuovo_fornitore") or "").upper()) in keys:
+            out.append({"kind": "cliente", "id": c["id"], "client_id": c["id"], "client_name": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(),
+                        "sezione": "energia", "operatore": c.get("nuovo_fornitore", ""), "created_at": c.get("created_at")})
+    return out
+
 @api_router.post("/clients/{client_id}/blacklist-recensioni")
 async def blacklist_recensioni(client_id: str, input: BlacklistInput, user: dict = Depends(get_current_user)):
     c = await db.clients.find_one({"id": client_id}, {"_id": 0, "id": 1})

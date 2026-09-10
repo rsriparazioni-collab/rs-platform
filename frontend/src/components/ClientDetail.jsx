@@ -4,6 +4,7 @@ import WhatsAppLog from "./WhatsAppLog";
 import MessaggiPrevisti from "./MessaggiPrevisti";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
+import PortaleBox from "./PortaleBox";
 import { lavorazioneLabel, lavorazioneBadge, fmtDate, servizioTipoLabel, ripStatoLabel, ripStatoBadge } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -308,6 +309,8 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                 </div>
               </div>
 
+              <PortaleBox kind="cliente" id={detail.id} sezione="energia" operatore={detail.nuovo_fornitore}
+                          insertedAt={detail.portale_inserito_at} insertedBy={detail.portale_inserito_da} onChanged={refresh} />
               <MessaggiPrevisti clientId={detail.id} refreshKey={logKey} />
               {isAdmin && (
                 <Button size="sm" variant="outline" className="w-full gap-2" data-testid="client-gdpr-export-button"
