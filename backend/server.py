@@ -3012,6 +3012,124 @@ async def margini_negozi(admin: dict = Depends(require_admin), mese: str = ""):
     return {"mese": mese, "mese_precedente": prec, "negozi": sorted(out, key=lambda x: -x["margine"]),
             "totale": round(sum(a["margine"] for a in out), 2), "totale_precedente": round(sum(prec_acc.values()), 2)}
 
+# ---------------- Password manager (credenziali negozi) ----------------
+class PasswordInput(BaseModel):
+    servizio: str
+    titolo: str = ""
+    username: str = ""
+    password: Optional[str] = None  # None in update = mantieni
+    url: str = ""
+    contenuto: Optional[str] = None  # testo libero cifrato (None in update = mantieni)
+    store_ids: List[str] = []  # vuoto = visibile solo all'amministratore
+
+class PasswordImportInput(BaseModel):
+    sheet_url: str
+    force: bool = False
+
+PASSWORD_PUBLIC = {"_id": 0, "password_enc": 0, "contenuto_enc": 0}
+
+def password_scope(user: dict) -> dict:
+    if user["role"] == "admin":
+        return {}
+    return {"store_ids": {"$in": user.get("store_ids", [])}}
+
+def serialize_password(p: dict) -> dict:
+    out = {k: v for k, v in p.items() if k not in ("_id", "password_enc", "contenuto_enc")}
+    out["has_password"] = bool(p.get("password_enc"))
+    out["has_contenuto"] = bool(p.get("contenuto_enc"))
+    return out
+
+@api_router.get("/passwords")
+async def list_passwords(user: dict = Depends(get_current_user), q: str = ""):
+    scope = password_scope(user)
+    if q:
+        rx = {"$regex": re.escape(q), "$options": "i"}
+        scope["$or"] = [{"servizio": rx}, {"titolo": rx}, {"username": rx}, {"url": rx}]
+    rows = await db.passwords.find(scope).sort([("servizio", 1), ("titolo", 1)]).to_list(2000)
+    return [serialize_password(p) for p in rows]
+
+@api_router.get("/passwords/{password_id}/reveal")
+async def reveal_password(password_id: str, user: dict = Depends(get_current_user)):
+    p = await db.passwords.find_one({**password_scope(user), "id": password_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Voce non trovata")
+    return {"id": p["id"], "password": totp_decrypt(p["password_enc"]) if p.get("password_enc") else "",
+            "contenuto": totp_decrypt(p["contenuto_enc"]) if p.get("contenuto_enc") else ""}
+
+def _password_doc(data: dict) -> dict:
+    out = {k: v for k, v in data.items() if k not in ("password", "contenuto")}
+    out["servizio"] = out["servizio"].strip()
+    if data.get("password") is not None:
+        out["password_enc"] = totp_encrypt(data["password"]) if data["password"] else None
+    if data.get("contenuto") is not None:
+        out["contenuto_enc"] = totp_encrypt(data["contenuto"]) if data["contenuto"] else None
+    return out
+
+@api_router.post("/passwords")
+async def create_password(input: PasswordInput, admin: dict = Depends(require_admin)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = _password_doc(input.model_dump())
+    doc.update({"id": str(uuid.uuid4()), "created_by": admin["id"], "created_at": now, "updated_at": now})
+    await db.passwords.insert_one(doc)
+    return serialize_password(doc)
+
+@api_router.patch("/passwords/{password_id}")
+async def update_password(password_id: str, input: PasswordInput, admin: dict = Depends(require_admin)):
+    doc = _password_doc(input.model_dump())
+    doc.update({"updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": admin["id"]})
+    res = await db.passwords.update_one({"id": password_id}, {"$set": doc})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Voce non trovata")
+    return serialize_password(await db.passwords.find_one({"id": password_id}))
+
+@api_router.delete("/passwords/{password_id}")
+async def delete_password(password_id: str, admin: dict = Depends(require_admin)):
+    res = await db.passwords.delete_one({"id": password_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Voce non trovata")
+    return {"status": "ok"}
+
+def _sheet_rows_to_text(csv_text: str) -> str:
+    lines = []
+    for row in csv.reader(io.StringIO(csv_text)):
+        cells = [c.strip() for c in row if c and c.strip()]
+        if cells:
+            lines.append("  |  ".join(cells))
+    return "\n".join(lines)
+
+@api_router.post("/passwords/import-sheet")
+async def import_passwords_sheet(input: PasswordImportInput, admin: dict = Depends(require_admin)):
+    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9\-_]+)", input.sheet_url)
+    if not m:
+        raise HTTPException(status_code=400, detail="Link Google Sheet non valido")
+    sheet_id = m.group(1)
+    marker_id = f"passwords_sheet:{sheet_id}"
+    if not input.force and await db.import_state.find_one({"_id": marker_id}):
+        return {"status": "gia_importato", "imported": 0}
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as http:
+        page = await http.get(f"https://docs.google.com/spreadsheets/d/{sheet_id}/htmlview")
+        if page.status_code != 200:
+            raise HTTPException(status_code=400, detail="Foglio non raggiungibile: verifica la condivisione 'Chiunque con il link'")
+        tabs = re.findall(r'items\.push\(\{name: "([^"]*)".*?gid: "(-?\d+)"', page.text)
+        if not tabs:
+            raise HTTPException(status_code=400, detail="Nessuna pagina trovata nel foglio")
+        now = datetime.now(timezone.utc).isoformat()
+        imported, skipped = 0, 0
+        for name, gid in tabs:
+            r = await _fetch_tab_csv(http, sheet_id, gid=gid)
+            text = _sheet_rows_to_text(r.text) if r.status_code == 200 else ""
+            name = name.replace("\\/", "/").strip()
+            if not text or await db.passwords.find_one({"servizio": name, "import_gid": gid}):
+                skipped += 1
+                continue
+            await db.passwords.insert_one({
+                "id": str(uuid.uuid4()), "servizio": name, "titolo": "", "username": "", "password_enc": None,
+                "url": "", "contenuto_enc": totp_encrypt(text), "store_ids": [], "import_gid": gid,
+                "import_source": sheet_id, "created_by": admin["id"], "created_at": now, "updated_at": now})
+            imported += 1
+    await db.import_state.update_one({"_id": marker_id}, {"$set": {"at": now, "imported": imported}}, upsert=True)
+    return {"status": "ok", "imported": imported, "skipped": skipped, "pagine": len(tabs)}
+
 # ---------------- Portali operatori ----------------
 class PortaleInput(BaseModel):
     sezione: str  # energia | mobile | fisso | riparazioni
@@ -3764,6 +3882,10 @@ AUDIT_ENTITIES = [
     (re.compile(r"^/api/clients/([^/]+)$"), "cliente", None),
     (re.compile(r"^/api/clients$"), "cliente", None),
     (re.compile(r"^/api/servizi/([^/]+)/segreti$"), "servizio", "view_segreti"),
+    (re.compile(r"^/api/passwords/([^/]+)/reveal$"), "password", "view_segreti"),
+    (re.compile(r"^/api/passwords/import-sheet$"), "password", "import"),
+    (re.compile(r"^/api/passwords/([^/]+)$"), "password", None),
+    (re.compile(r"^/api/passwords$"), "password", None),
     (re.compile(r"^/api/servizi/([^/]+)/whatsapp-log$"), "servizio", "view"),
     (re.compile(r"^/api/servizi/([^/]+)/(whatsapp|allegati|foto|ricambi|scheda)"), "servizio", "update"),
     (re.compile(r"^/api/servizi/([^/]+)$"), "servizio", None),
@@ -3823,6 +3945,9 @@ async def audit_middleware(request: Request, call_next):
         elif entity == "utente" and entity_id:
             u = await db.users.find_one({"id": entity_id}, {"_id": 0, "name": 1})
             label = u.get("name", "") if u else ""
+        elif entity == "password" and entity_id:
+            p = await db.passwords.find_one({"id": entity_id}, {"_id": 0, "servizio": 1, "titolo": 1})
+            label = f"{p.get('servizio', '')} {p.get('titolo', '')}".strip() if p else ""
     except Exception:
         pass
     fwd = request.headers.get("x-forwarded-for", "")
