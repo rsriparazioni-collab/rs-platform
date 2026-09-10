@@ -3113,6 +3113,28 @@ async def client_portale_inserito(client_id: str, input: PortaleFlagInput, user:
     await db.clients.update_one({"id": client_id}, _portale_flag_update(input, user))
     return {"status": "ok"}
 
+@api_router.get("/portali/flag-scaduti")
+async def portali_flag_scaduti(user: dict = Depends(get_current_user), giorni: int = 3):
+    """Servizi/clienti con flag aggiuntivo del portale (es. CARICATO SU JOY) non spuntato da oltre N giorni."""
+    portali = [p for p in await db.portali.find({"flag_label": {"$nin": [None, ""]}}, {"_id": 0}).to_list(200)]
+    if not portali:
+        return []
+    limite = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
+    by_key = {(p["sezione"], p["operatore"]): p for p in portali}
+    out = []
+    scope = servizio_scope(user)
+    scope.update({"tipo": {"$in": ["sim", "internet", "fisso"]}, "portale_extra_at": {"$in": [None]}, "created_at": {"$lte": limite},
+                  "operatore_tel": {"$in": sorted({p["operatore"] for p in portali})}})
+    svcs = await db.servizi.find(scope, {"_id": 0}).sort("created_at", 1).to_list(2000)
+    names = await clients_name_map(list({s["client_id"] for s in svcs}))
+    for s in svcs:
+        p = by_key.get((PORTALE_SEZIONE_BY_TIPO.get(s["tipo"]), (s.get("operatore_tel") or "").upper()))
+        if p:
+            out.append({"kind": "servizio", "id": s["id"], "client_id": s["client_id"], "client_name": names.get(s["client_id"], ""),
+                        "operatore": s.get("operatore_tel", ""), "tipo": s["tipo"], "flag_label": p["flag_label"], "flag_url": p.get("flag_url", ""),
+                        "created_at": s.get("created_at"), "giorni": (datetime.now(timezone.utc) - datetime.fromisoformat(s["created_at"])).days})
+    return out
+
 @api_router.get("/portali/da-inserire")
 async def portali_da_inserire(user: dict = Depends(get_current_user)):
     portali = await db.portali.find({}, {"_id": 0}).to_list(500)

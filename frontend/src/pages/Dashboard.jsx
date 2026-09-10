@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [waStatus, setWaStatus] = useState(null);
   const [ferme, setFerme] = useState([]);
   const [daInserire, setDaInserire] = useState([]);
+  const [flagScaduti, setFlagScaduti] = useState([]);
   const [margini, setMargini] = useState(null);
   const [meseMargini, setMeseMargini] = useState(new Date().toISOString().slice(0, 7));
 
@@ -60,6 +61,7 @@ export default function Dashboard() {
     api.get("/scadenze-settimana").then((r) => setScadenze(r.data)).catch(() => {});
     api.get("/riparazioni-ferme").then((r) => setFerme(r.data)).catch(() => {});
     api.get("/portali/da-inserire").then((r) => setDaInserire(r.data)).catch(() => {});
+    api.get("/portali/flag-scaduti").then((r) => setFlagScaduti(r.data)).catch(() => {});
     if (user.role === "admin") {
       api.get("/whatsapp/sessions-summary").then((r) => setWaStatus(r.data)).catch(() => {});
     }
@@ -304,6 +306,33 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {flagScaduti.length > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/40 shadow-sm" data-testid="joy-panel">
+          <div className="flex flex-wrap items-center gap-2 border-b border-amber-200 px-5 py-4">
+            <BellRing className="h-4 w-4 text-amber-700" />
+            <h2 className="font-heading text-lg font-semibold text-slate-800">Contratti Fastweb non caricati su JOY da oltre 3 giorni</h2>
+            <span className="status-badge bg-amber-500/15 text-amber-800 border-amber-300" data-testid="joy-count">{flagScaduti.length}</span>
+            <span className="ml-auto text-xs text-amber-800">Senza il caricamento su JOY il contratto non viene pagato</span>
+          </div>
+          <div className="grid gap-2 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {flagScaduti.map((d) => (
+              <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm" data-testid={`joy-item-${d.id}`}>
+                <Link to="/telefonia" className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-slate-900">{d.client_name}</p>
+                  <p className="text-xs text-slate-500">{d.operatore} {d.tipo === "sim" ? "Mobile" : "Fisso"} · inserito {d.giorni} gg fa</p>
+                </Link>
+                <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">{d.flag_label}</span>
+                {d.flag_url && (
+                  <button type="button" onClick={() => window.open(d.flag_url, "_blank", "noopener")} className="shrink-0 rounded-md border border-amber-300 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100" data-testid={`joy-open-${d.id}`}>
+                    Apri JOY
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {daInserire.length > 0 && (
         <div className="rounded-xl border border-sky-200 bg-white shadow-sm" data-testid="da-inserire-panel">
