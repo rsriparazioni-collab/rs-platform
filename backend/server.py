@@ -3015,10 +3015,48 @@ async def margini_negozi(admin: dict = Depends(require_admin), mese: str = ""):
 # ---------------- Portali operatori ----------------
 class PortaleInput(BaseModel):
     sezione: str  # energia | mobile | fisso | riparazioni
-    operatore: str
+    operatore: str  # "*" = valido per tutta la sezione
     nome: str = ""
-    url: str
+    url: str = ""
     note: str = ""
+    flag_label: str = ""  # es. "CARICATO SU JOY"
+    flag_url: str = ""
+
+PORTALI_SEED = [
+    ("mobile", "WINDTRE", "Kolme", "https://spazio.kolme.it/", "", "", ""),
+    ("fisso", "WINDTRE", "Kolme", "https://spazio.kolme.it/", "", "", ""),
+    ("mobile", "VERY", "Kolme", "https://spazio.kolme.it/", "", "", ""),
+    ("mobile", "KENA", "App Kena", "", "Apri l'app Kena per l'inserimento", "", ""),
+    ("mobile", "HO", "Oscar ho.", "https://oscar.ho-mobile.it/login.html", "", "", ""),
+    ("mobile", "DIGI", "Partner Digi", "https://parteneri.digimobil.it/cgi-bin/index.cgi", "", "", ""),
+    ("mobile", "ILIAD", "Planet Iliad", "https://planet.iliad.it/login", "", "", ""),
+    ("fisso", "ILIAD", "Planet Iliad", "https://planet.iliad.it/login", "", "", ""),
+    ("mobile", "FASTWEB", "Portale Fastweb", "https://logon.fastweb.it/oam/server/obrareq.cgi?encquery%3DjXkCxgqyzKOrBAEASswVNrDrA6ALYQoV2QdTqOUAtYLisdDvOzgttcfRwtZmOUuullJrr5rxzgkYTaZEI86Fq2ubyUU6RfQ3ZEe1PHeuWgE5ApWesUZPJ5YrbjHD49Op6cl0CUrisMRCxReH%2BF3mLkoSLMt1shXPkuVkEywb3lS3Cq3qj9E4fKt9vWMTNmoYPrNPOMaz4431sISeDH23LrW%2BdCrHH8kcsw9u%2BoY9o15Tl%2Bh1Bd%2BWLutKDWI9M6274MMSyLle7Kb3jgoAhc0NFQ%3D%3D%20agentid%3DFront-End-OAM%20ver%3D1%20crmethod%3D2",
+     "Dopo l'inserimento carica su JOY (serve per il pagamento)", "CARICATO SU JOY", "https://logon.fastweb.it/oam/server/obrareq.cgi?encquery%3DjXkCxgqyzKOrBAEASswVNrDrA6ALYQoV2QdTqOUAtYLisdDvOzgttcfRwtZmOUuullJrr5rxzgkYTaZEI86Fq2ubyUU6RfQ3ZEe1PHeuWgE5ApWesUZPJ5YrbjHD49Op6cl0CUrisMRCxReH%2BF3mLkoSLMt1shXPkuVkEywb3lS3Cq3qj9E4fKt9vWMTNmoYPrNPOMaz4431sISeDH23LrW%2BdCrHH8kcsw9u%2BoY9o15Tl%2Bh1Bd%2BWLutKDWI9M6274MMSyLle7Kb3jgoAhc0NFQ%3D%3D%20agentid%3DFront-End-OAM%20ver%3D1%20crmethod%3D2"),
+    ("fisso", "FASTWEB", "Portale Fastweb", "https://logon.fastweb.it/oam/server/obrareq.cgi?encquery%3DjXkCxgqyzKOrBAEASswVNrDrA6ALYQoV2QdTqOUAtYLisdDvOzgttcfRwtZmOUuullJrr5rxzgkYTaZEI86Fq2ubyUU6RfQ3ZEe1PHeuWgE5ApWesUZPJ5YrbjHD49Op6cl0CUrisMRCxReH%2BF3mLkoSLMt1shXPkuVkEywb3lS3Cq3qj9E4fKt9vWMTNmoYPrNPOMaz4431sISeDH23LrW%2BdCrHH8kcsw9u%2BoY9o15Tl%2Bh1Bd%2BWLutKDWI9M6274MMSyLle7Kb3jgoAhc0NFQ%3D%3D%20agentid%3DFront-End-OAM%20ver%3D1%20crmethod%3D2",
+     "Dopo l'inserimento carica su JOY (serve per il pagamento)", "CARICATO SU JOY", "https://logon.fastweb.it/oam/server/obrareq.cgi?encquery%3DjXkCxgqyzKOrBAEASswVNrDrA6ALYQoV2QdTqOUAtYLisdDvOzgttcfRwtZmOUuullJrr5rxzgkYTaZEI86Fq2ubyUU6RfQ3ZEe1PHeuWgE5ApWesUZPJ5YrbjHD49Op6cl0CUrisMRCxReH%2BF3mLkoSLMt1shXPkuVkEywb3lS3Cq3qj9E4fKt9vWMTNmoYPrNPOMaz4431sISeDH23LrW%2BdCrHH8kcsw9u%2BoY9o15Tl%2Bh1Bd%2BWLutKDWI9M6274MMSyLle7Kb3jgoAhc0NFQ%3D%3D%20agentid%3DFront-End-OAM%20ver%3D1%20crmethod%3D2"),
+    ("fisso", "EOLO", "Eolo", "https://www.eolo.it/", "", "", ""),
+    ("mobile", "LYCA", "Lyca Retailer", "https://retailer.lycamobile.it/", "", "", ""),
+    ("energia", "*", "CambiaOra - primo passo attivazione", "https://swi.tc/pom/4jb", "Primo passo per attivare l'utenza", "", ""),
+    ("energia", "ENEL", "Portale Enel", "https://login.microsoftonline.com/d539d4bf-5610-471a-afc2-1c76685cfefa/saml2?SAMLRequest=hZNdc6owEIb%2FCpN7MHwrU%2B2gaK2KX6BtvXECJkKBBEj86q8%2FjG1nes5Fz87sRWY375vNPPvweC1y6YxrnjLaBaoCgYRpzA4pPXbBJhzJbfDYe%2BCoyLXScU8ioWtcnTAXUnORcuez0gWnmjoM8ZQ7FBWYOyJ2AtefOZoCnbJmgsUsB5LLOa5FYzVglJ8KXAe4Pqcx3qxnXZAIUXKn1cIU53FdCKW4KRzlmBNWx1iJWfHIWRdCTzPgPcpwcAKS1zwmpUjcB%2FjWyNkxpUqRxjXjjAhG85TeJVoHU%2B8cjIjIpqVC2bBVJCMSa7Ia25bVNmOCCWrdpwLSs9cFe23gNoGG0YhsVd9zL%2F9mU%2B33z%2FhsbytyvanlnCRLHeFrnq5V8rJezL1ZcayW%2B%2FWUjiZZdNx5%2BSWYuLBzXOux7R5W5eS6omrWfqmFp2uZbkQ3G1XRuAwPoyc5CzSqz1B7mp2tKNkWtyla7TcTw73tbTLIWX9HPhbB5OKaBg%2FzQWLPN35N39Txcfi%2BfyKBGN2GQWbvVf9FJ5mbvVn%2BIEu83Uobmpr5VC6z8aa%2FXOhWUXWi4Sucm2pmw1dxYf5HOfUP20R%2FppNDVnVuhvke%2B6bH9tXrxw72g%2FlmZZ63b%2BM8Kt3mtzg%2F4WfKBaKiCzSoWTLsyCoMVejolqNZit6BOyAtv3Dop%2FQTs9%2FYiT6buDMOw6W8XAQhkLbfuDYN4AtO5%2B5e%2F6Tyd2H0jSLo%2FR%2B8h9ZPk97X8e%2BF6P0B&RelayState=%2F&SigAlg=http%3A%2F%2Fwww.w3.org%2F2001%2F04%2Fxmldsig-more%23rsa-sha256&Signature=OpjLgPTQBa9YaWoW33forzaqln1Ub11q6GvS8Vvii4UHJy6cZJ%2BbkkVcfot9KD5DCxO3GIddyn0MhZRixbvyFSbXza9fjkJuKDGvcWmvsYuAOyinfm4QDhIC1VBLjUHcJZ8u4sOx4xOKxp7aOfZsjwt29Ft%2Bd79CrzB7F71PuYIFAZhhpdFThd4yyH%2B%2FD0tuTAxy%2Fzjb1Us1owI62Qvi2wh9Y9EmVhT5Ogtmpr7VyBG3rb9yFsT6rDaRSpaNI0lAS9TMJnkCL96Pa1GqNRcv8drGSO2%2Bboq7%2BYZKaarhyZvqIWBYGh6Fk7j2%2FrPBoaWpUV2fmLwSrNpjEK2b94MwHQ%3D%3D&sso_reload=true", "", "", ""),
+    ("riparazioni", "*", "SIFAR (ricambi)", "https://www.sifar.it/it", "", "", ""),
+    ("riparazioni", "*", "MobileSentrix (ricambi)", "https://www.mobilesentrix.eu/", "", "", ""),
+    ("riparazioni", "*", "New Best (ricambi)", "https://www.newbest-ricambi.com/index.php", "", "", ""),
+    ("riparazioni", "*", "El Hope (ricambi)", "https://www.el-hope.com/shop/authentication?back=my-account", "", "", ""),
+    ("riparazioni", "*", "New Net (ricambi)", "https://newnetsrl.com/", "", "", ""),
+    ("riparazioni", "*", "5G (ricambi)", "https://www.5g-m.com/it/login?back=my-account", "", "", ""),
+    ("riparazioni", "*", "Phone Click (telefoni nuovi)", "https://www.phoneclick.it/index.asp", "Acquisto telefoni nuovi", "", ""),
+    ("riparazioni", "*", "MIWO (telefoni nuovi e rigenerati)", "https://www.miwo.it/", "Acquisto telefoni nuovi e rigenerati", "", ""),
+    ("riparazioni", "*", "CDR International (telefoni nuovi)", "http://www.cdrinternational.com/", "Acquisto telefoni nuovi", "", ""),
+]
+
+async def seed_portali() -> None:
+    if await db.portali.count_documents({}):
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    await db.portali.insert_many([{"id": str(uuid.uuid4()), "sezione": s, "operatore": o, "nome": n, "url": u, "note": nt,
+                                   "flag_label": fl, "flag_url": fu, "created_at": now} for s, o, n, u, nt, fl, fu in PORTALI_SEED])
+    logger.info(f"Portali operatori seedati: {len(PORTALI_SEED)}")
 
 PORTALE_SEZIONE_BY_TIPO = {"sim": "mobile", "internet": "fisso", "fisso": "fisso", "riparazione": "riparazioni"}
 
@@ -3056,21 +3094,23 @@ async def portale_per(sezione: str, operatore: str) -> Optional[dict]:
 
 class PortaleFlagInput(BaseModel):
     inserito: bool
+    campo: str = "inserito"  # inserito | extra (es. CARICATO SU JOY)
+
+def _portale_flag_update(input: PortaleFlagInput, user: dict) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    at, by = ("portale_extra_at", "portale_extra_da") if input.campo == "extra" else ("portale_inserito_at", "portale_inserito_da")
+    return {"$set": {at: now, by: user["name"]}} if input.inserito else {"$unset": {at: "", by: ""}}
 
 @api_router.post("/servizi/{servizio_id}/portale-inserito")
 async def servizio_portale_inserito(servizio_id: str, input: PortaleFlagInput, user: dict = Depends(get_current_user)):
     await get_scoped_servizio(servizio_id, user)
-    now = datetime.now(timezone.utc).isoformat()
-    upd = {"$set": {"portale_inserito_at": now, "portale_inserito_da": user["name"]}} if input.inserito else {"$unset": {"portale_inserito_at": "", "portale_inserito_da": ""}}
-    await db.servizi.update_one({"id": servizio_id}, upd)
+    await db.servizi.update_one({"id": servizio_id}, _portale_flag_update(input, user))
     return {"status": "ok"}
 
 @api_router.post("/clients/{client_id}/portale-inserito")
 async def client_portale_inserito(client_id: str, input: PortaleFlagInput, user: dict = Depends(get_current_user)):
     await get_scoped_client(client_id, user)
-    now = datetime.now(timezone.utc).isoformat()
-    upd = {"$set": {"portale_inserito_at": now, "portale_inserito_da": user["name"]}} if input.inserito else {"$unset": {"portale_inserito_at": "", "portale_inserito_da": ""}}
-    await db.clients.update_one({"id": client_id}, upd)
+    await db.clients.update_one({"id": client_id}, _portale_flag_update(input, user))
     return {"status": "ok"}
 
 @api_router.get("/portali/da-inserire")
@@ -3078,7 +3118,7 @@ async def portali_da_inserire(user: dict = Depends(get_current_user)):
     portali = await db.portali.find({}, {"_id": 0}).to_list(500)
     if not portali:
         return []
-    keys = {(p["sezione"], p["operatore"]) for p in portali}
+    keys = {(p["sezione"], p["operatore"]) for p in portali if p["operatore"] != "*"}
     out = []
     scope = servizio_scope(user)
     scope["tipo"] = {"$in": ["sim", "internet", "fisso"]}
@@ -3667,6 +3707,7 @@ async def seed_data():
 @app.on_event("startup")
 async def startup():
     await seed_data()
+    await seed_portali()
     await migra_segreti_in_chiaro()
     try:
         init_storage()

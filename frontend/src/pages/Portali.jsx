@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
 export const SEZIONI_PORTALE = { energia: "Energia (luce/gas)", mobile: "Telefonia Mobile", fisso: "Telefonia Fisso", riparazioni: "Riparazioni" };
-const EMPTY = { sezione: "mobile", operatore: "", nome: "", url: "", note: "" };
+const EMPTY = { sezione: "mobile", operatore: "", nome: "", url: "", note: "", flag_label: "", flag_url: "" };
 
 export default function Portali() {
   const [rows, setRows] = useState([]);
@@ -21,7 +21,7 @@ export default function Portali() {
   useEffect(() => { load(); }, [load]);
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
-  const openEdit = (p) => { setEditing(p); setForm({ sezione: p.sezione, operatore: p.operatore, nome: p.nome || "", url: p.url, note: p.note || "" }); setOpen(true); };
+  const openEdit = (p) => { setEditing(p); setForm({ sezione: p.sezione, operatore: p.operatore, nome: p.nome || "", url: p.url || "", note: p.note || "", flag_label: p.flag_label || "", flag_url: p.flag_url || "" }); setOpen(true); };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -57,9 +57,9 @@ export default function Portali() {
             {rows.map((p, i) => (
               <tr key={p.id} data-testid={`portale-row-${i}`}>
                 <td className="px-4 py-3 text-slate-600">{SEZIONI_PORTALE[p.sezione] || p.sezione}</td>
-                <td className="px-4 py-3 font-semibold text-slate-900">{p.operatore}</td>
-                <td className="px-4 py-3 text-slate-700">{p.nome || "-"}{p.note && <span className="block text-xs text-slate-400">{p.note}</span>}</td>
-                <td className="px-4 py-3"><a href={p.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky-700 hover:underline" data-testid={`portale-link-${i}`}><ExternalLink className="h-3.5 w-3.5" /> {p.url.replace(/^https?:\/\//, "").slice(0, 45)}</a></td>
+                <td className="px-4 py-3 font-semibold text-slate-900">{p.operatore === "*" ? <span className="text-slate-500">Tutta la sezione</span> : p.operatore}</td>
+                <td className="px-4 py-3 text-slate-700">{p.nome || "-"}{p.note && <span className="block text-xs text-slate-400">{p.note}</span>}{p.flag_label && <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-800">flag: {p.flag_label}</span>}</td>
+                <td className="px-4 py-3">{p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky-700 hover:underline" data-testid={`portale-link-${i}`}><ExternalLink className="h-3.5 w-3.5" /> {p.url.replace(/^https?:\/\//, "").slice(0, 45)}</a> : <span className="text-xs text-slate-400">nessun link (solo avviso)</span>}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(p)} data-testid={`portale-edit-${i}`}><Pencil className="h-4 w-4 text-slate-500" /></Button>
@@ -86,8 +86,8 @@ export default function Portali() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Operatore / fornitore (come appare nel gestionale)</Label>
-                <Input required value={form.operatore} onChange={(e) => setForm({ ...form, operatore: e.target.value })} placeholder="es. WINDTRE" data-testid="portale-operatore" />
+                <Label>Operatore / fornitore (come nel gestionale, oppure * per tutta la sezione)</Label>
+                <Input required value={form.operatore} onChange={(e) => setForm({ ...form, operatore: e.target.value })} placeholder="es. WINDTRE oppure *" data-testid="portale-operatore" />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -95,8 +95,18 @@ export default function Portali() {
               <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="es. Kolme" data-testid="portale-nome" />
             </div>
             <div className="space-y-1.5">
-              <Label>Link (URL)</Label>
-              <Input required type="url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://..." data-testid="portale-url" />
+              <Label>Link (URL) — vuoto = mostra solo l'avviso nelle note</Label>
+              <Input type="url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://..." data-testid="portale-url" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Flag aggiuntivo (es. CARICATO SU JOY)</Label>
+                <Input value={form.flag_label} onChange={(e) => setForm({ ...form, flag_label: e.target.value })} data-testid="portale-flag-label" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Link del flag</Label>
+                <Input type="url" value={form.flag_url} onChange={(e) => setForm({ ...form, flag_url: e.target.value })} placeholder="https://..." data-testid="portale-flag-url" />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Note / istruzioni</Label>

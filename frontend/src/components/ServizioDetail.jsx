@@ -488,7 +488,8 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
               )}
 
               <PortaleBox kind="servizio" id={detail.id} tipo={detail.tipo} operatore={detail.operatore_tel || detail.fornitore_ricambio}
-                          insertedAt={detail.portale_inserito_at} insertedBy={detail.portale_inserito_da} onChanged={refresh} />
+                          insertedAt={detail.portale_inserito_at} insertedBy={detail.portale_inserito_da}
+                          extraAt={detail.portale_extra_at} extraBy={detail.portale_extra_da} onChanged={refresh} />
               {isRip && (
                 <WhatsAppLog url={`/servizi/${detail.id}/whatsapp-log`} refreshKey={detail.updated_at} onResent={refresh}
                              title="WhatsApp di questa riparazione" />
