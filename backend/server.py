@@ -771,6 +771,16 @@ async def list_clients(user: dict = Depends(get_current_user),
         if tipi & {"riparazione", "accessori", "vendita"}:
             cats.add("riparazioni")
         c["premium_step"] = len(cats)
+        tags = []
+        if "energia" in cats or c.get("pod") or c.get("pdr") or c.get("fornitore_provenienza"):
+            tags.append("gas" if c.get("tipo_bolletta") == "gas" else "luce")
+        if tipi & {"riparazione", "accessori", "vendita"}:
+            tags.append("rip")
+        if "sim" in tipi:
+            tags.append("mob")
+        if tipi & {"internet", "fisso"}:
+            tags.append("fis")
+        c["tipi_servizi"] = tags
         out.append(c)
     return out
 

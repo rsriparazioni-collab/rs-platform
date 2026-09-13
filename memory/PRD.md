@@ -210,4 +210,5 @@ Vedi /app/memory/test_credentials.md
 - Permessi: admin CRUD completo e sceglie `store_ids` (vuoto = solo admin); altri ruoli vedono in sola lettura solo le voci con un loro store_id.
 - Import: `POST /passwords/import-sheet {sheet_url, force}` legge tutte le pagine (nome pagina = servizio, contenuto testuale cifrato), idempotente (marker import_state passwords_sheet:<id>). ESEGUITO in preview: 52 voci dal foglio 1ibvEaSK... (tutte admin-only: l'admin assegna i negozi a mano). Da rieseguire in produzione dopo il deploy (pulsante "Importa da Google Sheet").
 - Pagina `/password` (PasswordManager.jsx, nav per tutti i ruoli): card con mostra/nascondi + copia, ricerca, form con checkbox negozi. Testing agent iterazione 10: tutto PASS (backend 5/5 + UI admin/negozio).
+- Colonna "Tipo" in Clienti (2026-09-13): `tipi_servizi` calcolato in GET /clients (luce/gas se energia, rip, mob, fis dai servizi collegati); badge multipli in Clienti.jsx (`TIPI_SERVIZI`).
 - Promemoria JOY: `GET /portali/flag-scaduti?giorni=3` → servizi telefonia con operatore che ha `flag_label` (Fastweb/JOY) senza `portale_extra_at` e creati da >3gg; pannello ambra in Dashboard con "Apri JOY".

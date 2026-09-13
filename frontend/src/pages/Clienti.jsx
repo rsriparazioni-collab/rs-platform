@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban } from "lucide-react";
+import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban, Wrench, Smartphone, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate, PREMIUM_STEPS } from "../lib/constants";
+
+const TIPI_SERVIZI = {
+  luce: { label: "Luce", badge: "bg-sky-50 text-sky-700", icon: <Zap className="h-3 w-3" /> },
+  gas: { label: "Gas", badge: "bg-orange-50 text-orange-700", icon: <Flame className="h-3 w-3" /> },
+  rip: { label: "Rip", badge: "bg-violet-50 text-violet-700", icon: <Wrench className="h-3 w-3" /> },
+  mob: { label: "Mob", badge: "bg-emerald-50 text-emerald-700", icon: <Smartphone className="h-3 w-3" /> },
+  fis: { label: "Fis", badge: "bg-indigo-50 text-indigo-700", icon: <Wifi className="h-3 w-3" /> },
+};
 import ClientForm from "../components/ClientForm";
 import ClientDetail from "../components/ClientDetail";
 import { Button } from "../components/ui/button";
@@ -178,10 +186,9 @@ export default function Clienti() {
                     <p className="text-xs text-slate-500">{c.tipo_cliente === "business" ? `P.IVA ${c.p_iva || "-"}` : c.telefono}</p>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold">
-                      {c.tipo_bolletta === "gas"
-                        ? <><Flame className="h-3.5 w-3.5 text-orange-500" /> Gas</>
-                        : <><Zap className="h-3.5 w-3.5 text-sky-500" /> Luce</>}
+                    <span className="inline-flex flex-wrap items-center gap-1" data-testid={`client-tipi-${i}`}>
+                      {(c.tipi_servizi || []).map((t) => <span key={t} className={`status-badge ${TIPI_SERVIZI[t].badge}`}>{TIPI_SERVIZI[t].icon}{TIPI_SERVIZI[t].label}</span>)}
+                      {!(c.tipi_servizi || []).length && <span className="text-xs text-slate-400">-</span>}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{c.fornitore_provenienza || "-"}</td>
