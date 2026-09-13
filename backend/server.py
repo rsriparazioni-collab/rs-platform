@@ -3031,6 +3031,7 @@ class PasswordInput(BaseModel):
     url: str = ""
     contenuto: Optional[str] = None  # testo libero cifrato (None in update = mantieni)
     store_ids: List[str] = []  # vuoto = visibile solo all'amministratore
+    user_ids: List[str] = []  # utenti singoli autorizzati (es. Deborah)
 
 class PasswordImportInput(BaseModel):
     sheet_url: str
@@ -3041,7 +3042,53 @@ PASSWORD_PUBLIC = {"_id": 0, "password_enc": 0, "contenuto_enc": 0}
 def password_scope(user: dict) -> dict:
     if user["role"] == "admin":
         return {}
-    return {"store_ids": {"$in": user.get("store_ids", [])}}
+    return {"$or": [{"store_ids": {"$in": user.get("store_ids", [])}}, {"user_ids": user["id"]}]}
+
+PW_STORE_KEYS = {"morbegno": "Morbegno", "morbe": "Morbegno", "sondrio": "Sondrio", "gravedona": "Gravedona",
+                 "tirano": "Tirano", "sondalo": "Sondalo", "grosio": "Grosio", "ipro": "Ipro",
+                 "colico": "Colico", "somaggia": "Somaggia"}
+PW_STORE_RX = re.compile("|".join(sorted(PW_STORE_KEYS, key=len, reverse=True)), re.I)
+PW_EXTRA_STORES = {"Colico", "Somaggia"}
+
+def _split_contenuto_per_negozio(text: str) -> dict:
+    """Ogni riga con un nome negozio apre/continua il blocco di quel negozio; le altre seguono il blocco corrente."""
+    blocks: dict = {}
+    current = ("generale",)
+    for line in text.split("\n"):
+        found = tuple(sorted({PW_STORE_KEYS[m.lower()] for m in PW_STORE_RX.findall(line)}))
+        if found:
+            current = found
+        blocks.setdefault(current, []).append(line)
+    return {k: "\n".join(v) for k, v in blocks.items()}
+
+@api_router.post("/passwords/dividi-per-negozio")
+async def split_passwords_per_negozio(admin: dict = Depends(require_admin)):
+    stores = {s["nome"]: s["id"] for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(100)}
+    deborah = await db.users.find_one({"email": "deborah@cambiaora.local"}, {"_id": 0, "id": 1})
+    extra_users = [deborah["id"]] if deborah else []
+    now = datetime.now(timezone.utc).isoformat()
+    created, processed = 0, 0
+    async for p in db.passwords.find({"import_gid": {"$exists": True}, "split_done": {"$ne": True}}):
+        processed += 1
+        text = totp_decrypt(p["contenuto_enc"]) if p.get("contenuto_enc") else ""
+        blocks = _split_contenuto_per_negozio(text)
+        generale = blocks.pop(("generale",), "")
+        for names, chunk in blocks.items():
+            sids = [stores[n] for n in names if n in stores]
+            uids = extra_users if (set(names) & PW_EXTRA_STORES) else []
+            await db.passwords.insert_one({
+                "id": str(uuid.uuid4()), "servizio": p["servizio"], "titolo": " / ".join(names), "username": "",
+                "password_enc": None, "url": "", "contenuto_enc": totp_encrypt(chunk), "store_ids": sids,
+                "user_ids": uids, "import_gid": p["import_gid"], "import_source": p.get("import_source"),
+                "split_done": True, "created_by": admin["id"], "created_at": now, "updated_at": now})
+            created += 1
+        if generale.strip() or not blocks:
+            await db.passwords.update_one({"id": p["id"]}, {"$set": {
+                "titolo": "generale" if blocks else p.get("titolo", ""), "split_done": True, "updated_at": now,
+                "contenuto_enc": totp_encrypt(generale) if generale.strip() else p.get("contenuto_enc")}})
+        else:
+            await db.passwords.delete_one({"id": p["id"]})
+    return {"status": "ok", "voci_analizzate": processed, "schede_create": created}
 
 def serialize_password(p: dict) -> dict:
     out = {k: v for k, v in p.items() if k not in ("_id", "password_enc", "contenuto_enc")}
@@ -3054,7 +3101,7 @@ async def list_passwords(user: dict = Depends(get_current_user), q: str = ""):
     scope = password_scope(user)
     if q:
         rx = {"$regex": re.escape(q), "$options": "i"}
-        scope["$or"] = [{"servizio": rx}, {"titolo": rx}, {"username": rx}, {"url": rx}]
+        scope = {"$and": [scope, {"$or": [{"servizio": rx}, {"titolo": rx}, {"username": rx}, {"url": rx}]}]}
     rows = await db.passwords.find(scope).sort([("servizio", 1), ("titolo", 1)]).to_list(2000)
     return [serialize_password(p) for p in rows]
 

@@ -10,14 +10,15 @@ import { Textarea } from "../components/ui/textarea";
 import { Checkbox } from "../components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
-const EMPTY = { servizio: "", titolo: "", username: "", password: "", url: "", contenuto: "", store_ids: [] };
+const EMPTY = { servizio: "", titolo: "", username: "", password: "", url: "", contenuto: "", store_ids: [], user_ids: [] };
 
 const copyText = (text, label) => navigator.clipboard.writeText(text).then(() => toast.success(`${label} copiato`));
 
-function PasswordCard({ p, i, stores, isAdmin, onEdit, onDelete }) {
+function PasswordCard({ p, i, stores, users, isAdmin, onEdit, onDelete }) {
   const [secret, setSecret] = useState(null);
   const [loading, setLoading] = useState(false);
   const storeNames = (p.store_ids || []).map((id) => stores.find((s) => s.id === id)?.nome).filter(Boolean);
+  const userNames = (p.user_ids || []).map((id) => users.find((u) => u.id === id)?.name).filter(Boolean);
 
   const reveal = async () => {
     if (secret) { setSecret(null); return; }
@@ -73,8 +74,9 @@ function PasswordCard({ p, i, stores, isAdmin, onEdit, onDelete }) {
 
       <div className="mt-3 flex flex-wrap items-center gap-1" data-testid={`password-stores-${i}`}>
         <Store className="h-3 w-3 text-slate-400" />
-        {storeNames.length ? storeNames.map((n) => <span key={n} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">{n}</span>)
-          : <span className="text-[11px] text-slate-400">Solo amministratore</span>}
+        {storeNames.length ? storeNames.map((n) => <span key={n} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">{n}</span>) : null}
+        {userNames.map((n) => <span key={n} className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">{n}</span>)}
+        {!storeNames.length && !userNames.length && <span className="text-[11px] text-slate-400">Solo amministratore</span>}
       </div>
     </div>
   );
@@ -85,6 +87,8 @@ export default function PasswordManager() {
   const isAdmin = user.role === "admin";
   const [rows, setRows] = useState([]);
   const [stores, setStores] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [splitting, setSplitting] = useState(false);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -94,14 +98,29 @@ export default function PasswordManager() {
   const [importing, setImporting] = useState(false);
 
   const load = useCallback(() => api.get("/passwords").then((r) => setRows(r.data)).catch((e) => toast.error(apiError(e))), []);
-  useEffect(() => { load(); api.get("/meta").then((r) => setStores(r.data.stores)).catch(() => {}); }, [load]);
+  useEffect(() => {
+    load();
+    api.get("/meta").then((r) => setStores(r.data.stores)).catch(() => {});
+    if (isAdmin) api.get("/users").then((r) => setUsers(r.data.filter((u) => u.role !== "admin" && u.active !== false))).catch(() => {});
+  }, [load, isAdmin]);
+
+  const runSplit = async () => {
+    if (!window.confirm("Dividere le voci importate in una scheda per negozio? Colico e Somaggia saranno visibili solo ad admin e Deborah.")) return;
+    setSplitting(true);
+    try {
+      const r = await api.post("/passwords/dividi-per-negozio");
+      toast.success(`Analizzate ${r.data.voci_analizzate} voci, create ${r.data.schede_create} schede per negozio`); load();
+    } catch (e) { toast.error(apiError(e)); }
+    finally { setSplitting(false); }
+  };
+  const toggleUser = (id) => setForm((f) => ({ ...f, user_ids: f.user_ids.includes(id) ? f.user_ids.filter((s) => s !== id) : [...f.user_ids, id] }));
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
   const openEdit = async (p) => {
     setEditing(p);
     let secret = { password: "", contenuto: "" };
     try { secret = (await api.get(`/passwords/${p.id}/reveal`)).data; } catch (e) { toast.error(apiError(e)); }
-    setForm({ servizio: p.servizio, titolo: p.titolo || "", username: p.username || "", password: secret.password, url: p.url || "", contenuto: secret.contenuto, store_ids: p.store_ids || [] });
+    setForm({ servizio: p.servizio, titolo: p.titolo || "", username: p.username || "", password: secret.password, url: p.url || "", contenuto: secret.contenuto, store_ids: p.store_ids || [], user_ids: p.user_ids || [] });
     setOpen(true);
   };
 
@@ -141,7 +160,8 @@ export default function PasswordManager() {
           <p className="mt-1 text-sm text-slate-500">{isAdmin ? "Credenziali di portali e servizi, cifrate. Scegli per ogni voce quali negozi possono vederla." : "Credenziali dei servizi condivise con il tuo negozio dall'amministratore."}</p>
         </div>
         {isAdmin && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={runSplit} disabled={splitting} className="gap-2" data-testid="split-passwords-button"><Store className="h-4 w-4" /> {splitting ? "Divisione..." : "Dividi per negozio"}</Button>
             <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2" data-testid="import-passwords-button"><Download className="h-4 w-4" /> Importa da Google Sheet</Button>
             <Button onClick={openNew} className="gap-2 bg-slate-900 hover:bg-slate-800" data-testid="add-password-button"><Plus className="h-4 w-4" /> Nuova voce</Button>
           </div>
@@ -160,7 +180,7 @@ export default function PasswordManager() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="password-grid">
-          {filtered.map((p, i) => <PasswordCard key={p.id} p={p} i={i} stores={stores} isAdmin={isAdmin} onEdit={openEdit} onDelete={remove} />)}
+          {filtered.map((p, i) => <PasswordCard key={p.id} p={p} i={i} stores={stores} users={users} isAdmin={isAdmin} onEdit={openEdit} onDelete={remove} />)}
         </div>
       )}
 
@@ -186,6 +206,18 @@ export default function PasswordManager() {
                 ))}
               </div>
             </div>
+            {users.length > 0 && (
+              <div className="space-y-2">
+                <Label>Utenti singoli autorizzati (oltre ai negozi)</Label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="password-form-users">
+                  {users.map((u) => (
+                    <label key={u.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                      <Checkbox checked={form.user_ids.includes(u.id)} onCheckedChange={() => toggleUser(u.id)} data-testid={`password-form-user-${u.id}`} /> {u.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Annulla</Button>
               <Button type="submit" className="bg-slate-900 hover:bg-slate-800" data-testid="password-form-submit">Salva</Button>
