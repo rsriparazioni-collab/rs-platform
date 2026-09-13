@@ -735,7 +735,7 @@ class ClientInput(BaseModel):
 
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(get_current_user),
-                       lavorazione: str = "", tipo_bolletta: str = "",
+                       lavorazione: str = "", tipo_bolletta: str = "", tipo_servizio: str = "",
                        venditore_id: str = "", q: str = "", no_recensioni: str = ""):
     scope = client_scope_filter(user)
     if no_recensioni == "1":
@@ -781,6 +781,8 @@ async def list_clients(user: dict = Depends(get_current_user),
         if tipi & {"internet", "fisso"}:
             tags.append("fis")
         c["tipi_servizi"] = tags
+        if tipo_servizio and tipo_servizio not in tags:
+            continue
         out.append(c)
     return out
 
@@ -3291,13 +3293,16 @@ async def client_portale_inserito(client_id: str, input: PortaleFlagInput, user:
 @api_router.get("/portali/flag-scaduti")
 async def portali_flag_scaduti(user: dict = Depends(get_current_user), giorni: int = 3):
     """Servizi/clienti con flag aggiuntivo del portale (es. CARICATO SU JOY) non spuntato da oltre N giorni."""
+    return await flag_scaduti_items(servizio_scope(user), giorni)
+
+async def flag_scaduti_items(scope: dict, giorni: int = 3) -> list:
     portali = [p for p in await db.portali.find({"flag_label": {"$nin": [None, ""]}}, {"_id": 0}).to_list(200)]
     if not portali:
         return []
     limite = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
     by_key = {(p["sezione"], p["operatore"]): p for p in portali}
     out = []
-    scope = servizio_scope(user)
+    scope = dict(scope)
     scope.update({"tipo": {"$in": ["sim", "internet", "fisso"]}, "portale_extra_at": {"$in": [None]}, "created_at": {"$lte": limite},
                   "operatore_tel": {"$in": sorted({p["operatore"] for p in portali})}})
     svcs = await db.servizi.find(scope, {"_id": 0}).sort("created_at", 1).to_list(2000)
@@ -3306,6 +3311,7 @@ async def portali_flag_scaduti(user: dict = Depends(get_current_user), giorni: i
         p = by_key.get((PORTALE_SEZIONE_BY_TIPO.get(s["tipo"]), (s.get("operatore_tel") or "").upper()))
         if p:
             out.append({"kind": "servizio", "id": s["id"], "client_id": s["client_id"], "client_name": names.get(s["client_id"], ""),
+                        "store_id": s.get("venditore_id", ""),
                         "operatore": s.get("operatore_tel", ""), "tipo": s["tipo"], "flag_label": p["flag_label"], "flag_url": p.get("flag_url", ""),
                         "created_at": s.get("created_at"), "giorni": (datetime.now(timezone.utc) - datetime.fromisoformat(s["created_at"])).days})
     return out
@@ -3699,27 +3705,39 @@ RIP_STATO_LABEL = {"ingresso": "Ingresso", "attesa_ricambio_cliente": "Attesa ri
                    "attesa_ricambio_carico": "Attesa ricambio (in carico)", "in_attesa_cliente": "In attesa cliente",
                    "preventivo": "Preventivo", "in_lavorazione": "In lavorazione", "pronto": "Pronto"}
 
-def messaggio_riparazioni_ferme(store_name: str, items: list) -> str:
-    righe = [f"- {i['numero']} {i['dispositivo']} ({i['cliente']}) - {RIP_STATO_LABEL.get(i['stato'], i['stato'])} - {i['giorni']} gg"
-             for i in items[:25]]
-    extra = f"\n...e altre {len(items) - 25}" if len(items) > 25 else ""
-    return (f"Buongiorno {store_name}!\nRiparazioni ferme da oltre {RIP_FERME_GIORNI} giorni: {len(items)}\n"
-            + "\n".join(righe) + extra + "\nControllale nel gestionale, grazie.")
+def messaggio_riparazioni_ferme(store_name: str, items: list, joy: Optional[list] = None) -> str:
+    parti = [f"Buongiorno {store_name}!"]
+    if items:
+        righe = [f"- {i['numero']} {i['dispositivo']} ({i['cliente']}) - {RIP_STATO_LABEL.get(i['stato'], i['stato'])} - {i['giorni']} gg"
+                 for i in items[:25]]
+        extra = f"\n...e altre {len(items) - 25}" if len(items) > 25 else ""
+        parti.append(f"Riparazioni ferme da oltre {RIP_FERME_GIORNI} giorni: {len(items)}\n" + "\n".join(righe) + extra)
+    if joy:
+        righe = [f"- {j['client_name']} ({j['operatore']} {j['tipo']}) - inserito {j['giorni']} gg fa" for j in joy[:25]]
+        extra = f"\n...e altri {len(joy) - 25}" if len(joy) > 25 else ""
+        parti.append(f"Contratti {joy[0]['operatore']} ancora da caricare su {joy[0]['flag_label'].replace('CARICATO SU ', '')}: {len(joy)}\n"
+                     + "\n".join(righe) + extra)
+    parti.append("Controllali nel gestionale, grazie.")
+    return "\n".join(parti)
 
 async def invia_avvisi_riparazioni_ferme() -> dict:
     ferme = await riparazioni_ferme_per_negozio()
+    joy_per_store: dict = {}
+    for j in await flag_scaduti_items({}, 3):
+        joy_per_store.setdefault(j["store_id"], []).append(j)
     stores = await db.stores.find({"telefono_avvisi": {"$nin": [None, ""]}}, {"_id": 0}).to_list(200)
     report = []
     for s in stores:
         items = ferme.get(s["id"], [])
-        if not items:
-            report.append({"store": s["nome"], "inviato": False, "ferme": 0})
+        joy = joy_per_store.get(s["id"], [])
+        if not items and not joy:
+            report.append({"store": s["nome"], "inviato": False, "ferme": 0, "joy": 0})
             continue
         try:
-            await wa_send(s["telefono_avvisi"], messaggio_riparazioni_ferme(s["nome"], items), session=s["id"], tipo="avviso_negozio")
-            report.append({"store": s["nome"], "inviato": True, "ferme": len(items)})
+            await wa_send(s["telefono_avvisi"], messaggio_riparazioni_ferme(s["nome"], items, joy), session=s["id"], tipo="avviso_negozio")
+            report.append({"store": s["nome"], "inviato": True, "ferme": len(items), "joy": len(joy)})
         except HTTPException as e:
-            report.append({"store": s["nome"], "inviato": False, "ferme": len(items), "errore": str(e.detail)})
+            report.append({"store": s["nome"], "inviato": False, "ferme": len(items), "joy": len(joy), "errore": str(e.detail)})
     await db.cron_log.insert_one({"job": "riparazioni-ferme", "at": datetime.now(timezone.utc).isoformat(), "report": report})
     return {"report": report}
 

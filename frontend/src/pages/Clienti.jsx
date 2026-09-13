@@ -40,7 +40,7 @@ export default function Clienti() {
     const params = {};
     if (filters.q) params.q = filters.q;
     if (filters.lavorazione !== "all") params.lavorazione = filters.lavorazione;
-    if (filters.tipo_bolletta !== "all") params.tipo_bolletta = filters.tipo_bolletta;
+    if (filters.tipo_bolletta !== "all") params.tipo_servizio = filters.tipo_bolletta;
     if (filters.venditore_id !== "all") params.venditore_id = filters.venditore_id;
     if (filters.no_recensioni) params.no_recensioni = "1";
     api.get("/clients", { params }).then((r) => setClients(r.data))
@@ -132,11 +132,14 @@ export default function Clienti() {
           </SelectContent>
         </Select>
         <Select value={filters.tipo_bolletta} onValueChange={(v) => setFilters((f) => ({ ...f, tipo_bolletta: v }))}>
-          <SelectTrigger className="w-[140px]" data-testid="filter-tipo-select"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-[160px]" data-testid="filter-tipo-select"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Luce + Gas</SelectItem>
+            <SelectItem value="all">Tutti i tipi</SelectItem>
             <SelectItem value="luce">Luce</SelectItem>
             <SelectItem value="gas">Gas</SelectItem>
+            <SelectItem value="rip">Rip (riparazioni)</SelectItem>
+            <SelectItem value="mob">Mob (mobile)</SelectItem>
+            <SelectItem value="fis">Fis (fisso/internet)</SelectItem>
           </SelectContent>
         </Select>
         {canSeeAll && (
