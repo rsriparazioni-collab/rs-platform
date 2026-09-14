@@ -261,6 +261,17 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
               </SheetTitle>
             </SheetHeader>
             <div className="mt-6 space-y-6">
+              {isRip && !detail.ritiro_id && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3" data-testid="servizio-ritirato-box">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-900">Il cliente lascia il telefono?</p>
+                    <p className="text-xs text-emerald-700">Crea la bolla di ritiro con documenti e carica il dispositivo tra i rigenerati.</p>
+                  </div>
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setRitiroOpen(true)} data-testid="servizio-ritirato-button">
+                    <Recycle className="mr-2 h-4 w-4" /> Ritirato
+                  </Button>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 {isRip && detail.numero_riparazione && (
                   <span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300" data-testid="servizio-numero-badge">N° {detail.numero_riparazione}</span>
@@ -523,7 +534,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                 )}
                 {isRip && !detail.ritiro_id && (
                   <Button size="sm" variant="outline" className="border-emerald-300 text-emerald-700" onClick={() => setRitiroOpen(true)} data-testid="servizio-ritiro-button">
-                    <Recycle className="mr-2 h-4 w-4" /> Ritira telefono
+                    <Recycle className="mr-2 h-4 w-4" /> Ritirato
                   </Button>
                 )}
                 {isRip && detail.ritiro_id && (

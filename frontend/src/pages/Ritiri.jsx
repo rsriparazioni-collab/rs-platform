@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Recycle, FileDown, Trash2, Wrench } from "lucide-react";
+import { Plus, Search, Recycle, FileDown, Trash2, Wrench, Paperclip, Package } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
+import { uploadRitiroDocumenti } from "../components/RitiroDaRiparazione";
 import { useAuth } from "../context/AuthContext";
 import { fmtDate } from "../lib/constants";
 import { Button } from "../components/ui/button";
@@ -108,6 +109,21 @@ export default function Ritiri() {
     }
   };
 
+  const allegaDocumenti = (r) => {
+    const input = document.createElement("input");
+    input.type = "file"; input.multiple = true; input.accept = "application/pdf,image/jpeg,image/png,image/webp";
+    input.onchange = async () => {
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      try {
+        await uploadRitiroDocumenti(r.id, files);
+        toast.success(`${files.length} documenti uniti alla bolla ${r.numero}`);
+        load();
+      } catch (e) { toast.error(apiError(e, "Caricamento documenti fallito")); }
+    };
+    input.click();
+  };
+
   return (
     <div className="space-y-6" data-testid="ritiri-page">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -167,7 +183,12 @@ export default function Ritiri() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{fmtDate(r.data_ritiro)}</td>
                   <td className="px-4 py-3 font-medium text-slate-900">{r.cognome} {r.nome}</td>
-                  <td className="px-4 py-3 text-slate-600">{r.articolo}{r.imei ? ` · IMEI ${r.imei}` : ""}</td>
+                  <td className="px-4 py-3 text-slate-600">{r.articolo}{r.imei ? ` · IMEI ${r.imei}` : ""}
+                    <span className="mt-0.5 flex flex-wrap gap-1">
+                      {(r.documenti || []).length > 0 && <span className="rounded bg-sky-50 px-1.5 text-[10px] font-semibold text-sky-700" data-testid={`ritiro-docs-badge-${i}`}><Paperclip className="inline h-3 w-3" /> {r.documenti.length} doc.</span>}
+                      {r.magazzino_id && <span className="rounded bg-violet-50 px-1.5 text-[10px] font-semibold text-violet-700" data-testid={`ritiro-rigenerato-badge-${i}`}><Package className="inline h-3 w-3" /> rigenerato</span>}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">
                     {r.servizio_id
                       ? <Link to={`/riparazioni?apri=${r.servizio_id}`} className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-500/15 px-2 py-0.5 text-xs font-semibold text-sky-700 hover:bg-sky-500/25"
@@ -184,6 +205,9 @@ export default function Ritiri() {
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" title="Scarica bolla PDF" onClick={() => downloadPdf(r)} data-testid={`ritiro-pdf-${i}`}>
                         <FileDown className="h-4 w-4 text-sky-600" />
+                      </Button>
+                      <Button variant="ghost" size="icon" title="Allega documenti alla bolla" onClick={() => allegaDocumenti(r)} data-testid={`ritiro-docs-${i}`}>
+                        <Paperclip className="h-4 w-4 text-slate-500" />
                       </Button>
                       {user.role === "admin" && (
                         <Button variant="ghost" size="icon" onClick={() => remove(r)} data-testid={`ritiro-del-${i}`}>

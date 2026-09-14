@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Package, Pencil, Trash2, Minus, PlusCircle, FileDown } from "lucide-react";
+import { Plus, Search, Package, Pencil, Trash2, Minus, PlusCircle, FileDown, BadgeEuro } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
+import RigeneratiVenduti from "../components/RigeneratiVenduti";
 import { useAuth } from "../context/AuthContext";
 import { MAGAZZINO_CATEGORIE, magazzinoCategoriaLabel } from "../lib/constants";
 import { Button } from "../components/ui/button";
@@ -80,6 +81,18 @@ export default function Magazzino() {
     } catch (e) {
       toast.error(apiError(e));
     }
+  };
+
+  const [vendita, setVendita] = useState(null);
+  const [prezzoVendita, setPrezzoVendita] = useState("");
+  const [venditeKey, setVenditeKey] = useState(0);
+  const confermaVendita = async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api.post(`/magazzino/${vendita.id}/vendi`, { prezzo_vendita: parseFloat(prezzoVendita) });
+      toast.success(`Venduto a € ${r.data.prezzo_vendita.toFixed(2)} · margine netto € ${r.data.margine.toFixed(2)}`);
+      setVendita(null); setVenditeKey((k) => k + 1); load();
+    } catch (err) { toast.error(apiError(err, "Vendita non registrata")); }
   };
 
   const remove = async (m) => {
@@ -173,6 +186,11 @@ export default function Magazzino() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
+                      {m.categoria === "rigenerati" && (m.quantita || 0) > 0 && (
+                        <Button variant="outline" size="sm" className="h-7 gap-1 border-violet-300 text-violet-700" onClick={() => { setVendita(m); setPrezzoVendita(m.prezzo_vendita != null ? String(m.prezzo_vendita) : ""); }} data-testid={`magazzino-vendi-${i}`}>
+                          <BadgeEuro className="h-3.5 w-3.5" /> Venduto
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" title="Scarica 1 pz" onClick={() => movimento(m, -1)} data-testid={`magazzino-meno-${i}`}>
                         <Minus className="h-4 w-4 text-rose-500" />
                       </Button>
@@ -200,6 +218,31 @@ export default function Magazzino() {
           </table>
         </div>
       </div>
+
+      <RigeneratiVenduti key={venditeKey} canSeeAll={canSeeAll} />
+
+      <Dialog open={!!vendita} onOpenChange={(o) => !o && setVendita(null)}>
+        <DialogContent className="max-w-sm" data-testid="vendita-dialog">
+          <DialogHeader><DialogTitle className="font-heading text-xl">Vendita rigenerato</DialogTitle></DialogHeader>
+          {vendita && (
+            <form onSubmit={confermaVendita} className="space-y-4">
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                <p className="font-medium text-slate-900">{vendita.nome}{vendita.imei ? ` · IMEI ${vendita.imei}` : ""}</p>
+                <p className="text-xs text-slate-500">Costo dispositivo: € {Number(vendita.prezzo_acquisto || 0).toFixed(2)}{vendita.ritiro_numero ? ` · Ritiro ${vendita.ritiro_numero}` : ""}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prezzo di vendita € (IVA inclusa)</Label>
+                <Input required type="number" step="0.01" min="0" autoFocus value={prezzoVendita} onChange={(e) => setPrezzoVendita(e.target.value)} data-testid="vendita-prezzo" />
+                {prezzoVendita !== "" && <p className="text-xs text-emerald-700">Margine netto stimato: € {((parseFloat(prezzoVendita) || 0) / 1.22 - Number(vendita.prezzo_acquisto || 0)).toFixed(2)}</p>}
+              </div>
+              <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
+                <Button type="button" variant="outline" onClick={() => setVendita(null)}>Annulla</Button>
+                <Button type="submit" className="bg-violet-700 hover:bg-violet-800" data-testid="vendita-submit">Registra vendita</Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={formOpen} onOpenChange={(o) => !o && setFormOpen(false)}>
         <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto" data-testid="magazzino-form-dialog">

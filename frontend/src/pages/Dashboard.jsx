@@ -407,7 +407,7 @@ export default function Dashboard() {
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <th className="px-5 py-2.5">Negozio</th><th className="px-5 py-2.5">Riparazioni</th><th className="px-5 py-2.5">Incasso (IVA incl.)</th>
-                <th className="px-5 py-2.5">Costi</th><th className="px-5 py-2.5">Margine netto</th><th className="px-5 py-2.5">Mese prec.</th><th className="px-5 py-2.5">Variazione</th>
+                <th className="px-5 py-2.5">Costi</th><th className="px-5 py-2.5">Rigenerati</th><th className="px-5 py-2.5">Margine netto</th><th className="px-5 py-2.5">Mese prec.</th><th className="px-5 py-2.5">Variazione</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -417,12 +417,13 @@ export default function Dashboard() {
                   <td className="px-5 py-2.5 text-slate-600">{m.riparazioni} <span className="text-xs text-slate-400">({m.consegnate} consegnate)</span></td>
                   <td className="px-5 py-2.5 text-slate-600">€ {m.incasso.toFixed(2)}</td>
                   <td className="px-5 py-2.5 text-slate-600">€ {m.costi.toFixed(2)}</td>
+                  <td className="px-5 py-2.5 text-violet-700">{m.rigenerati || 0} <span className="text-xs text-slate-400">(€ {(m.margine_rigenerati || 0).toFixed(2)})</span></td>
                   <td className={`px-5 py-2.5 font-bold ${m.margine < 0 ? "text-rose-700" : "text-emerald-800"}`}>€ {m.margine.toFixed(2)}</td>
                   <td className="px-5 py-2.5 text-slate-500">€ {m.margine_precedente.toFixed(2)}</td>
                   <td className={`px-5 py-2.5 font-semibold ${m.delta >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{m.delta >= 0 ? "▲" : "▼"} € {Math.abs(m.delta).toFixed(2)}</td>
                 </tr>
               ))}
-              {margini.negozi.length === 0 && <tr><td colSpan={7} className="px-5 py-6 text-center text-sm text-slate-500">Nessuna riparazione nel mese selezionato</td></tr>}
+              {margini.negozi.length === 0 && <tr><td colSpan={8} className="px-5 py-6 text-center text-sm text-slate-500">Nessuna riparazione nel mese selezionato</td></tr>}
             </tbody>
           </table>
         </div>

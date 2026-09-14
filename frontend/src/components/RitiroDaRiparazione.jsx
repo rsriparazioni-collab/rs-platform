@@ -1,21 +1,42 @@
 import { useEffect, useState } from "react";
+import { Paperclip, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Checkbox } from "./ui/checkbox";
+
+export const uploadRitiroDocumenti = async (ritiroId, files) => {
+  const fd = new FormData();
+  files.forEach((f) => fd.append("files", f));
+  return api.post(`/ritiri/${ritiroId}/documenti`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+};
+
+const costoRicambiDaRiparazione = (s) => {
+  if (!s) return 0;
+  const usati = (s.ricambi_usati || []).reduce((t, u) => t + (Number(u.prezzo_vendita) || 0) * (u.quantita || 1), 0);
+  if (usati > 0) return usati;
+  return s.con_ricambio ? Number(s.costo_componente) || 0 : 0;
+};
 
 export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated }) {
-  const [form, setForm] = useState({ imei: "", prezzo_ritiro: "", numero_documento: "", n_allegati: 2 });
+  const [form, setForm] = useState({ imei: "", prezzo_ritiro: "0", numero_documento: "", n_allegati: 2, costo_ricambi: "0", crea_rigenerato: true });
+  const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) setForm({ imei: "", prezzo_ritiro: "", numero_documento: "", n_allegati: 2 });
-  }, [open]);
+    if (open) {
+      setForm({ imei: "", prezzo_ritiro: "0", numero_documento: "", n_allegati: 2,
+                costo_ricambi: String(costoRicambiDaRiparazione(servizio).toFixed(2)), crea_rigenerato: true });
+      setFiles([]);
+    }
+  }, [open, servizio]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const c = servizio?.client_contacts || {};
+  const costoTot = (parseFloat(form.prezzo_ritiro) || 0) + (parseFloat(form.costo_ricambi) || 0);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -30,11 +51,17 @@ export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated
         codice_fiscale: c.codice_fiscale || "",
         articolo: servizio.dispositivo || "",
         imei: form.imei,
-        prezzo_ritiro: form.prezzo_ritiro === "" ? null : parseFloat(form.prezzo_ritiro),
+        prezzo_ritiro: form.prezzo_ritiro === "" ? 0 : parseFloat(form.prezzo_ritiro),
         numero_documento: form.numero_documento,
-        n_allegati: parseInt(form.n_allegati) || 2,
+        n_allegati: files.length || parseInt(form.n_allegati) || 0,
+        costo_ricambi: parseFloat(form.costo_ricambi) || 0,
+        crea_rigenerato: form.crea_rigenerato,
       });
-      toast.success(`Bolla di ritiro ${res.data.numero} generata e collegata alla riparazione`);
+      if (files.length) {
+        try { await uploadRitiroDocumenti(res.data.id, files); }
+        catch (err) { toast.error(apiError(err, "Bolla creata ma documenti non allegati")); }
+      }
+      toast.success(`Bolla ${res.data.numero} generata${files.length ? ` con ${files.length} documenti` : ""}${form.crea_rigenerato ? " · dispositivo caricato in Magazzino (rigenerati)" : ""}`);
       onCreated();
       onClose();
     } catch (err) {
@@ -46,9 +73,9 @@ export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md" data-testid="ritiro-rip-dialog">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto" data-testid="ritiro-rip-dialog">
         <DialogHeader>
-          <DialogTitle className="font-heading text-xl">Ritiro telefono da riparazione</DialogTitle>
+          <DialogTitle className="font-heading text-xl">Telefono ritirato</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4" data-testid="ritiro-rip-form">
           <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
@@ -61,22 +88,51 @@ export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated
               <Input value={form.imei} onChange={(e) => set("imei", e.target.value)} data-testid="ritiro-rip-imei" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prezzo ritiro €</Label>
-              <Input type="number" step="0.01" value={form.prezzo_ritiro} onChange={(e) => set("prezzo_ritiro", e.target.value)} data-testid="ritiro-rip-prezzo" />
+              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prezzo ritiro € (in bolla)</Label>
+              <Input type="number" step="0.01" min="0" value={form.prezzo_ritiro} onChange={(e) => set("prezzo_ritiro", e.target.value)} data-testid="ritiro-rip-prezzo" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">N° documento</Label>
               <Input value={form.numero_documento} onChange={(e) => set("numero_documento", e.target.value)} data-testid="ritiro-rip-documento" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Allegati (n.)</Label>
-              <Input type="number" min="0" value={form.n_allegati} onChange={(e) => set("n_allegati", e.target.value)} data-testid="ritiro-rip-allegati" />
+              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Costo ricambi a nostro carico €</Label>
+              <Input type="number" step="0.01" min="0" value={form.costo_ricambi} onChange={(e) => set("costo_ricambi", e.target.value)} data-testid="ritiro-rip-costo-ricambi" />
+              <p className="text-[11px] text-slate-400">Non compare in bolla: serve per il costo del dispositivo.</p>
             </div>
           </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Documenti cliente (PDF/foto) — uniti alla bolla</Label>
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
+              <Paperclip className="h-4 w-4" /> Scegli file
+              <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden"
+                     onChange={(e) => setFiles((f) => [...f, ...Array.from(e.target.files || [])])} data-testid="ritiro-rip-files" />
+            </label>
+            {files.length > 0 && (
+              <ul className="space-y-1 text-xs" data-testid="ritiro-rip-files-list">
+                {files.map((f, i) => (
+                  <li key={i} className="flex items-center justify-between rounded bg-slate-50 px-2 py-1">
+                    <span className="truncate">{f.name}</span>
+                    <button type="button" onClick={() => setFiles((l) => l.filter((_, j) => j !== i))} className="text-slate-400 hover:text-rose-600"><X className="h-3.5 w-3.5" /></button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <label className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 text-sm">
+            <Checkbox checked={form.crea_rigenerato} onCheckedChange={(v) => set("crea_rigenerato", !!v)} data-testid="ritiro-rip-rigenerato" />
+            <span>
+              <span className="font-medium text-slate-900">Carica in Magazzino come rigenerato</span>
+              <span className="block text-xs text-slate-500">Costo dispositivo: € {costoTot.toFixed(2)} (ritiro + ricambi). Il margine si calcola alla vendita.</span>
+            </span>
+          </label>
+
           <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
             <Button type="button" variant="outline" onClick={onClose} data-testid="ritiro-rip-cancel">Annulla</Button>
             <Button type="submit" disabled={saving} className="bg-slate-900 hover:bg-slate-800" data-testid="ritiro-rip-submit">
-              {saving ? "Generazione bolla..." : "Genera bolla ritiro"}
+              {saving ? "Generazione bolla..." : "Conferma ritiro e genera bolla"}
             </Button>
           </div>
         </form>

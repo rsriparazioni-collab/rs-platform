@@ -24,6 +24,7 @@ import base64
 import secrets as pysecrets
 from cryptography.fernet import Fernet
 import pandas as pd
+import pymupdf as fitz
 from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, BackgroundTasks, UploadFile, File
 from fastapi.responses import StreamingResponse, Response
@@ -2009,6 +2010,49 @@ class MovimentoInput(BaseModel):
     delta: int
     motivo: str = ""
 
+class VenditaRigeneratoInput(BaseModel):
+    prezzo_vendita: float
+    note: str = ""
+
+@api_router.post("/magazzino/{item_id}/vendi")
+async def vendi_rigenerato(item_id: str, input: VenditaRigeneratoInput, user: dict = Depends(get_current_user)):
+    scope = magazzino_scope(user)
+    scope["id"] = item_id
+    item = await db.magazzino.find_one(scope, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Articolo non trovato")
+    if item.get("categoria") != "rigenerati":
+        raise HTTPException(status_code=400, detail="Vendita tracciata solo per dispositivi rigenerati")
+    if (item.get("quantita") or 0) < 1:
+        raise HTTPException(status_code=400, detail="Dispositivo già venduto / giacenza zero")
+    if input.prezzo_vendita < 0:
+        raise HTTPException(status_code=400, detail="Prezzo non valido")
+    costo = float(item.get("prezzo_acquisto") or 0)
+    now = datetime.now(timezone.utc).isoformat()
+    vendita = {"id": str(uuid.uuid4()), "magazzino_id": item["id"], "store_id": item.get("store_id", ""),
+               "nome": item.get("nome", ""), "imei": item.get("imei", ""), "ritiro_id": item.get("ritiro_id", ""),
+               "ritiro_numero": item.get("ritiro_numero", ""), "servizio_id": item.get("servizio_id", ""),
+               "riparazione_numero": item.get("riparazione_numero", ""), "costo": round(costo, 2),
+               "prezzo_vendita": round(input.prezzo_vendita, 2), "margine": round(input.prezzo_vendita / 1.22 - costo, 2),
+               "note": input.note, "venduto_da": user["id"], "venduto_da_nome": user["name"], "venduto_at": now}
+    await db.vendite_rigenerati.insert_one(vendita)
+    await db.magazzino.update_one({"id": item_id}, {"$inc": {"quantita": -1},
+                                                   "$set": {"venduto_at": now, "prezzo_venduto": vendita["prezzo_vendita"], "updated_at": now}})
+    vendita.pop("_id", None)
+    return vendita
+
+@api_router.get("/rigenerati/venduti")
+async def rigenerati_venduti(user: dict = Depends(get_current_user), mese: str = ""):
+    scope = magazzino_scope(user)
+    if mese:
+        scope["venduto_at"] = {"$regex": f"^{re.escape(mese)}"}
+    rows = await db.vendite_rigenerati.find(scope, {"_id": 0}).sort("venduto_at", -1).to_list(2000)
+    stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)}
+    for v in rows:
+        v["store_name"] = stores.get(v.get("store_id", ""), "-")
+    return {"vendite": rows, "totale_margine": round(sum(v["margine"] for v in rows), 2),
+            "totale_vendite": round(sum(v["prezzo_vendita"] for v in rows), 2)}
+
 @api_router.post("/magazzino/{item_id}/movimento")
 async def movimento_magazzino(item_id: str, input: MovimentoInput, user: dict = Depends(get_current_user)):
     scope = magazzino_scope(user)
@@ -2233,6 +2277,8 @@ class RitiroInput(BaseModel):
     n_allegati: int = 2
     data_ritiro: Optional[str] = None
     servizio_id: str = ""
+    costo_ricambi: Optional[float] = None  # costo a nostro carico (es. display), NON in bolla
+    crea_rigenerato: bool = True
 
 def ritiri_scope(user: dict) -> dict:
     if "riparazioni" not in user_sections(user):
@@ -2281,6 +2327,18 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
     pdf_bytes = _build_bolla_pdf(data)
     result = put_object(f"{APP_NAME}/ritiri/{data['numero']}.pdf", pdf_bytes, "application/pdf")
     data["storage_path"] = result["path"]
+    data["bolla_base_path"] = result["path"]
+    data["documenti"] = []
+    if data.get("crea_rigenerato"):
+        costo = float(data.get("prezzo_ritiro") or 0) + float(data.get("costo_ricambi") or 0)
+        item = {"id": str(uuid.uuid4()), "nome": data["articolo"], "categoria": "rigenerati", "store_id": data["store_id"],
+                "quantita": 1, "prezzo_acquisto": round(costo, 2), "prezzo_vendita": None, "imei": data.get("imei", ""),
+                "ritiro_id": data["id"], "ritiro_numero": data["numero"], "servizio_id": data.get("servizio_id", ""),
+                "riparazione_numero": data.get("riparazione_numero", ""),
+                "note": f"Ritiro {data['numero']} - costo ritiro {float(data.get('prezzo_ritiro') or 0):.2f} + ricambi {float(data.get('costo_ricambi') or 0):.2f}",
+                "created_by": user["id"], "created_at": now, "updated_at": now}
+        await db.magazzino.insert_one(item)
+        data["magazzino_id"] = item["id"]
     await db.ritiri.insert_one(data)
     data.pop("_id", None)
     if data.get("servizio_id"):
@@ -2288,6 +2346,49 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
                                     {"$set": {"ritiro_id": data["id"], "ritiro_numero": data["numero"],
                                               "updated_at": now}})
     return data
+
+RITIRO_DOC_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
+
+def _merge_bolla_documenti(bolla: bytes, docs: list) -> bytes:
+    """Unisce la bolla con i documenti (PDF o immagini) in un unico PDF."""
+    out = fitz.open("pdf", bolla)
+    for content_type, data in docs:
+        if content_type == "application/pdf":
+            src = fitz.open("pdf", data)
+        else:
+            img = fitz.open(stream=data, filetype=content_type.split("/")[1])
+            src = fitz.open("pdf", img.convert_to_pdf())
+        out.insert_pdf(src)
+    return out.tobytes()
+
+@api_router.post("/ritiri/{ritiro_id}/documenti")
+async def upload_ritiro_documenti(ritiro_id: str, files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+    scope = ritiri_scope(user)
+    scope["id"] = ritiro_id
+    r = await db.ritiri.find_one(scope, {"_id": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Ritiro non trovato")
+    docs, names = [], []
+    for f in files:
+        ct = (f.content_type or "").lower()
+        if ct not in RITIRO_DOC_TYPES:
+            raise HTTPException(status_code=400, detail=f"Formato non supportato: {f.filename} (usa PDF, JPG, PNG o WEBP)")
+        content = await f.read()
+        if len(content) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail=f"File troppo grande: {f.filename} (max 15 MB)")
+        docs.append((ct, content))
+        names.append(f.filename)
+    if not docs:
+        raise HTTPException(status_code=400, detail="Nessun file")
+    current, _ = get_object(r["storage_path"])
+    merged = _merge_bolla_documenti(current, docs)
+    version = len(r.get("documenti") or []) + 1
+    result = put_object(f"{APP_NAME}/ritiri/{r['numero']}_v{version}.pdf", merged, "application/pdf")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.ritiri.update_one({"id": ritiro_id}, {
+        "$set": {"storage_path": result["path"], "updated_at": now},
+        "$push": {"documenti": {"$each": [{"nome": n, "at": now, "by": user["id"]} for n in names]}}})
+    return {"status": "ok", "documenti": (r.get("documenti") or []) + [{"nome": n, "at": now} for n in names]}
 
 @api_router.get("/ritiri/{ritiro_id}/pdf")
 async def download_bolla(ritiro_id: str, user: dict = Depends(get_current_user)):
@@ -3016,10 +3117,21 @@ async def margini_negozi(admin: dict = Depends(require_admin), mese: str = ""):
             a["consegnate"] += 1
     for sid in prec_acc:
         acc.setdefault(sid, {"store_id": sid, "store_name": stores.get(sid, "-"), "riparazioni": 0, "incasso": 0.0, "costi": 0.0, "margine": 0.0, "consegnate": 0})
+    for a in acc.values():
+        a["rigenerati"] = 0; a["margine_rigenerati"] = 0.0
+    async for v in db.vendite_rigenerati.find({"venduto_at": {"$regex": f"^({re.escape(mese)}|{re.escape(prec)})"}}, {"_id": 0}):
+        sid = v.get("store_id", "")
+        if v["venduto_at"][:7] == prec:
+            prec_acc[sid] = prec_acc.get(sid, 0.0) + v["margine"]
+            continue
+        a = acc.setdefault(sid, {"store_id": sid, "store_name": stores.get(sid, "-"), "riparazioni": 0, "incasso": 0.0,
+                                 "costi": 0.0, "margine": 0.0, "consegnate": 0, "rigenerati": 0, "margine_rigenerati": 0.0})
+        a["rigenerati"] += 1; a["margine_rigenerati"] += v["margine"]; a["margine"] += v["margine"]
     out = []
     for a in acc.values():
         mp = round(prec_acc.get(a["store_id"], 0.0), 2)
         out.append({**a, "incasso": round(a["incasso"], 2), "costi": round(a["costi"], 2), "margine": round(a["margine"], 2),
+                    "margine_rigenerati": round(a.get("margine_rigenerati", 0.0), 2),
                     "margine_precedente": mp, "delta": round(a["margine"] - mp, 2)})
     return {"mese": mese, "mese_precedente": prec, "negozi": sorted(out, key=lambda x: -x["margine"]),
             "totale": round(sum(a["margine"] for a in out), 2), "totale_precedente": round(sum(prec_acc.values()), 2)}
