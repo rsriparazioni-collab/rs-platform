@@ -1,0 +1,27 @@
+{
+  "summary": "Iter 17: verifica completa aggiornamento regole prezzi v2 (14 regole), calcolo prezzo consigliato su 8 casi reali, parser Sifar dedicato su /app/memory/fatture/49.pdf, ricerca listino (39 righe già importate), frontend /prezzi (regole+listino+simulatore) e form nuova riparazione (preview prezzo + servizio-listino-search). Backend 13/13 PASS, Frontend flows tutti OK.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter17_regole_listino_v2.py", "/app/test_reports/pytest/iter17.xml"],
+  "action_items": [
+    "(Non bloccante) Qualita' tipologia dati listino: nella query 'iphone 11' la riga SN8687 (Lcd+Touchscreen+Frame Awesome Black) e' etichettata 'batteria · samsung' — mismatch heuristico (_guess_tipologia/marca) su import precedente. Se serve, ripulire manualmente o rieseguire parse per quelle righe.",
+    "(Non bloccante) server.py e' cresciuto a 4920 righe: valutare split in moduli come gia' segnalato in iter16."
+  ],
+  "critical_code_review_comments": [
+    "Duplicazione formula calcolo prezzo backend (calcola_prezzo_riparazione) vs frontend (prezzoConsigliato in ServizioForm.jsx + Regole in PrezziRiparazioni.jsx): rischio drift. Consigliato endpoint /api/regole-prezzi/simulate condiviso.",
+    "parse_sifar_text funziona correttamente per il layout attuale (49.pdf: 20 righe, tutte con codice) ma le regex sono fragili al cambio di template — coprire con test PDF snapshot come test_parse_49_pdf.",
+    "ListinoRiga: campi 'marca' e 'brand' duplicati (brand usato in search, marca in filtri); accettare entrambi e' fragile — considerare un solo campo canonico."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter17_regole_listino_v2.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (prezzi page + servizio form)"},
+  "test_credentials": "Admin rsriparazioni@gmail.com/Devis2026! + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV",
+  "seed_data_creation": "Solo TEST_ transient: 8 servizi riparazione TEST_ creati e cancellati subito dopo la verifica prezzo_consigliato. Nessun listino salvato (parse-fattura solo lettura). Nessuna modifica alle regole.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Tutti i casi di calcolo prezzo attesi confermati: iPhone11 display_compat 17->100, iPhone13PM display 70->220, Samsung A15 display 34->100, iPhone12 batteria 12->70, iPhone12 connettore 7.5->50, iPhone12 vetro_camera 3.5->30, Redmi vetro_temperato 3.1->10, senza ricambio min30->45. Parser 49.pdf: fornitore=Sifar, data 21/05/2025, 20 righe tutte con codice, DSPIH11THMCPY prezzo 16.89 tipologia display_compatibile marca apple modello 'iphone 11' qty 4. Listino GET: iphone 11 restituisce 6 righe, galaxy s23 >=1, zzz [] . Frontend /prezzi: 14 regole visibili (regola-0..13), sim €100.00 corretto, tab Listino 39 righe totali; nel form servizio-listino-search 'iphone 11' popola 6 risultati, click su un item riempie costo (71.90 nel test) e imposta tipo_ricambio. Non salvare dati listino/regole reali.",
+  "rca of the issue": "N/A — nessun bug funzionale rilevato in questa iterazione."
+}

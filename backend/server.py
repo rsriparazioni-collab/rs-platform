@@ -3167,18 +3167,27 @@ def servizio_scope(user: dict, tipo: str = "") -> dict:
 
 # ---------------- Regole prezzi riparazioni (per tipologia x marca) + listino fornitori ----------------
 REGOLE_PREZZI_DEFAULT = [
-    ("display", "apple", "Display iPhone", 40, 60, 100, 300),
-    ("display", "samsung", "Display Samsung (OLED)", 45, 50, 150, 400),
-    ("display", "altri", "Display altri Android", 35, 70, 80, 200),
-    ("batteria", "*", "Batteria", 25, 80, 50, 90),
-    ("connettore", "*", "Connettore di ricarica", 30, 100, 50, 80),
-    ("vetro_posteriore", "*", "Vetro posteriore", 30, 80, 60, 150),
-    ("fotocamera", "*", "Fotocamera / altoparlante / microfono", 30, 80, 50, 150),
+    ("display", "apple", "Display iPhone OLED / originale", 40, 95, 100, 350),
+    ("display_compatibile", "apple", "Display iPhone compatibile (matrice CPY)", 40, 115, 80, 200),
+    ("display", "samsung", "Display Samsung service pack (con frame)", 45, 0, 100, 400),
+    ("display", "altri", "Display altri Android (Xiaomi, Realme, ...)", 35, 10, 80, 200),
+    ("batteria", "*", "Batteria", 42, 0, 50, 100),
+    ("connettore", "*", "Connettore di ricarica / flat", 30, 10, 50, 90),
+    ("fotocamera", "*", "Fotocamera / altoparlante / microfono / sensori", 35, 10, 50, 150),
+    ("vetro_camera", "*", "Vetrino fotocamera", 18, 10, 30, 60),
+    ("vetro_posteriore", "*", "Vetro posteriore / cover batteria", 30, 80, 60, 150),
     ("altro", "*", "Altro componente", 30, 70, 40, 250),
     ("software", "*", "Software / recupero dati / diagnosi (senza ricambio)", 35, 0, 30, 80),
+    ("vetro_temperato", "*", "Vetro temperato (prezzo fisso)", 0, 0, 10, 10),
+    ("pellicola", "*", "Pellicola (prezzo fisso)", 0, 0, 20, 20),
+    ("cover", "*", "Cover (prezzo fisso)", 0, 0, 15, 15),
 ]
-REGOLE_TIPOLOGIE = {"display": "Display", "batteria": "Batteria", "connettore": "Connettore di ricarica", "vetro_posteriore": "Vetro posteriore",
-                    "fotocamera": "Fotocamera / audio", "altro": "Altro componente", "software": "Software / diagnosi"}
+REGOLE_TIPOLOGIE = {"display": "Display OLED / originale", "display_compatibile": "Display compatibile", "batteria": "Batteria",
+                    "connettore": "Connettore di ricarica", "fotocamera": "Fotocamera / audio / sensori", "vetro_camera": "Vetrino fotocamera",
+                    "vetro_posteriore": "Vetro posteriore", "altro": "Altro componente", "software": "Software / diagnosi",
+                    "vetro_temperato": "Vetro temperato", "pellicola": "Pellicola", "cover": "Cover"}
+SPESE_SPEDIZIONE_PEZZO = 2.5  # quota spedizione fornitore caricata su ogni ricambio
+REGOLE_VERSIONE = 2
 _REGOLE_CACHE: list = []
 
 class RegolaPrezzoInput(BaseModel):
@@ -3192,11 +3201,14 @@ class RegolaPrezzoInput(BaseModel):
 
 async def load_regole_prezzi():
     global _REGOLE_CACHE
-    if await db.regole_prezzi.count_documents({}) == 0:
+    state = await db.import_state.find_one({"_id": "regole_prezzi_versione"})
+    if await db.regole_prezzi.count_documents({}) == 0 or (state or {}).get("v", 1) < REGOLE_VERSIONE:
         now = datetime.now(timezone.utc).isoformat()
+        await db.regole_prezzi.delete_many({})
         await db.regole_prezzi.insert_many([{"id": str(uuid.uuid4()), "tipologia": t, "marca": m, "label": l, "manodopera": man, "ricarico_pct": ric,
                                              "prezzo_min": mn, "prezzo_max": mx, "ordine": i, "updated_at": now}
                                             for i, (t, m, l, man, ric, mn, mx) in enumerate(REGOLE_PREZZI_DEFAULT)])
+        await db.import_state.update_one({"_id": "regole_prezzi_versione"}, {"$set": {"v": REGOLE_VERSIONE, "at": now}}, upsert=True)
     _REGOLE_CACHE = await db.regole_prezzi.find({}, {"_id": 0}).sort("ordine", 1).to_list(100)
 
 def marca_dispositivo(dispositivo: str) -> str:
@@ -3227,6 +3239,7 @@ async def put_regole_prezzi(regole: List[RegolaPrezzoInput], admin: dict = Depen
     await db.regole_prezzi.delete_many({})
     if docs:
         await db.regole_prezzi.insert_many(docs)
+    await db.import_state.update_one({"_id": "regole_prezzi_versione"}, {"$set": {"v": REGOLE_VERSIONE, "at": now}}, upsert=True)
     await load_regole_prezzi()
     return {"regole": _REGOLE_CACHE, "tipologie": REGOLE_TIPOLOGIE}
 
@@ -3238,6 +3251,10 @@ class ListinoRiga(BaseModel):
     data_fattura: str = ""
     marca: str = ""
     tipologia: str = ""
+    modello: str = ""
+    brand: str = ""
+    qualita: str = ""
+    note: str = ""
 
 _PRICE_RX = re.compile(r"(?<![\d.])(\d{1,4}(?:\.\d{3})*,\d{2}|\d{1,4}\.\d{2})(?!\d)")
 
@@ -3246,7 +3263,17 @@ def _parse_price(t: str) -> float:
 
 def _guess_tipologia(desc: str) -> str:
     d = desc.lower()
-    for key, words in (("display", ("display", "lcd", "oled", "schermo", "touch")), ("batteria", ("batteria", "battery")),
+    if "vetro temperato" in d:
+        return "vetro_temperato"
+    if "pellicola" in d:
+        return "pellicola"
+    if "cover" in d and "batteria" not in d and "vetrino" not in d:
+        return "cover"
+    if "vetrino" in d or "vetro camera" in d or "vetrino camera" in d:
+        return "vetro_camera" if "camera" in d else "vetro_posteriore"
+    if ("display" in d or "lcd" in d or "touch" in d) and ("compatibile" in d or "cpy" in d):
+        return "display_compatibile"
+    for key, words in (("display", ("display", "lcd", "oled", "schermo", "touch", "guscio frontale")), ("batteria", ("batteria", "battery")),
                        ("connettore", ("connettore", "dock", "flat carica", "charging", "ricarica")), ("vetro_posteriore", ("vetro post", "back cover", "back glass", "scocca")),
                        ("fotocamera", ("fotocamera", "camera", "speaker", "altoparlante", "microfono", "buzzer"))):
         if any(w in d for w in words):
@@ -3283,6 +3310,68 @@ def parse_fattura_text(text: str) -> list:
                      "marca": marca_dispositivo(descr), "qty_hint": qty.group(1) if qty else ""})
     return rows
 
+_SIFAR_MODEL_RX = re.compile(r"^([a-z]+)/([a-z0-9][a-z0-9\-+.]*)$")
+_SIFAR_PRICE_RX = re.compile(r"^€\s*([\d.]+,\d{2})$")
+
+def parse_sifar_text(text: str) -> list:
+    """Richieste d'ordine / fatture Sifar: codice, descrizione (multi-riga), marca/modello, q.ta, prezzo cad."""
+    lines = [" ".join(l.split()) for l in text.splitlines()]
+    rows, buf, i = [], [], 0
+    while i < len(lines):
+        l = lines[i]
+        m = _SIFAR_MODEL_RX.match(l)
+        if not m:
+            if l and not l.startswith(("Note articolo", "Cod. Articolo", "Descrizione", "Q.tà", "Prezzo cad", "Totale", "ordinata", "Disponibile")) \
+               and not re.match(r"^\d{1,3}$", l) and not l.startswith("€") and "about:blank" not in l and not re.match(r"^\d{2}/\d{2}/\d{2}", l):
+                buf.append(l)
+            i += 1
+            continue
+        desc = " ".join(buf).strip(); buf = []
+        desc = re.sub(r"^.*?\bTotale\b\s*", "", desc) if "Q.tà" in desc or "Richiesta d'ordine" in desc else desc
+        desc = re.sub(r"^\d/\d\s*", "", desc)
+        cm = re.match(r"^([A-Z0-9][A-Z0-9\-_.]{3,})\s+(.*)$", desc)
+        if not (cm and (any(ch.isdigit() for ch in cm.group(1)) or len(cm.group(1)) >= 6)):
+            inner = re.search(r"\b([A-Z]{2,}[A-Z0-9\-_.]*\d[A-Z0-9\-_.]*)\s+(.*)$", desc)
+            cm = inner if inner else None
+        codice, descr = (cm.group(1), cm.group(2)) if cm else ("", desc)
+        j, qty, prezzo = i + 1, 1, None
+        nums = []
+        while j < len(lines) and j <= i + 6:
+            if re.match(r"^\d{1,3}$", lines[j]):
+                nums.append(int(lines[j]))
+            elif _SIFAR_PRICE_RX.match(lines[j]):
+                prezzo = _parse_price(_SIFAR_PRICE_RX.match(lines[j]).group(1)); j += 1
+                break
+            j += 1
+        if nums:
+            qty = nums[0]
+        note = ""
+        k = j
+        while k < len(lines) and k <= j + 3:
+            if lines[k].startswith("Note articolo"):
+                note = lines[k + 1] if k + 1 < len(lines) and not _SIFAR_MODEL_RX.match(lines[k + 1]) else ""
+                k += 2
+                break
+            k += 1
+        i = max(k, j)
+        if prezzo is None or not descr:
+            continue
+        brand, model = m.group(1), m.group(2).replace("-", " ")
+        rows.append({"codice": codice, "descrizione": descr, "prezzo_netto": round(prezzo, 2), "qty_hint": str(qty), "note": note,
+                     "marca": "apple" if brand == "apple" else "samsung" if brand == "samsung" else "altri", "brand": brand, "modello": model,
+                     "tipologia": _guess_tipologia(descr), "qualita": _guess_qualita(descr)})
+    return rows
+
+def _guess_qualita(desc: str) -> str:
+    d = desc.lower()
+    if "matrice compatibile" in d or "cpy" in d or "compatibile" in d:
+        return "compatibile"
+    if "oled" in d or "eccelsa" in d or "premium" in d or "stessa tecnologia" in d:
+        return "premium"
+    if "originale" in d or "service pack" in d or "bulk" in d or "frame" in d:
+        return "originale"
+    return ""
+
 @api_router.post("/listino/parse-fattura")
 async def parse_fattura(file: UploadFile = File(...), admin: dict = Depends(require_admin)):
     if (file.content_type or "") != "application/pdf":
@@ -3290,10 +3379,15 @@ async def parse_fattura(file: UploadFile = File(...), admin: dict = Depends(requ
     data = await file.read()
     doc = fitz.open("pdf", data)
     text = "\n".join(p.get_text() for p in doc)
-    fornitore = "Sifar" if "sifar" in text.lower() else ""
-    m = re.search(r"(\d{2}/\d{2}/\d{4})", text)
-    rows = parse_fattura_text(text)
-    return {"fornitore": fornitore, "data_fattura": m.group(1) if m else "", "righe": rows, "righe_testo": len(text.splitlines())}
+    is_sifar = "sifar" in text.lower() or "Codice Utente SN" in text or "Richiesta d'ordine" in text
+    fornitore = "Sifar" if is_sifar else ""
+    m = re.search(r"del (\d{2}-\d{2}-\d{4})", text) or re.search(r"(\d{2}/\d{2}/\d{4})", text)
+    rows = parse_sifar_text(text) if is_sifar else []
+    if not rows:
+        rows = parse_fattura_text(text)
+    numero = re.search(r"(?:ordine|Fattura)\s*(?:nr\.?|n\.?)\s*(\d+)", text, re.I)
+    return {"fornitore": fornitore, "data_fattura": (m.group(1).replace("-", "/") if m else ""), "numero": numero.group(1) if numero else "",
+            "righe": rows, "righe_testo": len(text.splitlines())}
 
 @api_router.post("/listino")
 async def save_listino(righe: List[ListinoRiga], admin: dict = Depends(require_admin)):
@@ -3311,7 +3405,8 @@ async def search_listino(q: str = "", user: dict = Depends(get_current_user), li
     flt = {}
     if q:
         toks = [re.escape(t) for t in q.split() if t]
-        flt = {"$and": [{"$or": [{"descrizione": {"$regex": t, "$options": "i"}}, {"codice": {"$regex": t, "$options": "i"}}]} for t in toks]}
+        flt = {"$and": [{"$or": [{"descrizione": {"$regex": t, "$options": "i"}}, {"codice": {"$regex": t, "$options": "i"}},
+                                 {"modello": {"$regex": t, "$options": "i"}}, {"brand": {"$regex": t, "$options": "i"}}]} for t in toks]}
     return await db.listino.find(flt, {"_id": 0}).sort("updated_at", -1).to_list(limit)
 
 @api_router.delete("/listino/{riga_id}")
@@ -3325,12 +3420,12 @@ def calcola_prezzo_riparazione(s: dict) -> Optional[float]:
     regola = regola_per(s)
     minuti_raw = int(s.get("minuti_lavoro") or 0)
     if regola:
-        costo = float(s.get("costo_componente") or 0) if s.get("con_ricambio") else 0.0
+        costo = (float(s.get("costo_componente") or 0) + SPESE_SPEDIZIONE_PEZZO) if s.get("con_ricambio") else 0.0
         extra_min = max(minuti_raw - 30, 0) * 0.22775
         base = costo * (1 + regola["ricarico_pct"] / 100) + regola["manodopera"] + extra_min
         prezzo = _round5(base * 1.22)
-        if regola["prezzo_min"]:
-            prezzo = max(prezzo, regola["prezzo_min"] if not s.get("con_ricambio") or costo * 1.22 < regola["prezzo_min"] else prezzo)
+        if regola["prezzo_min"] and (not s.get("con_ricambio") or costo * 1.22 < regola["prezzo_min"]):
+            prezzo = max(prezzo, regola["prezzo_min"])
         if regola["prezzo_max"] and costo * 1.22 + regola["manodopera"] * 1.22 <= regola["prezzo_max"]:
             prezzo = min(prezzo, regola["prezzo_max"])
         return round(prezzo, 2)
@@ -3459,7 +3554,7 @@ def costi_riparazione(s: dict) -> Optional[dict]:
     minuti_raw = int(s.get("minuti_lavoro") or 0)
     batteria = bool(s.get("con_ricambio")) and s.get("tipo_ricambio") == "batteria"
     minuti = minuti_raw if batteria else max(minuti_raw, 30)
-    componente = (float(s.get("costo_componente") or 0) + 2.0) if s.get("con_ricambio") else 0.0
+    componente = (float(s.get("costo_componente") or 0) + SPESE_SPEDIZIONE_PEZZO) if s.get("con_ricambio") else 0.0
     lavoro = minuti * 0.22775
     return {"componente": round(componente, 2), "lavoro": round(lavoro, 2), "totale": round(componente + lavoro, 2)}
 

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 
 const MARCHE = { "*": "Tutte le marche", apple: "Apple", samsung: "Samsung", altri: "Altri Android" };
 const num = (v) => (v === "" || v == null ? 0 : parseFloat(v) || 0);
+const SPED = 2.5;
 
 function Regole() {
   const [regole, setRegole] = useState([]);
@@ -25,7 +26,7 @@ function Regole() {
   const regola = regole.find((r) => r.tipologia === sim.tipologia && r.marca === sim.marca) || regole.find((r) => r.tipologia === sim.tipologia && r.marca === "*");
   let simPrezzo = null;
   if (regola) {
-    const c = sim.tipologia === "software" ? 0 : num(sim.costo);
+    const c = ["software", "vetro_temperato", "pellicola", "cover"].includes(sim.tipologia) ? 0 : num(sim.costo) + 2.5;
     let p = 5 * Math.round(((c * (1 + num(regola.ricarico_pct) / 100) + num(regola.manodopera)) * 1.22) / 5);
     if (num(regola.prezzo_min) && (sim.tipologia === "software" || c * 1.22 < num(regola.prezzo_min))) p = Math.max(p, num(regola.prezzo_min));
     if (num(regola.prezzo_max) && c * 1.22 + num(regola.manodopera) * 1.22 <= num(regola.prezzo_max)) p = Math.min(p, num(regola.prezzo_max));
@@ -134,7 +135,7 @@ function Listino() {
           <tbody className="divide-y divide-slate-100">
             {rows.map((r) => (
               <tr key={r.id} data-testid={`listino-row-${r.id}`}>
-                <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{r.codice || "-"}</td><td className="px-3 py-1.5">{r.descrizione}</td>
+                <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{r.codice || "-"}</td><td className="px-3 py-1.5">{r.modello ? <span className="font-semibold capitalize">{r.modello} · </span> : null}{r.descrizione}</td>
                 <td className="px-3 py-1.5 text-xs text-slate-500">{r.tipologia}{r.marca && r.marca !== "altri" ? ` · ${r.marca}` : ""}</td><td className="px-3 py-1.5 text-xs">{r.fornitore}{r.data_fattura ? ` · ${r.data_fattura}` : ""}</td>
                 <td className="px-3 py-1.5 font-semibold">€ {r.prezzo_netto.toFixed(2)}</td>
                 <td className="px-2"><Button variant="ghost" size="icon" onClick={() => api.delete(`/listino/${r.id}`).then(load)}><Trash2 className="h-4 w-4 text-rose-500" /></Button></td>

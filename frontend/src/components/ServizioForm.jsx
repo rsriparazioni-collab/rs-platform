@@ -33,7 +33,7 @@ function prezzoConsigliato(tipo, conRicambio, costo, minuti, tipoRicambio, regol
   const minRaw = parseInt(minuti) || 0;
   const regola = regolaPer(regole, { con_ricambio: conRicambio, tipo_ricambio: tipoRicambio, dispositivo });
   if (regola) {
-    const c = conRicambio ? parseFloat(costo) || 0 : 0;
+    const c = conRicambio ? (parseFloat(costo) || 0) + 2.5 : 0;
     const base = c * (1 + regola.ricarico_pct / 100) + regola.manodopera + Math.max(minRaw - 30, 0) * 0.22775;
     let p = round5(base * 1.22);
     if (regola.prezzo_min && (!conRicambio || c * 1.22 < regola.prezzo_min)) p = Math.max(p, regola.prezzo_min);
@@ -301,12 +301,17 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                   <Select value={form.tipo_ricambio || "altro"} onValueChange={(v) => set("tipo_ricambio", v)}>
                     <SelectTrigger data-testid="servizio-tipo-ricambio"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="display">Display</SelectItem>
+                      <SelectItem value="display">Display OLED / originale</SelectItem>
+                      <SelectItem value="display_compatibile">Display compatibile (CPY)</SelectItem>
                       <SelectItem value="batteria">Batteria</SelectItem>
-                      <SelectItem value="connettore">Connettore di ricarica</SelectItem>
+                      <SelectItem value="connettore">Connettore di ricarica / flat</SelectItem>
+                      <SelectItem value="fotocamera">Fotocamera / altoparlante / sensori</SelectItem>
+                      <SelectItem value="vetro_camera">Vetrino fotocamera</SelectItem>
                       <SelectItem value="vetro_posteriore">Vetro posteriore</SelectItem>
-                      <SelectItem value="fotocamera">Fotocamera / altoparlante / microfono</SelectItem>
                       <SelectItem value="altro">Altro componente</SelectItem>
+                      <SelectItem value="vetro_temperato">Vetro temperato (10 €)</SelectItem>
+                      <SelectItem value="pellicola">Pellicola (20 €)</SelectItem>
+                      <SelectItem value="cover">Cover (15 €)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -321,7 +326,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                           <li key={l.id}>
                             <button type="button" onClick={() => { set("costo_componente", String(l.prezzo_netto)); if (l.tipologia) set("tipo_ricambio", l.tipologia); setListinoQ(""); setListino([]); }}
                                     className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-slate-50" data-testid={`servizio-listino-item-${l.id}`}>
-                              <span className="truncate">{l.codice ? <span className="font-mono text-slate-400">{l.codice} </span> : null}{l.descrizione}</span>
+                              <span className="truncate">{l.codice ? <span className="font-mono text-slate-400">{l.codice} </span> : null}{l.modello ? <span className="font-semibold">{l.modello} · </span> : null}{l.descrizione}</span>
                               <span className="ml-2 shrink-0 font-semibold">€ {l.prezzo_netto.toFixed(2)}</span>
                             </button>
                           </li>
@@ -341,7 +346,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                 <p className="font-heading text-2xl font-bold text-emerald-800">€ {prezzo != null ? prezzo.toFixed(2) : "-"}</p>
                 <p className="text-xs text-emerald-700" data-testid="servizio-prezzo-formula">
                   {regolaAttiva
-                    ? `Regola "${regolaAttiva.label}": ${form.con_ricambio ? `costo ricambio +${regolaAttiva.ricarico_pct}% + ` : ""}manodopera ${regolaAttiva.manodopera}€ + IVA 22%, arrotondato ai 5€${regolaAttiva.prezzo_min || regolaAttiva.prezzo_max ? ` (fascia ${regolaAttiva.prezzo_min}–${regolaAttiva.prezzo_max}€)` : ""}`
+                    ? `Regola "${regolaAttiva.label}": ${form.con_ricambio ? `(costo ricambio + 2,50€ sped.) +${regolaAttiva.ricarico_pct}% + ` : ""}manodopera ${regolaAttiva.manodopera}€ + IVA 22%, arrotondato ai 5€${regolaAttiva.prezzo_min || regolaAttiva.prezzo_max ? ` (fascia ${regolaAttiva.prezzo_min}–${regolaAttiva.prezzo_max}€)` : ""}`
                     : form.con_ricambio
                     ? (form.tipo_ricambio === "batteria"
                       ? "costo batteria + 2€ trasporto + minuti reali × 0,22775€ + 20€ margine + IVA 22%"
@@ -360,7 +365,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                       if (finale == null || isNaN(finale)) return <p className="text-slate-400">-</p>;
                       const minRaw = parseInt(form.minuti_lavoro) || 0;
                       const bat = form.con_ricambio && form.tipo_ricambio === "batteria";
-                      const costi = (form.con_ricambio ? (parseFloat(form.costo_componente) || 0) + 2 : 0) + (bat ? minRaw : Math.max(minRaw, 30)) * 0.22775;
+                      const costi = (form.con_ricambio ? (parseFloat(form.costo_componente) || 0) + 2.5 : 0) + (bat ? minRaw : Math.max(minRaw, 30)) * 0.22775;
                       const m = finale / 1.22 - costi;
                       return <p className={`font-heading text-xl font-bold ${m < 0 ? "text-rose-700" : m < 15 ? "text-amber-700" : "text-emerald-800"}`}>€ {m.toFixed(2)}</p>;
                     })()}
