@@ -4,6 +4,8 @@ import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRi
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import MarginiChart from "../components/MarginiChart";
+import DaRichiamare from "../components/DaRichiamare";
+import ContattoDialog, { ContattoBadge, ContattoButton } from "../components/ContattoDialog";
 import { useAuth } from "../context/AuthContext";
 import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate } from "../lib/constants";
 import { Button } from "../components/ui/button";
@@ -53,6 +55,14 @@ export default function Dashboard() {
     } finally {
       setSendingFerme(false);
     }
+  };
+
+  const [contatto, setContatto] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const reloadScadenze = () => {
+    api.get("/alerts").then((r) => setAlerts(r.data)).catch(() => {});
+    api.get("/scadenze-settimana").then((r) => setScadenze(r.data)).catch(() => {});
+    setRefreshKey((k) => k + 1);
   };
 
   useEffect(() => {
@@ -120,6 +130,9 @@ export default function Dashboard() {
         </div>
       )}
 
+      <ContattoDialog target={contatto} onClose={() => setContatto(null)} onSaved={reloadScadenze} />
+      <DaRichiamare refreshKey={refreshKey} onChanged={reloadScadenze} />
+
       {scadenze && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="scadenze-panel">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -142,19 +155,23 @@ export default function Dashboard() {
               )}
               <div className="space-y-1">
                 {scadenze.rinnovi.map((r) => (
-                  <Link to="/clienti" key={r.client_id} data-testid={`scadenza-rinnovo-${r.client_id}`}
+                  <div key={r.client_id} data-testid={`scadenza-rinnovo-${r.client_id}`}
                         className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-50">
-                    <div className="flex items-center gap-2">
+                    <Link to="/clienti" className="flex min-w-0 items-center gap-2">
                       {r.tipo_bolletta === "gas"
-                        ? <Flame className="h-3.5 w-3.5 text-orange-500" />
-                        : <Zap className="h-3.5 w-3.5 text-sky-500" />}
-                      <div>
-                        <p className="text-sm font-medium text-slate-900">{r.cognome} {r.nome}</p>
+                        ? <Flame className="h-3.5 w-3.5 shrink-0 text-orange-500" />
+                        : <Zap className="h-3.5 w-3.5 shrink-0 text-sky-500" />}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-900">{r.cognome} {r.nome}</p>
                         <p className="text-xs text-slate-500">Rinnovo: {fmtDate(r.data_rinnovo)}</p>
+                        <ContattoBadge contatto={r.ultimo_contatto} testid={`scadenza-rinnovo-contatto-${r.client_id}`} />
                       </div>
+                    </Link>
+                    <div className="flex items-center gap-1">
+                      <span className={`text-xs font-bold ${r.giorni <= 2 ? "text-rose-600" : "text-amber-600"}`}>{r.giorni} gg</span>
+                      <ContattoButton onClick={() => setContatto({ target_type: "client", target_id: r.client_id, motivo: "rinnovo", label: `${r.cognome} ${r.nome}` })} testid={`scadenza-rinnovo-contatta-${r.client_id}`} />
                     </div>
-                    <span className={`text-xs font-bold ${r.giorni <= 2 ? "text-rose-600" : "text-amber-600"}`}>{r.giorni} gg</span>
-                  </Link>
+                  </div>
                 ))}
               </div>
             </div>
@@ -168,14 +185,18 @@ export default function Dashboard() {
               )}
               <div className="space-y-1">
                 {scadenze.vincoli.map((v) => (
-                  <Link to="/telefonia" key={v.id} data-testid={`scadenza-vincolo-${v.id}`}
+                  <div key={v.id} data-testid={`scadenza-vincolo-${v.id}`}
                         className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-50">
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{v.client_name}</p>
+                    <Link to="/telefonia" className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{v.client_name}</p>
                       <p className="text-xs text-slate-500">{v.operatore_tel}{v.numero ? ` · ${v.numero}` : ""} · scade {fmtDate(v.scadenza_vincolo)}</p>
+                      <ContattoBadge contatto={v.ultimo_contatto} testid={`scadenza-vincolo-contatto-${v.id}`} />
+                    </Link>
+                    <div className="flex items-center gap-1">
+                      <span className={`text-xs font-bold ${v.giorni <= 2 ? "text-rose-600" : "text-orange-600"}`}>{v.giorni} gg</span>
+                      <ContattoButton onClick={() => setContatto({ target_type: "servizio", target_id: v.id, motivo: "vincolo", label: v.client_name, dettaglio: v.operatore_tel })} testid={`scadenza-vincolo-contatta-${v.id}`} />
                     </div>
-                    <span className={`text-xs font-bold ${v.giorni <= 2 ? "text-rose-600" : "text-orange-600"}`}>{v.giorni} gg</span>
-                  </Link>
+                  </div>
                 ))}
               </div>
             </div>
@@ -189,14 +210,18 @@ export default function Dashboard() {
               )}
               <div className="space-y-1">
                 {scadenze.riparazioni_pronte.map((r) => (
-                  <Link to="/riparazioni" key={r.id} data-testid={`scadenza-riparazione-${r.id}`}
+                  <div key={r.id} data-testid={`scadenza-riparazione-${r.id}`}
                         className="flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-50">
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{r.client_name}</p>
+                    <Link to="/riparazioni" className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{r.client_name}</p>
                       <p className="text-xs text-slate-500">{r.dispositivo}{r.problema ? ` · ${r.problema}` : ""}</p>
+                      <ContattoBadge contatto={r.ultimo_contatto} testid={`scadenza-riparazione-contatto-${r.id}`} />
+                    </Link>
+                    <div className="flex items-center gap-1">
+                      <span className="rounded-full border border-emerald-300 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Pronto</span>
+                      <ContattoButton onClick={() => setContatto({ target_type: "servizio", target_id: r.id, motivo: "riparazione_pronta", label: r.client_name, dettaglio: r.dispositivo })} testid={`scadenza-riparazione-contatta-${r.id}`} />
                     </div>
-                    <span className="rounded-full border border-emerald-300 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Pronto</span>
-                  </Link>
+                  </div>
                 ))}
               </div>
             </div>
@@ -243,21 +268,25 @@ export default function Dashboard() {
               </p>
             )}
             {alerts?.rinnovi.map((r) => (
-              <Link to="/clienti" key={r.client_id} data-testid={`alert-rinnovo-${r.client_id}`}
+              <div key={r.client_id} data-testid={`alert-rinnovo-${r.client_id}`}
                     className="flex items-center justify-between px-5 py-3 transition-colors hover:bg-slate-50">
-                <div className="flex items-center gap-3">
+                <Link to="/clienti" className="flex min-w-0 items-center gap-3">
                   {r.tipo_bolletta === "gas"
-                    ? <Flame className="h-4 w-4 text-orange-500" />
-                    : <Zap className="h-4 w-4 text-sky-500" />}
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{r.cognome} {r.nome}</p>
+                    ? <Flame className="h-4 w-4 shrink-0 text-orange-500" />
+                    : <Zap className="h-4 w-4 shrink-0 text-sky-500" />}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-900">{r.cognome} {r.nome}</p>
                     <p className="text-xs text-slate-500">Rinnovo: {fmtDate(r.data_rinnovo)} · {lavorazioneLabel(r.lavorazione)}</p>
+                    <ContattoBadge contatto={r.ultimo_contatto} testid={`alert-rinnovo-contatto-${r.client_id}`} />
                   </div>
+                </Link>
+                <div className="flex items-center gap-1">
+                  <span className={`text-xs font-bold ${r.giorni < 0 ? "text-rose-600" : "text-amber-600"}`}>
+                    {r.giorni < 0 ? `${-r.giorni} gg fa` : `${r.giorni} gg`}
+                  </span>
+                  <ContattoButton onClick={() => setContatto({ target_type: "client", target_id: r.client_id, motivo: "rinnovo", label: `${r.cognome} ${r.nome}` })} testid={`alert-rinnovo-contatta-${r.client_id}`} />
                 </div>
-                <span className={`text-xs font-bold ${r.giorni < 0 ? "text-rose-600" : "text-amber-600"}`}>
-                  {r.giorni < 0 ? `${-r.giorni} gg fa` : `${r.giorni} gg`}
-                </span>
-              </Link>
+              </div>
             ))}
             {alerts?.pagamenti_negozi.map((s) => (
               <Link to="/negozi" key={s.store_id} data-testid={`alert-negozio-${s.store_id}`}
@@ -270,14 +299,15 @@ export default function Dashboard() {
               </Link>
             ))}
             {alerts?.pagamenti_clienti.map((c) => (
-              <Link to="/clienti" key={c.client_id} data-testid={`alert-pagamento-${c.client_id}`}
+              <div key={c.client_id} data-testid={`alert-pagamento-${c.client_id}`}
                     className="flex items-center justify-between px-5 py-3 transition-colors hover:bg-slate-50">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{c.cognome} {c.nome}</p>
+                <Link to="/clienti" className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900">{c.cognome} {c.nome}</p>
                   <p className="text-xs text-slate-500">Pagamento tornato "non pagato" dopo 6 mesi</p>
-                </div>
-                <ArrowRight className="h-4 w-4 text-slate-400" />
-              </Link>
+                  <ContattoBadge contatto={c.ultimo_contatto} testid={`alert-pagamento-contatto-${c.client_id}`} />
+                </Link>
+                <ContattoButton onClick={() => setContatto({ target_type: "client", target_id: c.client_id, motivo: "pagamento", label: `${c.cognome} ${c.nome}` })} testid={`alert-pagamento-contatta-${c.client_id}`} />
+              </div>
             ))}
           </div>
         </div>

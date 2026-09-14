@@ -1,0 +1,32 @@
+{
+  "summary": "Iter 15 - Feature 'Esito contatto / Da richiamare' testata end-to-end. Backend: 13/13 test PASS in /app/backend/tests/test_followup_iter15.py (validazioni POST /api/followup, GET history, GET /followup/da-richiamare con flag scaduto, attach_followups su /scadenze-settimana e /alerts, riapertura -> chiusura precedente, servizio riparazione con scaduto=true, RBAC Michael Tirano vede solo suoi negozi e POST cross-store => 404). Frontend admin: login MFA OK; da-richiamare-panel presente con counter; click su scadenza-rinnovo-contatta-<id> apre contatto-dialog; contatto-target mostra 'maria anna paola besta'; +1g funziona; contatto-submit -> toast 'Segnato: richiamare il ...'; badge scadenza-rinnovo-contatto-<id> = 'Non risponde · richiama 15/09/2026'; pannello Da richiamare mostra la voce con data e da-richiamare-contatta-<id>; riapertura via da-richiamare-contatta-<id> -> contatto-storico contiene 'TEST_ UI followup'; selezione 'Contattato' + submit -> toast 'Esito registrato' -> la riga sparisce da Da richiamare (count torna 0). Cleanup finale: 1 doc TEST_ residuo eliminato da Mongo (0 rimanenti).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ContattoDialog", "issues": ["Warning React a11y: 'Missing Description or aria-describedby for DialogContent' (non bloccante ma consigliato aggiungere DialogDescription)"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_followup_iter15.py",
+    "/app/test_reports/pytest/iter15_followup.xml"
+  ],
+  "action_items": [
+    "OPZIONALE a11y: aggiungere <DialogDescription> (o aria-describedby) al DialogContent di ContattoDialog per silenziare il warning Radix."
+  ],
+  "critical_code_review_comments": [
+    "server.py create_followup: la logica update_many({aperto:true}) poi insert è corretta e idempotente. attach_followups usa setdefault per prendere solo l'ultimo per motivo -> ok.",
+    "ContattoDialog radio input .sr-only: cliccando direttamente il radio testid non funziona (fuori viewport), il click va fatto sulla <label>. Per robustezza test/automazione va bene, ma per accessibilità è ok (label wraps input).",
+    "_followup_target_ok per target_type=servizio ritorna target valido solo se rispetta servizio_scope: RBAC corretto sia in POST che in GET history."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_followup_iter15.py"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (scenario admin end-to-end)"},
+  "test_credentials": "admin rsriparazioni@gmail.com + TOTP env TEST_ADMIN_TOTP_SECRET; michael@cambiaora.local Michael2026! (enroll+reset via fixture)",
+  "seed_data_creation": "Solo documenti followup con note prefix TEST_, tutti eliminati a fine test (verificato deleted=0 al secondo cleanup).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Feature 'Esito contatto / Da richiamare' verificata (backend + UI admin). Michael's 2FA viene enroll/reset dalla fixture; se test_passwords.py gira in parallelo può interferire (già noto). Il click sul radio 'contattato' via data-testid richiede click sulla label parent perché l'input è .sr-only fuori viewport. Nessun dato reale modificato."
+}

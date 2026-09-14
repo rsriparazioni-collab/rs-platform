@@ -221,6 +221,8 @@ async def build_alerts(user: dict) -> dict:
     smap = {s["id"]: s.get("nome", "") for s in stores}
     sotto_scorta = [{"id": i["id"], "nome": i["nome"], "categoria": i.get("categoria", ""),
                      "quantita": i.get("quantita", 0), "store_name": smap.get(i.get("store_id", ""), "-")} for i in low]
+    await attach_followups(rinnovi, "client", "client_id", "rinnovo")
+    await attach_followups(pagamenti_clienti, "client", "client_id", "pagamento")
     return {"rinnovi": rinnovi, "pagamenti_clienti": pagamenti_clienti, "pagamenti_negozi": pagamenti_negozi,
             "sotto_scorta": sotto_scorta}
 
@@ -1042,6 +1044,83 @@ async def tempi_riparazione_per_negozio(svc_scope: dict) -> list:
 async def get_alerts(user: dict = Depends(get_current_user)):
     return await build_alerts(user)
 
+# ---------------- Follow-up contatti (esito chiamate su scadenze/rinnovi) ----------------
+FOLLOWUP_ESITI = {"non_risponde", "richiamare", "contattato", "non_interessato", "chiuso"}
+
+class FollowupInput(BaseModel):
+    target_type: str  # client | servizio | store
+    target_id: str
+    motivo: str = "altro"  # rinnovo | vincolo | riparazione_pronta | pagamento | altro
+    esito: str
+    richiamare_il: Optional[str] = None
+    note: str = ""
+
+async def _followup_target_ok(user: dict, target_type: str, target_id: str) -> Optional[dict]:
+    if target_type == "client":
+        c = await db.clients.find_one({**client_scope_filter(user), "id": target_id}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "venditore_id": 1, "telefono": 1})
+        return {"label": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "store_id": c.get("venditore_id", ""), "client_id": c["id"], "telefono": c.get("telefono", "")} if c else None
+    if target_type == "servizio":
+        s = await db.servizi.find_one({**servizio_scope(user), "id": target_id}, {"_id": 0, "id": 1, "client_id": 1, "venditore_id": 1, "dispositivo": 1, "tipo": 1})
+        if not s:
+            return None
+        c = await db.clients.find_one({"id": s["client_id"]}, {"_id": 0, "nome": 1, "cognome": 1, "telefono": 1}) or {}
+        return {"label": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "store_id": s.get("venditore_id", ""), "client_id": s["client_id"],
+                "telefono": c.get("telefono", ""), "dettaglio": s.get("dispositivo") or s.get("tipo", "")}
+    if target_type == "store" and user["role"] == "admin":
+        s = await db.stores.find_one({"id": target_id}, {"_id": 0, "nome": 1})
+        return {"label": s["nome"], "store_id": target_id, "client_id": "", "telefono": ""} if s else None
+    return None
+
+@api_router.post("/followup")
+async def create_followup(input: FollowupInput, user: dict = Depends(get_current_user)):
+    if input.esito not in FOLLOWUP_ESITI:
+        raise HTTPException(status_code=400, detail="Esito non valido")
+    if input.esito in ("non_risponde", "richiamare") and not input.richiamare_il:
+        raise HTTPException(status_code=400, detail="Indica quando richiamare")
+    target = await _followup_target_ok(user, input.target_type, input.target_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Elemento non trovato")
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {"id": str(uuid.uuid4()), **input.model_dump(), **target, "user_id": user["id"], "user_name": user["name"], "created_at": now,
+           "aperto": input.esito in ("non_risponde", "richiamare")}
+    await db.followup.update_many({"target_type": input.target_type, "target_id": input.target_id, "motivo": input.motivo, "aperto": True},
+                                  {"$set": {"aperto": False, "chiuso_at": now}})
+    await db.followup.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+def _followup_scope(user: dict) -> dict:
+    if user["role"] == "admin" or user.get("can_view_all"):
+        return {}
+    return {"store_id": {"$in": user.get("store_ids", [])}}
+
+@api_router.get("/followup")
+async def list_followup(target_type: str, target_id: str, user: dict = Depends(get_current_user)):
+    if not await _followup_target_ok(user, target_type, target_id):
+        raise HTTPException(status_code=404, detail="Elemento non trovato")
+    return await db.followup.find({"target_type": target_type, "target_id": target_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+@api_router.get("/followup/da-richiamare")
+async def followup_da_richiamare(user: dict = Depends(get_current_user)):
+    rows = await db.followup.find({**_followup_scope(user), "aperto": True}, {"_id": 0}).sort("richiamare_il", 1).to_list(1000)
+    today = date.today().isoformat()
+    for r in rows:
+        r["scaduto"] = bool(r.get("richiamare_il")) and r["richiamare_il"] < today
+        r["oggi"] = r.get("richiamare_il") == today
+    return rows
+
+async def attach_followups(items: list, target_type: str, id_key: str, motivo: str):
+    """Aggiunge a ogni voce l'ultimo esito contatto (ultimo_contatto) per lo stesso motivo."""
+    ids = [i[id_key] for i in items]
+    if not ids:
+        return items
+    last: dict = {}
+    async for f in db.followup.find({"target_type": target_type, "target_id": {"$in": ids}, "motivo": motivo}, {"_id": 0}).sort("created_at", -1):
+        last.setdefault(f["target_id"], {k: f.get(k) for k in ("esito", "richiamare_il", "note", "user_name", "created_at", "aperto")})
+    for i in items:
+        i["ultimo_contatto"] = last.get(i[id_key])
+    return items
+
 @api_router.get("/scadenze-settimana")
 async def scadenze_settimana(user: dict = Depends(get_current_user)):
     sections = user_sections(user)
@@ -1084,6 +1163,9 @@ async def scadenze_settimana(user: dict = Depends(get_current_user)):
              "dispositivo": s.get("dispositivo", ""), "problema": s.get("problema", "")}
             for s in rips]
     out["totale"] = len(out["rinnovi"]) + len(out["vincoli"]) + len(out["riparazioni_pronte"])
+    await attach_followups(out["rinnovi"], "client", "client_id", "rinnovo")
+    await attach_followups(out["vincoli"], "servizio", "id", "vincolo")
+    await attach_followups(out["riparazioni_pronte"], "servizio", "id", "riparazione_pronta")
     return out
 
 
