@@ -32,10 +32,17 @@ export default function SlideViewer({ slides, pdfUrl, embedded = false }) {
           <span data-testid="slide-counter">{i + 1} / {n}</span>
         </div>
         <div className="relative flex flex-1 flex-col justify-center px-8 py-8 sm:px-14" key={s.id}>
-          <h2 className="font-heading text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl" data-testid="slide-title">{s.titolo}</h2>
-          {s.sottotitolo && <p className="mt-2 text-base text-emerald-300 sm:text-lg" data-testid="slide-subtitle">{s.sottotitolo}</p>}
-          <div className="mt-6 max-w-3xl [&_*]:text-slate-200 [&_strong]:text-white [&_h2]:text-white [&_li]:text-slate-200 [&_p]:text-base [&_li]:text-base" data-testid="slide-content">
-            <Markdown>{s.contenuto}</Markdown>
+          <div className={s.immagine ? "grid items-center gap-8 lg:grid-cols-[1fr_1.1fr]" : ""}>
+            <div>
+              <h2 className="font-heading text-3xl font-bold leading-tight sm:text-4xl lg:text-5xl" data-testid="slide-title">{s.titolo}</h2>
+              {s.sottotitolo && <p className="mt-2 text-base text-emerald-300 sm:text-lg" data-testid="slide-subtitle">{s.sottotitolo}</p>}
+              <div className="mt-6 max-w-3xl [&_*]:text-slate-200 [&_strong]:text-white [&_h2]:text-white [&_li]:text-slate-200 [&_p]:text-base [&_li]:text-base" data-testid="slide-content">
+                <Markdown>{s.contenuto}</Markdown>
+              </div>
+            </div>
+            {s.immagine && (
+              <img src={s.immagine} alt={s.titolo} className="w-full rounded-xl border border-white/10 shadow-2xl shadow-black/40" data-testid="slide-image" />
+            )}
           </div>
         </div>
         <div className="relative flex items-center justify-between border-t border-white/10 px-6 py-3">

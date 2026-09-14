@@ -109,6 +109,15 @@ SERVIZI = [
      "**Cosa offriamo**: ritiro dell'usato con bolla, rigenerazione e rivendita con garanzia negozio.\n\n**Procedura**: Ritirato dalla riparazione → bolla + documenti → magazzino rigenerati → Venduto.\n\n**Consiglio**: fotografa sempre il dispositivo e allega il documento del cliente alla bolla."),
 ]
 
+SLIDE_IMG = {0: "/formazione/dashboard.jpg", 1: "/formazione/login.jpg", 2: "/formazione/dashboard.jpg", 3: "/formazione/clienti.jpg",
+             4: "/formazione/clienti.jpg", 5: "/formazione/riparazioni.jpg", 6: "/formazione/ritiri.jpg", 7: "/formazione/telefonia.jpg",
+             8: "/formazione/magazzino.jpg", 9: "/formazione/whatsapp.jpg", 10: "/formazione/password.jpg", 11: "/formazione/registro-accessi.jpg",
+             12: "/formazione/formazione.jpg"}
+MANUALE_IMG = {0: "/formazione/sicurezza.jpg", 1: "/formazione/clienti.jpg", 2: "/formazione/clienti.jpg", 3: "/formazione/riparazioni.jpg",
+               4: "/formazione/ritiri.jpg", 5: "/formazione/telefonia.jpg", 6: "/formazione/magazzino.jpg", 7: "/formazione/whatsapp.jpg",
+               8: "/formazione/password.jpg", 9: "/formazione/registro-accessi.jpg", 10: "/formazione/negozi.jpg", 11: "/formazione/utenti.jpg",
+               12: "/formazione/dashboard.jpg"}
+
 OPERATORI = [
     ("ENEL", "energia", "Fornitore energia. Portale agenti con accesso Microsoft.", ""),
     ("FASTWEB", "telefonia", "Fisso e mobile. Dopo la vendita caricare il contratto su JOY (flag CARICATO SU JOY).", ""),
@@ -128,9 +137,11 @@ def build_seed(portali: list) -> list:
         url_by_op.setdefault(p["operatore"].upper(), p.get("url", ""))
     docs = []
     for i, (t, st, c) in enumerate(SLIDES):
-        docs.append({"sezione": "slide", "titolo": t, "sottotitolo": st, "contenuto": c, "ordine": i + 1, "categoria": ""})
+        docs.append({"sezione": "slide", "titolo": t, "sottotitolo": st, "contenuto": c, "ordine": i + 1, "categoria": "",
+                     "immagine": SLIDE_IMG.get(i, "")})
     for i, (t, cat, c) in enumerate(MANUALE):
-        docs.append({"sezione": "manuale", "titolo": t, "sottotitolo": "", "contenuto": c, "ordine": i + 1, "categoria": cat})
+        docs.append({"sezione": "manuale", "titolo": t, "sottotitolo": "", "contenuto": c, "ordine": i + 1, "categoria": cat,
+                     "immagine": MANUALE_IMG.get(i, "")})
     for i, (t, cat, link, c) in enumerate(SERVIZI):
         docs.append({"sezione": "servizi", "titolo": t, "sottotitolo": "Servizio", "contenuto": c, "ordine": i + 1, "categoria": cat, "link": link})
     for i, (t, cat, note, comp) in enumerate(OPERATORI):

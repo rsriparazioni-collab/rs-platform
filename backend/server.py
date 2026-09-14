@@ -1924,6 +1924,7 @@ class FormazioneInput(BaseModel):
     contenuto: str = ""
     categoria: str = ""
     link: str = ""
+    immagine: str = ""
     ordine: int = 0
 
 FORMAZIONE_SEZIONI = {"slide", "manuale", "servizi"}
@@ -1933,7 +1934,7 @@ async def seed_formazione():
         return
     portali = await db.portali.find({}, {"_id": 0}).to_list(200)
     now = datetime.now(timezone.utc).isoformat()
-    docs = [{**d, "id": str(uuid.uuid4()), "link": d.get("link", ""), "created_at": now, "updated_at": now} for d in _formazione_seed(portali)]
+    docs = [{**d, "id": str(uuid.uuid4()), "link": d.get("link", ""), "immagine": d.get("immagine", ""), "created_at": now, "updated_at": now} for d in _formazione_seed(portali)]
     if docs:
         await db.formazione.insert_many(docs)
 
@@ -2030,6 +2031,11 @@ def _build_formazione_pdf(sezione: str, rows: list) -> bytes:
             pdf.multi_cell(0, 5, _pdf_txt(f"Sezione: {r['categoria']}"), new_x="LMARGIN", new_y="NEXT"); pdf.set_text_color(0, 0, 0)
         if r.get("link"):
             pdf.set_font("helvetica", "", 9); pdf.multi_cell(0, 5, _pdf_txt(f"Link: {r['link'][:110]}"), new_x="LMARGIN", new_y="NEXT")
+        img = r.get("immagine") or ""
+        if img.startswith("/formazione/") and os.path.exists(f"/app/frontend/public{img}"):
+            pdf.ln(1)
+            pdf.image(f"/app/frontend/public{img}", w=120)
+            pdf.ln(2)
         pdf.set_font("helvetica", "", 10.5)
         pdf.ln(1)
         _pdf_markdown(pdf, r.get("contenuto", ""))

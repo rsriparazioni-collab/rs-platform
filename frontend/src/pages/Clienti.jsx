@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban, Wrench, Smartphone, Wifi } from "lucide-react";
+import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban, Wrench, Smartphone, Wifi, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
+import SyncFogliDialog from "../components/SyncFogliDialog";
 import { useAuth } from "../context/AuthContext";
 import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate, PREMIUM_STEPS } from "../lib/constants";
 
@@ -29,6 +30,7 @@ export default function Clienti() {
   const [editing, setEditing] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
   const [importUrl, setImportUrl] = useState("");
   const [importStore, setImportStore] = useState("");
   const [importMode, setImportMode] = useState("single");
@@ -105,6 +107,11 @@ export default function Clienti() {
           <Button variant="outline" onClick={exportExcel} data-testid="export-excel-button" className="gap-2">
             <Download className="h-4 w-4" /> Esporta Excel
           </Button>
+          {user.role === "admin" && (
+            <Button variant="outline" onClick={() => setSyncOpen(true)} data-testid="sync-fogli-button" className="gap-2">
+              <RefreshCw className="h-4 w-4" /> Sincronizza fogli Google
+            </Button>
+          )}
           {user.role === "admin" && (
             <Button variant="outline" onClick={() => { setImportStore(meta.stores[0]?.id || ""); setImportOpen(true); }}
                     data-testid="import-sheet-button" className="gap-2">
@@ -236,6 +243,7 @@ export default function Clienti() {
                     onEdit={(c) => { setEditing(c); setFormOpen(true); }}
                     isAdmin={user.role === "admin"} />
 
+      <SyncFogliDialog open={syncOpen} onClose={() => setSyncOpen(false)} onDone={load} />
       <Dialog open={importOpen} onOpenChange={(o) => { setImportOpen(o); if (!o) setImportResult(null); }}>
         <DialogContent data-testid="import-sheet-dialog">
           <DialogHeader><DialogTitle className="font-heading text-xl">Importa da Google Sheet</DialogTitle></DialogHeader>

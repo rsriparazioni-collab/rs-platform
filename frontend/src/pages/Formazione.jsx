@@ -18,7 +18,8 @@ const TABS = [
   { key: "servizi", label: "Servizi & Operatori", icon: Briefcase },
 ];
 const CATEGORIE = { generale: "Generale", clienti: "Clienti", energia: "Energia", riparazioni: "Riparazioni", telefonia: "Telefonia", magazzino: "Magazzino", whatsapp: "WhatsApp", sicurezza: "Sicurezza & GDPR", admin: "Amministrazione" };
-const EMPTY = { sezione: "manuale", titolo: "", sottotitolo: "", contenuto: "", categoria: "", link: "", ordine: 0 };
+const EMPTY = { sezione: "manuale", titolo: "", sottotitolo: "", contenuto: "", categoria: "", link: "", immagine: "", ordine: 0 };
+const IMMAGINI = ["dashboard", "login", "clienti", "riparazioni", "telefonia", "magazzino", "ritiri", "negozi", "whatsapp", "portali", "password", "sicurezza", "registro-accessi", "utenti", "formazione"];
 
 function AdminBar({ item, onEdit, onDelete, i }) {
   return (
@@ -54,6 +55,7 @@ function Manuale({ rows, isAdmin, onEdit, onDelete }) {
           </div>
           {isAdmin && <AdminBar item={cur} onEdit={onEdit} onDelete={onDelete} i="cur" />}
         </div>
+        {cur.immagine && <img src={cur.immagine} alt={cur.titolo} className="mt-4 w-full rounded-xl border border-slate-200 shadow-sm" data-testid="manuale-immagine" />}
         <Markdown className="mt-4">{cur.contenuto}</Markdown>
         <p className="mt-6 border-t border-slate-100 pt-3 text-[11px] text-slate-400">Aggiornato il {new Date(cur.updated_at).toLocaleDateString("it-IT")}{cur.updated_by ? ` da ${cur.updated_by}` : ""}</p>
       </article>
@@ -106,7 +108,7 @@ export default function Formazione() {
   const publicUrl = `${window.location.origin}/formazione/presentazione`;
 
   const openNew = () => { setEditing(null); setForm({ ...EMPTY, sezione: tab }); setOpen(true); };
-  const openEdit = (r) => { setEditing(r); setForm({ sezione: r.sezione, titolo: r.titolo, sottotitolo: r.sottotitolo || "", contenuto: r.contenuto || "", categoria: r.categoria || "", link: r.link || "", ordine: r.ordine || 0 }); setOpen(true); };
+  const openEdit = (r) => { setEditing(r); setForm({ sezione: r.sezione, titolo: r.titolo, sottotitolo: r.sottotitolo || "", contenuto: r.contenuto || "", categoria: r.categoria || "", link: r.link || "", immagine: r.immagine || "", ordine: r.ordine || 0 }); setOpen(true); };
   const submit = async (e) => {
     e.preventDefault();
     try {
@@ -195,6 +197,21 @@ export default function Formazione() {
               <div className="space-y-1.5"><Label>Sottotitolo {form.sezione === "servizi" && <span className="text-xs text-slate-400">("Operatore" per le schede operatore)</span>}</Label><Input value={form.sottotitolo} onChange={(e) => setForm({ ...form, sottotitolo: e.target.value })} data-testid="formazione-form-sottotitolo" /></div>
             </div>
             <div className="space-y-1.5"><Label>Link (portale, video, documento)</Label><Input value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} placeholder="https://..." data-testid="formazione-form-link" /></div>
+            <div className="space-y-1.5">
+              <Label>Screenshot / immagine</Label>
+              <div className="flex gap-2">
+                <Select value={form.immagine && form.immagine.startsWith("/formazione/") ? form.immagine : "custom"} onValueChange={(v) => setForm({ ...form, immagine: v === "none" ? "" : v === "custom" ? form.immagine : v })}>
+                  <SelectTrigger className="w-[220px]" data-testid="formazione-form-immagine-select"><SelectValue placeholder="Scegli pagina" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nessuna</SelectItem>
+                    {IMMAGINI.map((k) => <SelectItem key={k} value={`/formazione/${k}.jpg`}>Schermata: {k}</SelectItem>)}
+                    <SelectItem value="custom">URL personalizzato</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input value={form.immagine} onChange={(e) => setForm({ ...form, immagine: e.target.value })} placeholder="/formazione/clienti.jpg oppure https://..." data-testid="formazione-form-immagine" />
+              </div>
+              {form.immagine && <img src={form.immagine} alt="" className="mt-2 max-h-40 rounded-lg border border-slate-200" />}
+            </div>
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-1.5"><Label>Contenuto (Markdown: **grassetto**, - elenchi, ## titoli, | tabelle |)</Label><Textarea rows={16} value={form.contenuto} onChange={(e) => setForm({ ...form, contenuto: e.target.value })} className="font-mono text-xs" data-testid="formazione-form-contenuto" /></div>
               <div className="space-y-1.5"><Label>Anteprima</Label><div className="max-h-[420px] overflow-y-auto rounded-lg border border-slate-200 p-3"><Markdown>{form.contenuto}</Markdown></div></div>
