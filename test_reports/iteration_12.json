@@ -1,0 +1,43 @@
+{
+  "summary": "Regressione completa iter 12. Backend: 58/58 pytest verdi in /app/backend/tests/test_regression_iter12.py, coprendo auth 2FA (admin MFA + Michael forced-setup con X-MFA-Setup-Required), dashboard (stats, margini-negozi, margini-12-mesi, portali/flag-scaduti, alerts, operators/stats, scadenze-settimana), meta/stores/users/venditori, clienti CRUD+filtri (lavorazione, tipo_bolletta, tipo_servizio luce/gas/rip/mob/fis) + ricerca + GDPR export + export xlsx + messaggi-previsti + blacklist-recensioni, servizi (riparazione con numero_riparazione progressivo + segreti cifrati; sim/internet/fisso; patch stato; scheda PDF), magazzino (CRUD + movimento + export + disponibilita), ritiri (list+export smoke), whatsapp (status, sessions-summary, log, privacy dry-run, cron/daily-digest + whatsapp-due + riparazioni-ferme con WEBHOOK_CRON_SECRET, cron rifiuta token utente 401), portali (list/da-inserire/flag-scaduti), passwords (151 voci, reveal readonly, RBAC), audit-log (admin OK + michael 403), telefonia (vincoli/proposte). Frontend: tutte le 14 pagine del menu (Dashboard, Clienti, Riparazioni, Telefonia, Magazzino, Ritiri, Negozi, Utenti, Operatori, WhatsApp, Portali, Password, Sicurezza, Registro Accessi) caricano senza errori console con 1920x800; dashboard mostra dati reali (645 clienti, 33 rinnovi, 547 non pagati, 30 servizi attivi, WA 1/8). WA_DRY_RUN=1 verificato in backend/.env. Cleanup automatico completo: nessun residuo TEST_ in clients/servizi/magazzino.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_scenarios": {
+    "AUTH admin 2FA obbligatoria": "PASS - login->mfa_required->mfa_token->/auth/login/mfa con TOTP -> token access",
+    "AUTH admin password errata": "PASS - 401",
+    "AUTH admin codice MFA errato": "PASS - 400/401",
+    "AUTH Michael no-2FA gate": "PASS - login 200 ma GET /clients ritorna 403 con header X-MFA-Setup-Required=1; /auth/me e /auth/2fa/status funzionano",
+    "AUTH no-token / bad-token": "PASS - 401",
+    "DASHBOARD /stats /margini-negozi /margini-12-mesi /portali/flag-scaduti /alerts /operators/stats /scadenze-settimana": "PASS",
+    "CLIENTS CRUD + filtri + q + GDPR export + xlsx + blacklist": "PASS",
+    "SERVIZI riparazione (numero_riparazione + segreti cifrati) + sim/fisso/internet + patch + scheda": "PASS",
+    "MAGAZZINO CRUD + movimento + export + disponibilita": "PASS",
+    "RITIRI list + export": "PASS smoke",
+    "WHATSAPP status/sessions/log + privacy dry-run + cron con WEBHOOK_CRON_SECRET": "PASS (cron rifiuta token utente = 401 come previsto)",
+    "PORTALI list/da-inserire/flag-scaduti": "PASS",
+    "PASSWORDS list (>=50 voci reali) + reveal + RBAC negozio (403 per MFA gate)": "PASS",
+    "AUDIT /audit-log admin OK; michael 403": "PASS",
+    "TELEFONIA /vincoli /telefonia/proposte": "PASS",
+    "UI regressione 14 pagine menu senza errori console": "PASS"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_regression_iter12.py",
+    "/app/test_reports/pytest/iter12_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py PATCH /clients/{id} e PATCH /servizi/{id} e PATCH /magazzino/{id} richiedono il full body del modello Pydantic (non exclude_unset a livello di validazione). Non e un bug funzionale (il frontend gia manda l'oggetto intero) ma e un design smell: se un futuro client invia solo i campi cambiati riceve 422. Considerare Optional su tutti i campi o un modello Update dedicato con exclude_unset.",
+    "server.py cron/* usa HMAC compare_digest su WEBHOOK_CRON_SECRET (OK) e restituisce 401 se manca. Corretto e testato.",
+    "server.py 2FA gate: gli utenti non-admin (Michael) possono chiamare /auth/me e /auth/2fa/status ma tutte le API di business ritornano 403 X-MFA-Setup-Required=1. Comportamento coerente con requisiti (forzare setup su /sicurezza).",
+    "server.py margini-negozi ritorna dict {mese, mese_precedente, negozi[], totale, ...}: coerente con il consumer FE, ma nome endpoint (\"margini-negozi\") suggerirebbe list. Non modificare per non rompere il FE, giusto notare in doc.",
+    "Le 151 password in /passwords sono voci REALI del cliente: non sono state modificate/eliminate durante il test (letture + reveal only)."
+  ],
+  "updated_files": ["/app/backend/tests/test_regression_iter12.py"],
+  "success_rate": {"backend": "100% (58/58)", "frontend": "100% (14/14 pagine)"},
+  "test_credentials": "admin rsriparazioni@gmail.com + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV; michael@cambiaora.local (no 2FA - MFA gated); deborah@cambiaora.local (operatore)",
+  "seed_data_creation": "Creati durante test: 1 cliente TEST_, 4 servizi TEST_ (riparazione+sim+fisso+internet), 1 articolo magazzino TEST_. Tutti cancellati via fixture cleanup + DELETE finale. Verificato zero residui TEST_ nel DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Suite regressione end-to-end in /app/backend/tests/test_regression_iter12.py. Login admin gestisce MFA con retry (clock skew). Cleanup finale in test_zzz_cleanup rimuove tutti i CREATED. Cron endpoints richiedono WEBHOOK_CRON_SECRET come Bearer (letto da backend/.env). PATCH endpoints richiedono body completo (non partial). WA_DRY_RUN=1 attivo: nessun WhatsApp reale inviato. Le 151 password reali e i 645 clienti reali NON vanno toccati.",
+  "rca of the issue": "Nessun bug funzionale trovato. Solo osservazioni di design (PATCH full-body) documentate nei code review comments."
+}
