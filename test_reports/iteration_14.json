@@ -1,0 +1,52 @@
+{
+  "summary": "Iter 14 - Verifica correzioni code review (TOTP env, Dashboard useEffect dep, RitiroDaRiparazione key stabile, Markdown remarkPlugins const, alerts unused var). Backend: la suite 'modernizzata' (test_regression_iter12.py + test_formazione_iter13.py + test_passwords.py + test_ritiri_rigenerati.py) passa in modalità seriale con 87/88 (1 solo errore intermittente su TestPasswordsRBAC.test_michael_sees_only_tirano dovuto a stato 2FA residuo di Michael quando i file sono eseguiti insieme; passa 5/5 in isolamento). In parallelo (-n 2 loadscope) 79/88 passati, con 9 errori intermittenti dovuti a race condition MFA (replay codice TOTP tra worker) - preesistenti, non regressione. I test 'legacy' (backend_test.py, test_rbac_scoping.py, test_privilege_escalation.py) sono pre-2FA e non gestiscono MFA gate -> 15 fail + 24 error (preesistenti, out of scope). Frontend: tutti i 4 scenari richiesti PASS: (1) Dashboard admin carica kpi-whatsapp + sessions-summary senza 'Maximum update depth' (0 errori); (2) /formazione tab Manuale con capitolo WhatsApp rende 1 tabella markdown + 1 immagine; (3) /formazione/presentazione pubblico mostra data-testid='slide-image' correttamente; (4) scheda riparazione -> servizio-ritirato-button -> dialog aperto, aggiunte 2 file [doc1.pdf, doc2.pdf], rimosso il primo con X, la lista mostra correttamente [doc2.pdf] (key stabile funziona), Annulla cliccato (nessuna conferma).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "pytest tests/ parallelo", "issue": "Race condition intermittente su login MFA quando 2 worker xdist fanno login admin simultanei (replay codice TOTP con finestra 30s). 9 errori intermittenti che spariscono con -n 0. Preesistente, non causato dalle correzioni di questa iterazione."},
+      {"endpoint": "test_passwords::test_michael_sees_only_tirano", "issue": "Occasionale KeyError 'token' quando la fixture michael_enrolled parte con 2FA residuo su Michael da un altro test file. Passa 5/5 in isolamento."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verification_of_code_review_fixes": {
+    "1_TOTP_env_loading": "PASS - /app/backend/tests/conftest.py carica /app/backend/.env; TEST_ADMIN_TOTP_SECRET=ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV disponibile nei test. Tutti i 4 test file modernizzati importano os.environ['TEST_ADMIN_TOTP_SECRET'] senza hardcode.",
+    "2_Dashboard_useEffect_user_role_dep": "PASS - useEffect linea 58-68 ha dep [user.role]; nessun 'Maximum update depth exceeded' in console durante il caricamento della Dashboard admin (verificato con console.on error listener).",
+    "3_RitiroDaRiparazione_stable_key": "PASS - key={`${f.name}-${f.size}-${f.lastModified}`} (linea 115). Test end-to-end: aggiunte 2 file, rimosso il primo con X, la lista mostra correttamente il secondo file (doc2.pdf). Prima con key=index si sarebbe rimosso il file sbagliato.",
+    "4_Markdown_remarkPlugins_constant": "PASS - REMARK_PLUGINS=[remarkGfm] const a livello modulo (linea 19), passato come remarkPlugins={REMARK_PLUGINS}. Tabelle GFM renderizzate correttamente nel capitolo WhatsApp del manuale.",
+    "5_server_py_alerts_unused_var_removed": "PASS - test_regression_iter12 sull'endpoint GET /api/alerts admin torna 200 con struttura {rinnovi, pagamenti_clienti, pagamenti_negozi, sotto_scorta}; GET /dashboard/stats 200. Nessuna regressione."
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/iter14_modern.xml",
+    "/app/test_reports/pytest/iter14_modern_serial.xml",
+    "/app/backend/tests/test_regression_iter12.py",
+    "/app/backend/tests/test_formazione_iter13.py",
+    "/app/backend/tests/test_passwords.py",
+    "/app/backend/tests/test_ritiri_rigenerati.py"
+  ],
+  "action_items": [
+    "OPZIONALE (non regressione): stabilizzare pytest parallelo aggiungendo retry/lock su login admin (attualmente 2 worker possono generare lo stesso codice TOTP nella stessa finestra 30s e trigger il replay-block). Alternativa: rimuovere addopts -n 2 da pytest.ini per la CI di questo progetto o pin al worker gw0 tutte le classi che fanno admin login.",
+    "OPZIONALE: rimuovere/aggiornare i test legacy pre-2FA (backend_test.py, test_rbac_scoping.py, test_privilege_escalation.py) o farli skipare quando login admin ritorna mfa_required. Non fanno parte della suite modernizzata ma inquinano l'output di 'pytest tests -q'."
+  ],
+  "critical_code_review_comments": [
+    "Le 5 correzioni sono applicate correttamente: file letti direttamente. Dashboard.jsx e Markdown.jsx pattern React idiomatici. RitiroDaRiparazione key composta name+size+lastModified è unica in pratica e stabile all'unmount.",
+    "conftest.py loading .env va bene, ma per robustezza in ambienti CI dove .env non c'è, tests dovrebbero avere skip esplicito con message chiaro se TEST_ADMIN_TOTP_SECRET manca (attualmente KeyError crash).",
+    "server.py PATCH endpoints richiedono full body Pydantic (già segnalato in iter 12) - non toccato.",
+    "Suite pytest ereditata contiene tests legacy pre-2FA che non vengono aggiornati - dovrebbero essere rimossi o marcati skip."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend_modern_serial": "98.9% (87/88, 1 flaky)",
+    "backend_modern_parallel": "89.8% (79/88, race condition MFA preesistente)",
+    "frontend": "100% (4/4 scenari richiesti)"
+  },
+  "test_credentials": "admin rsriparazioni@gmail.com + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV (letto da /app/backend/.env TEST_ADMIN_TOTP_SECRET); michael@cambiaora.local + Michael2026! (no 2FA persistente)",
+  "seed_data_creation": "Nessun dato reale creato. I test creano+cancellano record TEST_ come da iter 12/13; verificato che il file test_regression_iter12.py::test_zzz_cleanup rimuove tutti i CREATED.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Le 5 correzioni della code review sono verified. La flakiness parallela di pytest è preesistente (non introdotta ora). Per test frontend usare pyotp con secret env; /formazione/presentazione è pubblico (no login); ritiro-rip-files list ora usa key stabile. Non lanciare backend_test.py/test_rbac_scoping.py/test_privilege_escalation.py finché non aggiornati a 2FA - fanno rumore.",
+  "rca of the issue": "Nessun bug funzionale. Le uniche failure sono nei test legacy pre-2FA (backend_test.py/test_rbac_scoping.py/test_privilege_escalation.py) che chiamano `_login()` e accedono response['token'] direttamente, ma con 2FA obbligatoria dal 09/09/2026 l'admin ora ritorna {mfa_required, mfa_token} scatenando KeyError. Sono test obsoleti, non regressioni."
+}

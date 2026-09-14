@@ -65,7 +65,7 @@ export default function Dashboard() {
     if (user.role === "admin") {
       api.get("/whatsapp/sessions-summary").then((r) => setWaStatus(r.data)).catch(() => {});
     }
-  }, []);
+  }, [user.role]);
 
   const sendDigest = async () => {
     setSending(true);

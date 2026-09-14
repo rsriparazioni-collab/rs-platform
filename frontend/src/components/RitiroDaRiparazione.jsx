@@ -112,7 +112,7 @@ export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated
             {files.length > 0 && (
               <ul className="space-y-1 text-xs" data-testid="ritiro-rip-files-list">
                 {files.map((f, i) => (
-                  <li key={i} className="flex items-center justify-between rounded bg-slate-50 px-2 py-1">
+                  <li key={`${f.name}-${f.size}-${f.lastModified}`} className="flex items-center justify-between rounded bg-slate-50 px-2 py-1">
                     <span className="truncate">{f.name}</span>
                     <button type="button" onClick={() => setFiles((l) => l.filter((_, j) => j !== i))} className="text-slate-400 hover:text-rose-600"><X className="h-3.5 w-3.5" /></button>
                   </li>

@@ -22,7 +22,7 @@ API = f"{BASE_URL}/api"
 
 ADMIN_EMAIL = "rsriparazioni@gmail.com"
 ADMIN_PWD = "Devis2026!"
-ADMIN_TOTP = "ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV"
+ADMIN_TOTP = os.environ["TEST_ADMIN_TOTP_SECRET"]
 MICHAEL = ("michael@cambiaora.local", "Michael2026!")
 
 STATE = {"created_ids": []}

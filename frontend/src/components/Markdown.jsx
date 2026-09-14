@@ -16,10 +16,12 @@ const components = {
   code: (p) => <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs" {...p} />,
 };
 
+const REMARK_PLUGINS = [remarkGfm];
+
 export default function Markdown({ children, className = "" }) {
   return (
     <div className={`text-sm ${className}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{children || ""}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>{children || ""}</ReactMarkdown>
     </div>
   );
 }

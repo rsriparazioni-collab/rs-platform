@@ -199,7 +199,6 @@ async def build_alerts(user: dict) -> dict:
                   "lavorazione": 1, "tipo_bolletta": 1, "pagato": 1, "last_payment_date": 1}
     clients = await db.clients.find(scope, projection).to_list(5000)
     stores = await db.stores.find({}, {"_id": 0}).to_list(500)
-    today = date.today()
     rinnovi, pagamenti_clienti, pagamenti_negozi = [], [], []
     for c in clients:
         compute_dates(c)

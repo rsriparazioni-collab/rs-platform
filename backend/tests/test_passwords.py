@@ -11,7 +11,7 @@ frontend_env = dotenv_values("/app/frontend/.env")
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")).rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN_TOTP_SECRET = "ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV"
+ADMIN_TOTP_SECRET = os.environ["TEST_ADMIN_TOTP_SECRET"]
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1ibvEaSKWzq96YMYHJQM-0c7uOixkKYiyKSfOO4kxs7E/edit?gid=0"
 
 

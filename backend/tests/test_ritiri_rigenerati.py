@@ -20,7 +20,7 @@ backend_env = dotenv_values("/app/backend/.env")
 MONGO_URL = backend_env.get("MONGO_URL")
 DB_NAME = backend_env.get("DB_NAME")
 
-ADMIN_TOTP_SECRET = "ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV"
+ADMIN_TOTP_SECRET = os.environ["TEST_ADMIN_TOTP_SECRET"]
 
 
 def _admin_login():

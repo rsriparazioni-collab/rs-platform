@@ -21,7 +21,7 @@ async def main():
         await page.fill('input[type="password"]', "Devis2026!")
         await page.click('button[type="submit"]')
         await page.wait_for_timeout(1500)
-        await page.locator("input").first.fill(pyotp.TOTP("ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV").now())
+        await page.locator("input").first.fill(pyotp.TOTP(os.environ["TEST_ADMIN_TOTP_SECRET"]).now())
         await page.keyboard.press("Enter")
         await page.wait_for_timeout(3000)
         await page.screenshot(path=f"{OUT}/login.png", type="jpeg", quality=70) if False else None

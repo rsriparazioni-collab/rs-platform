@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="33" failures="15" skipped="0" tests="142" time="179.233" timestamp="2026-09-14T13:06:04.752851+00:00" hostname="agent-env-b47de3c2-90b0-420f-a80f-51979a931245"><testcase classname="tests.backend_test.TestAuth" name="test_root" time="0.279" /><testcase classname="tests.backend_test.TestAuth" name="test_login_all_seeded_users[admin]" time="0.497"><failure message="AssertionError: assert (False)&#10; +  where False = isinstance(None, str)&#10; +    where None = &lt;built-in method get of dict object at 0xfb7463c19680&gt;('token')&#10; +      where &lt;built-in method get of dict object at 0xfb7463c19680&gt; = {'mfa_required': True, 'mfa_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhOTBjMmZjYy03MDY4LTQ1ZGYtYTJlNC02M2I5YzE1NzdiMzAiLCJ0eXBlIjoibWZhIiwiZXhwIjoxNzg5MzkxNDY2fQ.W-VQqmxwfpjBypEiaYZLJbF9vHO4bNlPwzUWdKAgvdA'}.get">tests/backend_test.py:81: in test_login_all_seeded_users
+    assert isinstance(data.get("token"), str) and len(data["token"]) &gt; 20
+E   AssertionError: assert (False)
+E    +  where False = isinstance(None, str)
+E    +    where None = &lt;built-in method get of dict object at 0xfb7463c19680&gt;('token')
+E    +      where &lt;built-in method get of dict object at 0xfb7463c19680&gt; = {'mfa_required': True, 'mfa_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhOTBjMmZjYy03MDY4LTQ1ZGYtYTJlNC02M2I5YzE1NzdiMzAiLCJ0eXBlIjoibWZhIiwiZXhwIjoxNzg5MzkxNDY2fQ.W-VQqmxwfpjBypEiaYZLJbF9vHO4bNlPwzUWdKAgvdA'}.get</failure></testcase><testcase classname="tests.backend_test.TestRBAC" name="test_admin_sees_all_clients" time="0.551"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestAuth" name="test_login_all_seeded_users[deborah]" time="0.485" /><testcase classname="tests.backend_test.TestRBAC" name="test_deborah_can_view_all" time="0.407"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestAuth" name="test_login_all_seeded_users[michael]" time="0.423" /><testcase classname="tests.backend_test.TestRBAC" name="test_michael_scope" time="0.447"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestAuth" name="test_login_all_seeded_users[lorenzo]" time="0.433" /><testcase classname="tests.backend_test.TestRBAC" name="test_lorenzo_scope" time="0.436"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestRBAC" name="test_store_user_forbidden_users_endpoint" time="0.208" /><testcase classname="tests.backend_test.TestRBAC" name="test_store_user_forbidden_operators_stats" time="0.073" /><testcase classname="tests.backend_test.TestAuth" name="test_login_all_seeded_users[kevin]" time="0.442" /><testcase classname="tests.backend_test.TestRBAC" name="test_store_user_forbidden_send_digest" time="0.084" /><testcase classname="tests.backend_test.TestRBAC" name="test_store_user_stores_scoped" time="0.275"><failure message="TypeError: string indices must be integers, not 'str'">tests/backend_test.py:176: in test_store_user_stores_scoped
+    assert {st["id"] for st in stores} == set(u["store_ids"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:176: in &lt;setcomp&gt;
+    assert {st["id"] for st in stores} == set(u["store_ids"])
+            ^^^^^^^^
+E   TypeError: string indices must be integers, not 'str'</failure></testcase><testcase classname="tests.backend_test.TestRBAC" name="test_cross_scope_client_read_404" time="0.078"><failure message="KeyError: 0">tests/backend_test.py:181: in test_cross_scope_client_read_404
+    m_client_id = ms.get(f"{API}/clients", timeout=30).json()[0]["id"]
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 0</failure></testcase><testcase classname="tests.backend_test.TestAuth" name="test_login_sets_httponly_cookie" time="0.384"><failure message="AssertionError: login deve impostare il cookie httpOnly gu_token&#10;assert None">tests/backend_test.py:89: in test_login_sets_httponly_cookie
+    assert cookie, "login deve impostare il cookie httpOnly gu_token"
+E   AssertionError: login deve impostare il cookie httpOnly gu_token
+E   assert None</failure></testcase><testcase classname="tests.backend_test.TestRBAC" name="test_store_user_cannot_delete_client" time="0.293"><failure message="KeyError: 0">tests/backend_test.py:186: in test_store_user_cannot_delete_client
+    cid = s.get(f"{API}/clients", timeout=30).json()[0]["id"]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 0</failure></testcase><testcase classname="tests.test_regression_iter12.TestAuth" name="test_root" time="0.120" /><testcase classname="tests.test_regression_iter12.TestAuth" name="test_admin_login_requires_mfa" time="0.473" /><testcase classname="tests.backend_test.TestAuth" name="test_me_matches_login" time="0.360"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestAuth" name="test_me_with_cookie_auth" time="0.663" /><testcase classname="tests.test_regression_iter12.TestAuth" name="test_admin_wrong_password_401" time="0.449" /><testcase classname="tests.test_regression_iter12.TestAuth" name="test_admin_mfa_wrong_code" time="0.548" /><testcase classname="tests.backend_test.TestAuth" name="test_no_token_401" time="0.364" /><testcase classname="tests.backend_test.TestAuth" name="test_invalid_token_401" time="0.235" /><testcase classname="tests.backend_test.TestAuth" name="test_bad_password_401" time="0.316" /><testcase classname="tests.backend_test.TestAuth" name="test_logout" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestAuth" name="test_bcrypt_hash_format_and_lockout" time="1.117" /><testcase classname="tests.test_regression_iter12.TestAuth" name="test_admin_me" time="0.697" /><testcase classname="tests.test_regression_iter12.TestAuth" name="test_michael_login_no_mfa_but_forced_setup" time="0.531" /><testcase classname="tests.test_regression_iter12.TestAuth" name="test_michael_me_still_reachable" time="0.072" /><testcase classname="tests.test_regression_iter12.TestAuth" name="test_michael_2fa_status_endpoint" time="0.114" /><testcase classname="tests.test_regression_iter12.TestAuth" name="test_no_token_401" time="0.155" /><testcase classname="tests.test_rbac_scoping" name="test_login_and_me_via_cookie_only[admin]" time="0.502"><failure message="AssertionError: cookie gu_token not set&#10;assert 'gu_token' in &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='NFRR3rUmC8bZLoLRC0oYOqSvDgL607F9TdMIqWumbtM-1789391171.822...789392972, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt;&#10; +  where &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='NFRR3rUmC8bZLoLRC0oYOqSvDgL607F9TdMIqWumbtM-1789391171.822...789392972, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt; = &lt;requests.sessions.Session object at 0xf93b2ee43050&gt;.cookies">tests/test_rbac_scoping.py:33: in test_login_and_me_via_cookie_only
+    s, payload = login(who)
+                 ^^^^^^^^^^
+tests/test_rbac_scoping.py:27: in login
+    assert "gu_token" in s.cookies, "cookie gu_token not set"
+E   AssertionError: cookie gu_token not set
+E   assert 'gu_token' in &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='NFRR3rUmC8bZLoLRC0oYOqSvDgL607F9TdMIqWumbtM-1789391171.822...789392972, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt;
+E    +  where &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='NFRR3rUmC8bZLoLRC0oYOqSvDgL607F9TdMIqWumbtM-1789391171.822...789392972, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt; = &lt;requests.sessions.Session object at 0xf93b2ee43050&gt;.cookies</failure></testcase><testcase classname="tests.test_rbac_scoping" name="test_login_and_me_via_cookie_only[operatore]" time="0.447" /><testcase classname="tests.test_rbac_scoping" name="test_login_and_me_via_cookie_only[michael]" time="0.415" /><testcase classname="tests.test_rbac_scoping" name="test_login_and_me_via_cookie_only[lorenzo]" time="0.446" /><testcase classname="tests.test_rbac_scoping" name="test_negozio_client_scope_matches_own_stores" time="0.354"><failure message="AssertionError: cookie gu_token not set&#10;assert 'gu_token' in &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='K57NHO569UCsEUaI8tHtHtsBjizmHzh5feYwtvsA38s-1789391173.635...789392973, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt;&#10; +  where &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='K57NHO569UCsEUaI8tHtHtsBjizmHzh5feYwtvsA38s-1789391173.635...789392973, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt; = &lt;requests.sessions.Session object at 0xf93b2ef68a50&gt;.cookies">tests/test_rbac_scoping.py:41: in test_negozio_client_scope_matches_own_stores
+    s_admin, _ = login("admin")
+                 ^^^^^^^^^^^^^^
+tests/test_rbac_scoping.py:27: in login
+    assert "gu_token" in s.cookies, "cookie gu_token not set"
+E   AssertionError: cookie gu_token not set
+E   assert 'gu_token' in &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='K57NHO569UCsEUaI8tHtHtsBjizmHzh5feYwtvsA38s-1789391173.635...789392973, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt;
+E    +  where &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='K57NHO569UCsEUaI8tHtHtsBjizmHzh5feYwtvsA38s-1789391173.635...789392973, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt; = &lt;requests.sessions.Session object at 0xf93b2ef68a50&gt;.cookies</failure></testcase><testcase classname="tests.test_rbac_scoping" name="test_negozio_cannot_list_users_or_stores" time="0.561" /><testcase classname="tests.test_rbac_scoping" name="test_negozio_cannot_create_user" time="0.869"><failure message="AssertionError: cookie gu_token not set&#10;assert 'gu_token' in &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='Ls0uUxCv6AEUY8zaIqbdciRuc6mWeVuj0r0SUh_m9Jc-1789391175.033...789392975, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt;&#10; +  where &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='Ls0uUxCv6AEUY8zaIqbdciRuc6mWeVuj0r0SUh_m9Jc-1789391175.033...789392975, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt; = &lt;requests.sessions.Session object at 0xf93b2eefb990&gt;.cookies">tests/test_rbac_scoping.py:78: in test_negozio_cannot_create_user
+    s_admin, _ = login("admin")
+                 ^^^^^^^^^^^^^^
+tests/test_rbac_scoping.py:27: in login
+    assert "gu_token" in s.cookies, "cookie gu_token not set"
+E   AssertionError: cookie gu_token not set
+E   assert 'gu_token' in &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='Ls0uUxCv6AEUY8zaIqbdciRuc6mWeVuj0r0SUh_m9Jc-1789391175.033...789392975, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt;
+E    +  where &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='Ls0uUxCv6AEUY8zaIqbdciRuc6mWeVuj0r0SUh_m9Jc-1789391175.033...789392975, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt; = &lt;requests.sessions.Session object at 0xf93b2eefb990&gt;.cookies</failure></testcase><testcase classname="tests.test_rbac_scoping" name="test_logout_clears_cookie" time="0.349"><failure message="AssertionError: cookie gu_token not set&#10;assert 'gu_token' in &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='A.YxhQX_2fNz1fuJpZ.9Axm0.D4GSJw6Aj7g3KSLPo4-1789391175.424...789392975, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt;&#10; +  where &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='A.YxhQX_2fNz1fuJpZ.9Axm0.D4GSJw6Aj7g3KSLPo4-1789391175.424...789392975, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt; = &lt;requests.sessions.Session object at 0xf93b2ee35a50&gt;.cookies">tests/test_rbac_scoping.py:96: in test_logout_clears_cookie
+    s, _ = login("admin")
+           ^^^^^^^^^^^^^^
+tests/test_rbac_scoping.py:27: in login
+    assert "gu_token" in s.cookies, "cookie gu_token not set"
+E   AssertionError: cookie gu_token not set
+E   assert 'gu_token' in &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='A.YxhQX_2fNz1fuJpZ.9Axm0.D4GSJw6Aj7g3KSLPo4-1789391175.424...789392975, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt;
+E    +  where &lt;RequestsCookieJar[Cookie(version=0, name='__cf_bm', value='A.YxhQX_2fNz1fuJpZ.9Axm0.D4GSJw6Aj7g3KSLPo4-1789391175.424...789392975, discard=False, comment=None, comment_url=None, rest={'HttpOnly': None, 'SameSite': 'None'}, rfc2109=False)]&gt; = &lt;requests.sessions.Session object at 0xf93b2ee35a50&gt;.cookies</failure></testcase><testcase classname="tests.test_regression_iter12.TestClients" name="test_list_admin" time="0.189" /><testcase classname="tests.test_regression_iter12.TestClients" name="test_filters" time="0.971" /><testcase classname="tests.test_regression_iter12.TestClients" name="test_search_q" time="0.133" /><testcase classname="tests.test_regression_iter12.TestClients" name="test_create_update_get" time="0.234" /><testcase classname="tests.test_regression_iter12.TestClients" name="test_gdpr_export" time="0.760" /><testcase classname="tests.test_regression_iter12.TestClients" name="test_export_xlsx" time="0.467" /><testcase classname="tests.test_regression_iter12.TestClients" name="test_messaggi_previsti" time="0.081" /><testcase classname="tests.test_regression_iter12.TestClients" name="test_blacklist_recensioni" time="0.083" /><testcase classname="tests.test_regression_iter12.TestWhatsApp" name="test_status" time="0.335" /><testcase classname="tests.test_regression_iter12.TestWhatsApp" name="test_sessions_summary" time="0.262" /><testcase classname="tests.test_regression_iter12.TestWhatsApp" name="test_log" time="0.076" /><testcase classname="tests.test_regression_iter12.TestWhatsApp" name="test_privacy_dry_run" time="0.816" /><testcase classname="tests.test_regression_iter12.TestWhatsApp" name="test_cron_daily_digest" time="0.157" /><testcase classname="tests.test_regression_iter12.TestWhatsApp" name="test_cron_whatsapp_due" time="0.139" /><testcase classname="tests.test_regression_iter12.TestWhatsApp" name="test_cron_riparazioni_ferme" time="0.128" /><testcase classname="tests.test_regression_iter12.TestWhatsApp" name="test_cron_requires_secret" time="0.115" /><testcase classname="tests.backend_test.TestDashboardAlerts" name="test_dashboard_stats" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestDashboardAlerts" name="test_dashboard_scoped_for_store_user" time="0.137"><failure message="KeyError: 'totale_clienti'">tests/backend_test.py:413: in test_dashboard_scoped_for_store_user
+    assert st["totale_clienti"] == expected
+           ^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'totale_clienti'</failure></testcase><testcase classname="tests.backend_test.TestDashboardAlerts" name="test_alerts" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestDashboardAlerts" name="test_meta" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestDashboardAlerts" name="test_operators_stats" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestDashboardAlerts" name="test_cron_requires_secret" time="0.132" /><testcase classname="tests.backend_test.TestDashboardAlerts" name="test_send_digest_admin" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.test_formazione_iter13.TestAuthFormazione" name="test_no_token_401" time="0.164" /><testcase classname="tests.test_formazione_iter13.TestFormazioneCRUD" name="test_create_auto_ordine" time="32.092" /><testcase classname="tests.test_formazione_iter13.TestFormazioneCRUD" name="test_patch" time="0.161" /><testcase classname="tests.test_formazione_iter13.TestFormazioneCRUD" name="test_invalid_section_on_create_400" time="0.092" /><testcase classname="tests.test_formazione_iter13.TestFormazioneCRUD" name="test_michael_read_ok" time="2.494" /><testcase classname="tests.test_formazione_iter13.TestFormazioneCRUD" name="test_michael_post_403" time="0.081" /><testcase classname="tests.test_formazione_iter13.TestFormazioneCRUD" name="test_michael_patch_403" time="0.084" /><testcase classname="tests.test_formazione_iter13.TestFormazioneCRUD" name="test_michael_delete_403" time="0.075" /><testcase classname="tests.test_formazione_iter13.TestFormazioneCRUD" name="test_delete" time="0.136" /><testcase classname="tests.test_regression_iter12.TestDashboard" name="test_stats" time="32.038" /><testcase classname="tests.test_regression_iter12.TestDashboard" name="test_margini_negozi" time="0.107" /><testcase classname="tests.test_regression_iter12.TestDashboard" name="test_margini_12_mesi" time="0.120" /><testcase classname="tests.test_regression_iter12.TestDashboard" name="test_portali_flag_scaduti" time="0.123" /><testcase classname="tests.test_regression_iter12.TestDashboard" name="test_alerts" time="0.108" /><testcase classname="tests.test_regression_iter12.TestDashboard" name="test_operators_stats" time="0.094" /><testcase classname="tests.test_regression_iter12.TestDashboard" name="test_scadenze_settimana" time="0.102" /><testcase classname="tests.backend_test.TestClientsCRUD" name="test_create_read_update_delete" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestClientsCRUD" name="test_store_user_create_forced_to_own_store" time="0.346"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:55: in michael
+    return _client(*CREDS["michael"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestClientsCRUD" name="test_missing_required_fields_422" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestClientsCRUD" name="test_client_not_found_404" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestClientsCRUD" name="test_filters" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.test_regression_iter12.TestServizi" name="test_list" time="0.137" /><testcase classname="tests.test_regression_iter12.TestServizi" name="test_create_riparazione_and_secrets" time="0.000"><failure message="AssertionError: manca cliente TEST_&#10;assert []">tests/test_regression_iter12.py:244: in test_create_riparazione_and_secrets
+    assert CREATED["clients"], "manca cliente TEST_"
+E   AssertionError: manca cliente TEST_
+E   assert []</failure></testcase><testcase classname="tests.test_regression_iter12.TestServizi" name="test_create_sim_and_fisso" time="0.000"><failure message="IndexError: list index out of range">tests/test_regression_iter12.py:265: in test_create_sim_and_fisso
+    cid = CREATED["clients"][0]
+          ^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</failure></testcase><testcase classname="tests.test_regression_iter12.TestServizi" name="test_patch_servizio" time="0.000"><failure message="IndexError: list index out of range">tests/test_regression_iter12.py:275: in test_patch_servizio
+    sid = CREATED["servizi"][0]
+          ^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</failure></testcase><testcase classname="tests.test_regression_iter12.TestServizi" name="test_scheda_pdf" time="0.000"><failure message="IndexError: list index out of range">tests/test_regression_iter12.py:285: in test_scheda_pdf
+    sid = CREATED["servizi"][0]
+          ^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</failure></testcase><testcase classname="tests.test_ritiri_rigenerati" name="test_create_ritiro_creates_rigenerato" time="34.040" /><testcase classname="tests.test_ritiri_rigenerati" name="test_upload_documenti_and_pdf_merge" time="1.357" /><testcase classname="tests.test_formazione_iter13.TestAuthFormazione" name="test_list_all_admin_40" time="93.885"><error message="failed on setup with &quot;Failed: MFA login failed: 401 {&quot;detail&quot;:&quot;Codice non valido&quot;}&quot;">tests/test_formazione_iter13.py:54: in admin
+    return _session(_admin_login())
+                    ^^^^^^^^^^^^^^
+tests/test_formazione_iter13.py:43: in _admin_login
+    pytest.fail(f"MFA login failed: {r2.status_code} {r2.text[:200]}")
+E   Failed: MFA login failed: 401 {"detail":"Codice non valido"}</error></testcase><testcase classname="tests.test_formazione_iter13.TestAuthFormazione" name="test_filter_manuale" time="0.000"><error message="failed on setup with &quot;Failed: MFA login failed: 401 {&quot;detail&quot;:&quot;Codice non valido&quot;}&quot;">tests/test_formazione_iter13.py:54: in admin
+    return _session(_admin_login())
+                    ^^^^^^^^^^^^^^
+tests/test_formazione_iter13.py:43: in _admin_login
+    pytest.fail(f"MFA login failed: {r2.status_code} {r2.text[:200]}")
+E   Failed: MFA login failed: 401 {"detail":"Codice non valido"}</error></testcase><testcase classname="tests.test_formazione_iter13.TestAuthFormazione" name="test_pdf_manuale" time="0.000"><error message="failed on setup with &quot;Failed: MFA login failed: 401 {&quot;detail&quot;:&quot;Codice non valido&quot;}&quot;">tests/test_formazione_iter13.py:54: in admin
+    return _session(_admin_login())
+                    ^^^^^^^^^^^^^^
+tests/test_formazione_iter13.py:43: in _admin_login
+    pytest.fail(f"MFA login failed: {r2.status_code} {r2.text[:200]}")
+E   Failed: MFA login failed: 401 {"detail":"Codice non valido"}</error></testcase><testcase classname="tests.test_formazione_iter13.TestAuthFormazione" name="test_pdf_servizi" time="0.000"><error message="failed on setup with &quot;Failed: MFA login failed: 401 {&quot;detail&quot;:&quot;Codice non valido&quot;}&quot;">tests/test_formazione_iter13.py:54: in admin
+    return _session(_admin_login())
+                    ^^^^^^^^^^^^^^
+tests/test_formazione_iter13.py:43: in _admin_login
+    pytest.fail(f"MFA login failed: {r2.status_code} {r2.text[:200]}")
+E   Failed: MFA login failed: 401 {"detail":"Codice non valido"}</error></testcase><testcase classname="tests.test_formazione_iter13.TestAuthFormazione" name="test_pdf_slide" time="0.000"><error message="failed on setup with &quot;Failed: MFA login failed: 401 {&quot;detail&quot;:&quot;Codice non valido&quot;}&quot;">tests/test_formazione_iter13.py:54: in admin
+    return _session(_admin_login())
+                    ^^^^^^^^^^^^^^
+tests/test_formazione_iter13.py:43: in _admin_login
+    pytest.fail(f"MFA login failed: {r2.status_code} {r2.text[:200]}")
+E   Failed: MFA login failed: 401 {"detail":"Codice non valido"}</error></testcase><testcase classname="tests.test_formazione_iter13.TestAuthFormazione" name="test_pdf_invalid_section_400" time="0.000"><error message="failed on setup with &quot;Failed: MFA login failed: 401 {&quot;detail&quot;:&quot;Codice non valido&quot;}&quot;">tests/test_formazione_iter13.py:54: in admin
+    return _session(_admin_login())
+                    ^^^^^^^^^^^^^^
+tests/test_formazione_iter13.py:43: in _admin_login
+    pytest.fail(f"MFA login failed: {r2.status_code} {r2.text[:200]}")
+E   Failed: MFA login failed: 401 {"detail":"Codice non valido"}</error></testcase><testcase classname="tests.backend_test.TestStores" name="test_list_and_mark_paid_and_create" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestStores" name="test_delete_store_with_clients_blocked" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestStores" name="test_store_mark_paid_404" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestStores" name="test_store_user_cannot_create_store" time="0.365" /><testcase classname="tests.test_ritiri_rigenerati" name="test_vendi_rigenerato_and_double_vendi" time="0.385" /><testcase classname="tests.test_ritiri_rigenerati" name="test_dashboard_margini_negozi_rigenerati" time="0.074" /><testcase classname="tests.test_ritiri_rigenerati" name="test_vendi_non_rigenerato_returns_400" time="0.442" /><testcase classname="tests.test_regression_iter12.TestMeta" name="test_meta" time="0.100" /><testcase classname="tests.test_regression_iter12.TestMeta" name="test_stores_list" time="0.095" /><testcase classname="tests.test_regression_iter12.TestMeta" name="test_users_list" time="0.083" /><testcase classname="tests.test_regression_iter12.TestMeta" name="test_venditori_list" time="0.097" /><testcase classname="tests.test_regression_iter12.TestMagazzino" name="test_list" time="0.093" /><testcase classname="tests.test_regression_iter12.TestMagazzino" name="test_create_movimento" time="0.387" /><testcase classname="tests.test_regression_iter12.TestMagazzino" name="test_export" time="0.661" /><testcase classname="tests.test_regression_iter12.TestMagazzino" name="test_disponibilita" time="0.115" /><testcase classname="tests.backend_test.TestBusinessLogic" name="test_computed_dates" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestBusinessLogic" name="test_payment_reset_after_6_months" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestBusinessLogic" name="test_no_mongo_id_leak" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.test_regression_iter12.TestPortali" name="test_list" time="0.095" /><testcase classname="tests.test_regression_iter12.TestPortali" name="test_da_inserire" time="0.090" /><testcase classname="tests.test_regression_iter12.TestPortali" name="test_flag_scaduti" time="0.076" /><testcase classname="tests.test_regression_iter12.TestPasswords" name="test_list" time="0.090" /><testcase classname="tests.test_regression_iter12.TestPasswords" name="test_reveal_one_readonly" time="0.204" /><testcase classname="tests.test_regression_iter12.TestPasswords" name="test_rbac_negozio" time="0.378"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/test_regression_iter12.py:66: in michael
+    return _session(_simple_login(*MICHAEL))
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_regression_iter12.py:56: in _simple_login
+    return r.json()["token"]
+           ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestUsers" name="test_user_lifecycle" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.backend_test.TestUsers" name="test_users_list_no_hash" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/backend_test.py:43: in admin
+    s, u = _client(*CREDS["admin"])
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests/backend_test.py:37: in _client
+    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
+                                                 ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.test_formazione_iter13.TestPublicFormazione" name="test_public_presentazione_list_no_auth" time="0.146" /><testcase classname="tests.test_formazione_iter13.TestPublicFormazione" name="test_public_presentazione_pdf" time="0.333" /><testcase classname="tests.test_formazione_iter13.TestSyncFogli" name="test_sync_admin_dry_run" time="5.595" /><testcase classname="tests.test_formazione_iter13.TestSyncFogli" name="test_sync_non_admin_403" time="0.075" /><testcase classname="tests.test_regression_iter12.TestRitiri" name="test_list" time="0.078" /><testcase classname="tests.test_regression_iter12.TestRitiri" name="test_export" time="0.084" /><testcase classname="tests.test_regression_iter12.TestAudit" name="test_audit_log" time="0.080" /><testcase classname="tests.test_regression_iter12.TestAudit" name="test_audit_michael_forbidden" time="0.000"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/test_regression_iter12.py:66: in michael
+    return _session(_simple_login(*MICHAEL))
+                    ^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_regression_iter12.py:56: in _simple_login
+    return r.json()["token"]
+           ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.test_regression_iter12.TestTelefonia" name="test_vincoli" time="0.088" /><testcase classname="tests.test_regression_iter12.TestTelefonia" name="test_proposte" time="0.075" /><testcase classname="tests.test_formazione_iter13" name="test_zzz_cleanup" time="0.082" /><testcase classname="tests.test_passwords.TestPasswordsRBAC" name="test_michael_sees_only_tirano" time="0.912"><error message="failed on setup with &quot;KeyError: 'token'&quot;">tests/test_passwords.py:67: in michael_enrolled
+    tok, user = _michael_login()
+                ^^^^^^^^^^^^^^^^
+tests/test_passwords.py:45: in _michael_login
+    return r.json()["token"], r.json()["user"]
+           ^^^^^^^^^^^^^^^^^
+E   KeyError: 'token'</error></testcase><testcase classname="tests.test_privilege_escalation" name="test_negozio_can_escalate_to_operatore" time="0.545"><failure message="AssertionError: SECURITY: negozio user created an 'operatore' account (status 401); the new account can read None clients vs 0 for the negozio user&#10;assert 401 == 403&#10; +  where 401 = &lt;Response [401]&gt;.status_code">tests/test_privilege_escalation.py:44: in test_negozio_can_escalate_to_operatore
+    assert create.status_code == 403, (
+E   AssertionError: SECURITY: negozio user created an 'operatore' account (status 401); the new account can read None clients vs 0 for the negozio user
+E   assert 401 == 403
+E    +  where 401 = &lt;Response [401]&gt;.status_code</failure></testcase><testcase classname="tests.test_regression_iter12" name="test_zzz_cleanup" time="32.048" /><testcase classname="tests.test_passwords.TestPasswordsAdmin" name="test_list_has_52_plus_and_hides_enc" time="65.889" /><testcase classname="tests.test_passwords.TestPasswordsAdmin" name="test_full_crud_and_reveal" time="0.984" /><testcase classname="tests.test_passwords.TestPasswordsAdmin" name="test_import_sheet_gia_importato" time="0.087" /><testcase classname="tests.test_passwords.TestPasswordsAdmin" name="test_audit_log_view_segreti_after_reveal" time="1.293" /></testsuite></testsuites>
