@@ -1,0 +1,30 @@
+{
+  "summary": "Iter 16: full-stack testing of Regole prezzi riparazioni, calcolo prezzo consigliato, listino fornitori (parse fattura PDF + CRUD), bolla ritiro PDF, e frontend /prezzi + servizio form + ritiro dialog. Backend 9/9 test PASS. Frontend flow completo PASS.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Vari Dialog (servizio-form, ritiro-rip-dialog, listino modal)", "issues": ["Console warning React aria: 'Missing Description or aria-describedby={undefined} for {DialogContent}' — accessibilità: aggiungere <DialogDescription> ai DialogContent"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter16_regole_listino.py", "/app/test_reports/pytest/iter16.xml"],
+  "action_items": [
+    "(Non bloccante) Aggiungere DialogDescription ai DialogContent per rimuovere warning di accessibilità React.",
+    "(Cleanup) In DB restano 2 servizi TEST_Regression da iterazioni precedenti; considerare la pulizia via /app/backend/tests/cleanup_test_data.py."
+  ],
+  "critical_code_review_comments": [
+    "server.py è cresciuto a 4825 righe: valutare split in moduli (regole_prezzi.py, listino.py, ritiri.py) per manutenibilità.",
+    "PATCH /api/servizi/{id} richiede body ServizioInput completo (non parziale): comportamento più simile a PUT; se voluto, considerare rinominare in PUT o esporre modello Partial.",
+    "PrezziRiparazioni.jsx: la formula del simulatore lato client duplica la logica backend (calcola_prezzo_riparazione); il rischio di divergenza è basso ma reale — sarebbe più robusto chiamare un endpoint /api/regole-prezzi/simulate.",
+    "parse_fattura_text: euristica regex sensibile al layout; se cambia il template Sifar potrebbe silenziosamente restituire 0 righe (già mitigato da toast 'Nessuna riga'). Ok per MVP."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter16_regole_listino.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% flow principali (upload+save listino verificato via backend test; UI upload+parse UI verificato)"},
+  "test_credentials": "Admin rsriparazioni@gmail.com/Devis2026! + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV; Michael michael@cambiaora.local/Michael2026! (senza 2FA — usato per 403).",
+  "seed_data_creation": "Solo TEST_ transient: 1 servizio TEST_ iPhone/Samsung creato e cancellato; 2 righe listino TEST_ create e cancellate; regola Display iPhone manodopera modificata 40→41→40 (ripristinata). PDF /tmp/fattura_test.pdf preesistente.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend/Frontend sulle nuove feature (regole prezzi, listino, bolla ritiro con marca/modello, simulatore, servizio-listino-search, prezzo-preview, ritiro-rip-marca/modello) sono tutte funzionanti. Prezzi calcolati correttamente per tutti i casi (205.0 iPhone display 80€, 385.0 Samsung display 180€, 45.0 software 45min). Listino /listino/parse-fattura riconosce fornitore=Sifar e prezzi 79.0/18.5/4.2. 403 corretti per non-admin su PUT /regole-prezzi e POST /listino. Ritiro dialog nel ServizioDetail precompila correttamente marca/modello dal dispositivo del servizio. Regola manodopera Display iPhone è stata ripristinata a 40 al termine del test.",
+  "rca of the issue": "N/A — nessun bug funzionale rilevato in questa iterazione."
+}

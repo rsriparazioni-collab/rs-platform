@@ -2692,25 +2692,41 @@ def _build_bolla_pdf(r: dict) -> bytes:
     pdf = _new_pdf("Bolla di ritiro articoli usati",
                    f"N. {r.get('numero', '-')}  -  Data ritiro: {_fmt_it(r.get('data_ritiro'))}")
     pdf.ln(4)
+    pdf.set_font("helvetica", "B", 10); pdf.set_text_color(90, 90, 90)
+    pdf.cell(0, 6, "DATI CLIENTE", new_x="LMARGIN", new_y="NEXT"); pdf.set_text_color(0, 0, 0)
     _pdf_field(pdf, "Nome", r.get("nome"))
     _pdf_field(pdf, "Cognome", r.get("cognome"))
     _pdf_field(pdf, "Codice Fiscale", r.get("codice_fiscale"))
-    _pdf_field(pdf, "Articolo", r.get("articolo"))
-    _pdf_field(pdf, "IMEI", r.get("imei"))
+    _pdf_field(pdf, "Numero documento", r.get("numero_documento"))
+    pdf.ln(3)
+    pdf.set_font("helvetica", "B", 10); pdf.set_text_color(90, 90, 90)
+    pdf.cell(0, 6, "ARTICOLO RITIRATO", new_x="LMARGIN", new_y="NEXT"); pdf.set_text_color(0, 0, 0)
+    if r.get("marca") or r.get("modello"):
+        _pdf_field(pdf, "Marca", r.get("marca"))
+        _pdf_field(pdf, "Modello", r.get("modello"))
+    else:
+        _pdf_field(pdf, "Articolo (marca e modello)", r.get("articolo"))
+    _pdf_field(pdf, "IMEI / Serial", r.get("imei"))
     prezzo = f"EUR {r['prezzo_ritiro']:.2f}" if r.get("prezzo_ritiro") is not None else "-"
     _pdf_field(pdf, "Prezzo ritiro", prezzo)
-    _pdf_field(pdf, "Numero documento", r.get("numero_documento"))
+    _pdf_field(pdf, "Data ritiro", _fmt_it(r.get("data_ritiro")))
     _pdf_field(pdf, "Si allegano documenti n.", str(r.get("n_allegati", 2)))
     if r.get("riparazione_numero"):
         pdf.ln(3)
         _pdf_field(pdf, "Riparazione collegata", f"N. {r['riparazione_numero']}  -  {r.get('riparazione_dispositivo', '')}")
-        pdf.set_font("helvetica", "I", 9)
-        pdf.cell(0, 6, "Dispositivo lasciato al negozio dopo la riparazione; il cliente ha richiesto il recupero dei dati.",
-                 new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(14)
+    pdf.ln(4)
+    pdf.set_font("helvetica", "", 9)
+    pdf.multi_cell(0, 5, "Il cliente dichiara di essere il legittimo proprietario dell'articolo sopra descritto, di cederlo liberamente a RS Riparazioni "
+                         "al prezzo indicato e di aver provveduto al salvataggio e alla rimozione dei propri dati personali (o di autorizzarne la cancellazione). "
+                         "Copia del documento di identita' e' allegata alla presente.", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(12)
     pdf.set_font("helvetica", "", 11)
-    pdf.cell(95, 8, "Firma negozio: ______________________")
-    pdf.cell(0, 8, "Firma cliente: ______________________", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(95, 8, f"Luogo e data: ____________________, {_fmt_it(r.get('data_ritiro'))}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(10)
+    pdf.cell(95, 8, "Firma negozio")
+    pdf.cell(0, 8, "Firma cliente", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(95, 8, "_______________________________")
+    pdf.cell(0, 8, "_______________________________", new_x="LMARGIN", new_y="NEXT")
     return bytes(pdf.output())
 
 class RitiroInput(BaseModel):
@@ -2720,6 +2736,8 @@ class RitiroInput(BaseModel):
     cognome: str
     codice_fiscale: str = ""
     articolo: str
+    marca: str = ""
+    modello: str = ""
     imei: str = ""
     prezzo_ritiro: Optional[float] = None
     numero_documento: str = ""
@@ -3147,10 +3165,175 @@ def servizio_scope(user: dict, tipo: str = "") -> dict:
         base["tipo"] = {"$in": allowed} if allowed else "__nessuno__"
     return base
 
+# ---------------- Regole prezzi riparazioni (per tipologia x marca) + listino fornitori ----------------
+REGOLE_PREZZI_DEFAULT = [
+    ("display", "apple", "Display iPhone", 40, 60, 100, 300),
+    ("display", "samsung", "Display Samsung (OLED)", 45, 50, 150, 400),
+    ("display", "altri", "Display altri Android", 35, 70, 80, 200),
+    ("batteria", "*", "Batteria", 25, 80, 50, 90),
+    ("connettore", "*", "Connettore di ricarica", 30, 100, 50, 80),
+    ("vetro_posteriore", "*", "Vetro posteriore", 30, 80, 60, 150),
+    ("fotocamera", "*", "Fotocamera / altoparlante / microfono", 30, 80, 50, 150),
+    ("altro", "*", "Altro componente", 30, 70, 40, 250),
+    ("software", "*", "Software / recupero dati / diagnosi (senza ricambio)", 35, 0, 30, 80),
+]
+REGOLE_TIPOLOGIE = {"display": "Display", "batteria": "Batteria", "connettore": "Connettore di ricarica", "vetro_posteriore": "Vetro posteriore",
+                    "fotocamera": "Fotocamera / audio", "altro": "Altro componente", "software": "Software / diagnosi"}
+_REGOLE_CACHE: list = []
+
+class RegolaPrezzoInput(BaseModel):
+    tipologia: str
+    marca: str = "*"
+    label: str
+    manodopera: float
+    ricarico_pct: float = 0
+    prezzo_min: float = 0
+    prezzo_max: float = 0
+
+async def load_regole_prezzi():
+    global _REGOLE_CACHE
+    if await db.regole_prezzi.count_documents({}) == 0:
+        now = datetime.now(timezone.utc).isoformat()
+        await db.regole_prezzi.insert_many([{"id": str(uuid.uuid4()), "tipologia": t, "marca": m, "label": l, "manodopera": man, "ricarico_pct": ric,
+                                             "prezzo_min": mn, "prezzo_max": mx, "ordine": i, "updated_at": now}
+                                            for i, (t, m, l, man, ric, mn, mx) in enumerate(REGOLE_PREZZI_DEFAULT)])
+    _REGOLE_CACHE = await db.regole_prezzi.find({}, {"_id": 0}).sort("ordine", 1).to_list(100)
+
+def marca_dispositivo(dispositivo: str) -> str:
+    d = (dispositivo or "").lower()
+    if any(k in d for k in ("iphone", "apple", "ipad", "macbook", "airpods", "watch")):
+        return "apple"
+    if "samsung" in d or "galaxy" in d:
+        return "samsung"
+    return "altri"
+
+def regola_per(s: dict) -> Optional[dict]:
+    tip = (s.get("tipo_ricambio") or "altro") if s.get("con_ricambio") else "software"
+    marca = marca_dispositivo(s.get("dispositivo", ""))
+    cands = [r for r in _REGOLE_CACHE if r["tipologia"] == tip]
+    return next((r for r in cands if r["marca"] == marca), None) or next((r for r in cands if r["marca"] == "*"), None)
+
+def _round5(x: float) -> float:
+    return float(5 * round(x / 5))
+
+@api_router.get("/regole-prezzi")
+async def get_regole_prezzi(user: dict = Depends(get_current_user)):
+    return {"regole": _REGOLE_CACHE, "tipologie": REGOLE_TIPOLOGIE}
+
+@api_router.put("/regole-prezzi")
+async def put_regole_prezzi(regole: List[RegolaPrezzoInput], admin: dict = Depends(require_admin)):
+    now = datetime.now(timezone.utc).isoformat()
+    docs = [{"id": str(uuid.uuid4()), **r.model_dump(), "ordine": i, "updated_at": now, "updated_by": admin["name"]} for i, r in enumerate(regole)]
+    await db.regole_prezzi.delete_many({})
+    if docs:
+        await db.regole_prezzi.insert_many(docs)
+    await load_regole_prezzi()
+    return {"regole": _REGOLE_CACHE, "tipologie": REGOLE_TIPOLOGIE}
+
+class ListinoRiga(BaseModel):
+    codice: str = ""
+    descrizione: str
+    prezzo_netto: float
+    fornitore: str = "Sifar"
+    data_fattura: str = ""
+    marca: str = ""
+    tipologia: str = ""
+
+_PRICE_RX = re.compile(r"(?<![\d.])(\d{1,4}(?:\.\d{3})*,\d{2}|\d{1,4}\.\d{2})(?!\d)")
+
+def _parse_price(t: str) -> float:
+    return float(t.replace(".", "").replace(",", ".")) if "," in t else float(t)
+
+def _guess_tipologia(desc: str) -> str:
+    d = desc.lower()
+    for key, words in (("display", ("display", "lcd", "oled", "schermo", "touch")), ("batteria", ("batteria", "battery")),
+                       ("connettore", ("connettore", "dock", "flat carica", "charging", "ricarica")), ("vetro_posteriore", ("vetro post", "back cover", "back glass", "scocca")),
+                       ("fotocamera", ("fotocamera", "camera", "speaker", "altoparlante", "microfono", "buzzer"))):
+        if any(w in d for w in words):
+            return key
+    return "altro"
+
+def parse_fattura_text(text: str) -> list:
+    rows = []
+    for raw in text.splitlines():
+        line = " ".join(raw.split())
+        prices = _PRICE_RX.findall(line)
+        if len(prices) < 1 or len(line) < 12:
+            continue
+        first = _PRICE_RX.search(line)
+        desc = line[:first.start()].strip(" -|")
+        if not desc or not re.search(r"[a-zA-Z]{3}", desc) or re.match(r"^(totale|imponibile|iva|subtotale|spese|trasporto|bollo|pagamento|scadenza)", desc.lower()):
+            continue
+        m = re.match(r"^([A-Z0-9][A-Z0-9\-_./]{3,})\s+(.*)$", desc)
+        codice, descr = (m.group(1), m.group(2)) if m and any(ch.isdigit() for ch in m.group(1)) else ("", desc)
+        vals = [_parse_price(p) for p in prices]
+        unit = vals[-2] if len(vals) >= 2 else vals[-1]
+        qty = re.search(r"\s(\d{1,3})\s*(?:pz|pcs|nr|n\.)?\s*$", desc)
+        if qty:
+            desc = desc[:qty.start()].strip()
+            if m and codice:
+                descr = descr[:descr.rfind(qty.group(1))].strip() if descr.rstrip().endswith(qty.group(1)) else descr
+            else:
+                descr = desc
+        if len(vals) >= 2 and vals[-1] > vals[-2] and abs(vals[-1] / vals[-2] - round(vals[-1] / vals[-2])) < 0.01:
+            unit = vals[-2]
+        if unit <= 0 or unit > 5000:
+            continue
+        rows.append({"codice": codice, "descrizione": descr.strip(), "prezzo_netto": round(unit, 2), "tipologia": _guess_tipologia(descr),
+                     "marca": marca_dispositivo(descr), "qty_hint": qty.group(1) if qty else ""})
+    return rows
+
+@api_router.post("/listino/parse-fattura")
+async def parse_fattura(file: UploadFile = File(...), admin: dict = Depends(require_admin)):
+    if (file.content_type or "") != "application/pdf":
+        raise HTTPException(status_code=400, detail="Carica un PDF")
+    data = await file.read()
+    doc = fitz.open("pdf", data)
+    text = "\n".join(p.get_text() for p in doc)
+    fornitore = "Sifar" if "sifar" in text.lower() else ""
+    m = re.search(r"(\d{2}/\d{2}/\d{4})", text)
+    rows = parse_fattura_text(text)
+    return {"fornitore": fornitore, "data_fattura": m.group(1) if m else "", "righe": rows, "righe_testo": len(text.splitlines())}
+
+@api_router.post("/listino")
+async def save_listino(righe: List[ListinoRiga], admin: dict = Depends(require_admin)):
+    now = datetime.now(timezone.utc).isoformat()
+    n = 0
+    for r in righe:
+        key = {"codice": r.codice, "fornitore": r.fornitore} if r.codice else {"descrizione": r.descrizione, "fornitore": r.fornitore}
+        await db.listino.update_one(key, {"$set": {**r.model_dump(), "updated_at": now, "updated_by": admin["name"]},
+                                          "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}}, upsert=True)
+        n += 1
+    return {"status": "ok", "salvate": n}
+
+@api_router.get("/listino")
+async def search_listino(q: str = "", user: dict = Depends(get_current_user), limit: int = 30):
+    flt = {}
+    if q:
+        toks = [re.escape(t) for t in q.split() if t]
+        flt = {"$and": [{"$or": [{"descrizione": {"$regex": t, "$options": "i"}}, {"codice": {"$regex": t, "$options": "i"}}]} for t in toks]}
+    return await db.listino.find(flt, {"_id": 0}).sort("updated_at", -1).to_list(limit)
+
+@api_router.delete("/listino/{riga_id}")
+async def delete_listino(riga_id: str, admin: dict = Depends(require_admin)):
+    await db.listino.delete_one({"id": riga_id})
+    return {"status": "ok"}
+
 def calcola_prezzo_riparazione(s: dict) -> Optional[float]:
     if s.get("tipo") != "riparazione":
         return None
+    regola = regola_per(s)
     minuti_raw = int(s.get("minuti_lavoro") or 0)
+    if regola:
+        costo = float(s.get("costo_componente") or 0) if s.get("con_ricambio") else 0.0
+        extra_min = max(minuti_raw - 30, 0) * 0.22775
+        base = costo * (1 + regola["ricarico_pct"] / 100) + regola["manodopera"] + extra_min
+        prezzo = _round5(base * 1.22)
+        if regola["prezzo_min"]:
+            prezzo = max(prezzo, regola["prezzo_min"] if not s.get("con_ricambio") or costo * 1.22 < regola["prezzo_min"] else prezzo)
+        if regola["prezzo_max"] and costo * 1.22 + regola["manodopera"] * 1.22 <= regola["prezzo_max"]:
+            prezzo = min(prezzo, regola["prezzo_max"])
+        return round(prezzo, 2)
     if s.get("con_ricambio") and s.get("tipo_ricambio") == "batteria":
         base = float(s.get("costo_componente") or 0) + 2.0 + minuti_raw * 0.22775 + 20.0
         return round(base * 1.22, 2)
@@ -4484,6 +4667,7 @@ async def seed_data():
 async def startup():
     await seed_data()
     await seed_formazione()
+    await load_regole_prezzi()
     await seed_portali()
     await migra_segreti_in_chiaro()
     try:

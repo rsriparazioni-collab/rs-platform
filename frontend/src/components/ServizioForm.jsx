@@ -13,9 +13,33 @@ import { Switch } from "./ui/switch";
 
 const EMPTY_NEW_CLIENT = { nome: "", cognome: "", telefono: "", email: "", codice_fiscale: "" };
 
-function prezzoConsigliato(tipo, conRicambio, costo, minuti, tipoRicambio) {
+const marcaDispositivo = (d = "") => {
+  const s = d.toLowerCase();
+  if (["iphone", "apple", "ipad", "macbook", "airpods", "watch"].some((k) => s.includes(k))) return "apple";
+  if (s.includes("samsung") || s.includes("galaxy")) return "samsung";
+  return "altri";
+};
+const round5 = (x) => 5 * Math.round(x / 5);
+
+export function regolaPer(regole, form) {
+  const tip = form.con_ricambio ? (form.tipo_ricambio || "altro") : "software";
+  const marca = marcaDispositivo(form.dispositivo);
+  const cands = (regole || []).filter((r) => r.tipologia === tip);
+  return cands.find((r) => r.marca === marca) || cands.find((r) => r.marca === "*") || null;
+}
+
+function prezzoConsigliato(tipo, conRicambio, costo, minuti, tipoRicambio, regole, dispositivo) {
   if (tipo !== "riparazione") return null;
   const minRaw = parseInt(minuti) || 0;
+  const regola = regolaPer(regole, { con_ricambio: conRicambio, tipo_ricambio: tipoRicambio, dispositivo });
+  if (regola) {
+    const c = conRicambio ? parseFloat(costo) || 0 : 0;
+    const base = c * (1 + regola.ricarico_pct / 100) + regola.manodopera + Math.max(minRaw - 30, 0) * 0.22775;
+    let p = round5(base * 1.22);
+    if (regola.prezzo_min && (!conRicambio || c * 1.22 < regola.prezzo_min)) p = Math.max(p, regola.prezzo_min);
+    if (regola.prezzo_max && c * 1.22 + regola.manodopera * 1.22 <= regola.prezzo_max) p = Math.min(p, regola.prezzo_max);
+    return p;
+  }
   if (conRicambio && tipoRicambio === "batteria") {
     return Math.round(((parseFloat(costo) || 0) + 2 + minRaw * 0.22775 + 20) * 1.22 * 100) / 100;
   }
@@ -66,10 +90,20 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
   const isRip = tipo === "riparazione";
   const isTel = ["sim", "internet", "fisso"].includes(tipo);
   const isShop = ["accessori", "vendita"].includes(tipo);
+  const [regole, setRegole] = useState([]);
+  const [listinoQ, setListinoQ] = useState("");
+  const [listino, setListino] = useState([]);
+  useEffect(() => { if (open) api.get("/regole-prezzi").then((r) => setRegole(r.data.regole)).catch(() => {}); }, [open]);
+  useEffect(() => {
+    if (!listinoQ || listinoQ.length < 2) { setListino([]); return; }
+    const t = setTimeout(() => api.get("/listino", { params: { q: listinoQ, limit: 8 } }).then((r) => setListino(r.data)).catch(() => {}), 300);
+    return () => clearTimeout(t);
+  }, [listinoQ]);
   const prezzo = useMemo(
-    () => prezzoConsigliato(tipo, form.con_ricambio, form.costo_componente, form.minuti_lavoro, form.tipo_ricambio),
-    [tipo, form.con_ricambio, form.costo_componente, form.minuti_lavoro, form.tipo_ricambio]
+    () => prezzoConsigliato(tipo, form.con_ricambio, form.costo_componente, form.minuti_lavoro, form.tipo_ricambio, regole, form.dispositivo),
+    [tipo, form.con_ricambio, form.costo_componente, form.minuti_lavoro, form.tipo_ricambio, regole, form.dispositivo]
   );
+  const regolaAttiva = regolaPer(regole, { con_ricambio: form.con_ricambio, tipo_ricambio: form.tipo_ricambio, dispositivo: form.dispositivo });
 
   const submit = async (e) => {
     e.preventDefault();
@@ -267,14 +301,34 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                   <Select value={form.tipo_ricambio || "altro"} onValueChange={(v) => set("tipo_ricambio", v)}>
                     <SelectTrigger data-testid="servizio-tipo-ricambio"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="altro">Display / altro componente</SelectItem>
+                      <SelectItem value="display">Display</SelectItem>
                       <SelectItem value="batteria">Batteria</SelectItem>
+                      <SelectItem value="connettore">Connettore di ricarica</SelectItem>
+                      <SelectItem value="vetro_posteriore">Vetro posteriore</SelectItem>
+                      <SelectItem value="fotocamera">Fotocamera / altoparlante / microfono</SelectItem>
+                      <SelectItem value="altro">Altro componente</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Costo {form.tipo_ricambio === "batteria" ? "batteria" : "componente"} €</Label>
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Costo {form.tipo_ricambio === "batteria" ? "batteria" : "componente"} € (netto)</Label>
                   <Input type="number" step="0.01" value={form.costo_componente ?? ""} onChange={(e) => set("costo_componente", e.target.value)} data-testid="servizio-costo" />
+                  <div className="relative">
+                    <Input value={listinoQ} onChange={(e) => setListinoQ(e.target.value)} placeholder="Cerca nel listino fornitore (es. display iphone 13)" className="h-8 text-xs" data-testid="servizio-listino-search" />
+                    {listino.length > 0 && (
+                      <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg" data-testid="servizio-listino-results">
+                        {listino.map((l) => (
+                          <li key={l.id}>
+                            <button type="button" onClick={() => { set("costo_componente", String(l.prezzo_netto)); if (l.tipologia) set("tipo_ricambio", l.tipologia); setListinoQ(""); setListino([]); }}
+                                    className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-slate-50" data-testid={`servizio-listino-item-${l.id}`}>
+                              <span className="truncate">{l.codice ? <span className="font-mono text-slate-400">{l.codice} </span> : null}{l.descrizione}</span>
+                              <span className="ml-2 shrink-0 font-semibold">€ {l.prezzo_netto.toFixed(2)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
                 </>
               ) : null}
@@ -285,8 +339,10 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
               <div className="col-span-full rounded-lg bg-emerald-50 px-4 py-3" data-testid="servizio-prezzo-preview">
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Prezzo consigliato (IVA inclusa)</p>
                 <p className="font-heading text-2xl font-bold text-emerald-800">€ {prezzo != null ? prezzo.toFixed(2) : "-"}</p>
-                <p className="text-xs text-emerald-700">
-                  {form.con_ricambio
+                <p className="text-xs text-emerald-700" data-testid="servizio-prezzo-formula">
+                  {regolaAttiva
+                    ? `Regola "${regolaAttiva.label}": ${form.con_ricambio ? `costo ricambio +${regolaAttiva.ricarico_pct}% + ` : ""}manodopera ${regolaAttiva.manodopera}€ + IVA 22%, arrotondato ai 5€${regolaAttiva.prezzo_min || regolaAttiva.prezzo_max ? ` (fascia ${regolaAttiva.prezzo_min}–${regolaAttiva.prezzo_max}€)` : ""}`
+                    : form.con_ricambio
                     ? (form.tipo_ricambio === "batteria"
                       ? "costo batteria + 2€ trasporto + minuti reali × 0,22775€ + 20€ margine + IVA 22%"
                       : "costo componente + 2€ trasporto + minuti × 0,22775€ + 60€ margine + IVA 22%")

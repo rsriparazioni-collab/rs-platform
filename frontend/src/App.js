@@ -19,6 +19,7 @@ import Telefonia from "./pages/Telefonia";
 import Magazzino from "./pages/Magazzino";
 import Ritiri from "./pages/Ritiri";
 import Formazione from "./pages/Formazione";
+import PrezziRiparazioni from "./pages/PrezziRiparazioni";
 import Presentazione from "./pages/Presentazione";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -77,6 +78,7 @@ function App() {
             <Route path="portali" element={<RequireRole roles={["admin"]}><Portali /></RequireRole>} />
             <Route path="password" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><PasswordManager /></RequireRole>} />
             <Route path="formazione" element={<Formazione />} />
+            <Route path="prezzi" element={<RequireRole roles={["admin"]}><PrezziRiparazioni /></RequireRole>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -22,14 +22,17 @@ const costoRicambiDaRiparazione = (s) => {
 };
 
 export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated }) {
-  const [form, setForm] = useState({ imei: "", prezzo_ritiro: "0", numero_documento: "", n_allegati: 2, costo_ricambi: "0", crea_rigenerato: true });
+  const [form, setForm] = useState({ imei: "", prezzo_ritiro: "0", numero_documento: "", n_allegati: 2, costo_ricambi: "0", crea_rigenerato: true, marca: "", modello: "" });
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
+      const dev = (servizio?.dispositivo || "").trim();
+      const [marca, ...rest] = dev.split(" ");
       setForm({ imei: "", prezzo_ritiro: "0", numero_documento: "", n_allegati: 2,
-                costo_ricambi: String(costoRicambiDaRiparazione(servizio).toFixed(2)), crea_rigenerato: true });
+                costo_ricambi: String(costoRicambiDaRiparazione(servizio).toFixed(2)), crea_rigenerato: true,
+                marca: rest.length ? marca : "", modello: rest.length ? rest.join(" ") : dev });
       setFiles([]);
     }
   }, [open, servizio]);
@@ -49,7 +52,9 @@ export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated
         nome: c.nome || "",
         cognome: c.cognome || "",
         codice_fiscale: c.codice_fiscale || "",
-        articolo: servizio.dispositivo || "",
+        articolo: `${form.marca} ${form.modello}`.trim() || servizio.dispositivo || "",
+        marca: form.marca,
+        modello: form.modello,
         imei: form.imei,
         prezzo_ritiro: form.prezzo_ritiro === "" ? 0 : parseFloat(form.prezzo_ritiro),
         numero_documento: form.numero_documento,
@@ -83,6 +88,14 @@ export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated
             <p className="text-slate-600">{servizio?.dispositivo} · Rip. N° {servizio?.numero_riparazione}</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Marca</Label>
+              <Input value={form.marca} onChange={(e) => set("marca", e.target.value)} placeholder="es. Samsung" data-testid="ritiro-rip-marca" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Modello</Label>
+              <Input value={form.modello} onChange={(e) => set("modello", e.target.value)} placeholder="es. Galaxy Z Flip 6" data-testid="ritiro-rip-modello" />
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">IMEI</Label>
               <Input value={form.imei} onChange={(e) => set("imei", e.target.value)} data-testid="ritiro-rip-imei" />
