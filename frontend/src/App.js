@@ -18,6 +18,8 @@ import Riparazioni from "./pages/Riparazioni";
 import Telefonia from "./pages/Telefonia";
 import Magazzino from "./pages/Magazzino";
 import Ritiri from "./pages/Ritiri";
+import Formazione from "./pages/Formazione";
+import Presentazione from "./pages/Presentazione";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 function Protected({ children }) {
@@ -58,6 +60,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/formazione/presentazione" element={<Presentazione />} />
           <Route path="/" element={<Protected><Layout /></Protected>}>
             <Route index element={<Dashboard />} />
             <Route path="clienti" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="energia"><Clienti /></RequireRole>} />
@@ -73,6 +76,7 @@ function App() {
             <Route path="registro-accessi" element={<RequireRole roles={["admin"]}><RegistroAccessi /></RequireRole>} />
             <Route path="portali" element={<RequireRole roles={["admin"]}><Portali /></RequireRole>} />
             <Route path="password" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><PasswordManager /></RequireRole>} />
+            <Route path="formazione" element={<Formazione />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

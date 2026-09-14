@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText, Link2, KeyRound } from "lucide-react";
+import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText, Link2, KeyRound, GraduationCap } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { RUOLI } from "../lib/constants";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -23,6 +23,7 @@ const NAV = [
   { to: "/registro-accessi", label: "Registro Accessi", icon: ScrollText, roles: ["admin"], testid: "nav-registro-accessi" },
   { to: "/portali", label: "Portali Operatori", icon: Link2, roles: ["admin"], testid: "nav-portali" },
   { to: "/password", label: "Password", icon: KeyRound, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-password" },
+  { to: "/formazione", label: "Formazione", icon: GraduationCap, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-formazione" },
 ];
 
 function NavItems({ onNavigate, mobile }) {

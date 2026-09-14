@@ -1,0 +1,58 @@
+{
+  "summary": "Iter 13 - Formazione (public + auth + PDF + CRUD + RBAC) e sync-fogli dry_run. Backend pytest 20/20 verdi in /app/backend/tests/test_formazione_iter13.py. Frontend UI: /formazione/presentazione pubblico OK (slide-viewer, 13 slide, ArrowRight/slide-next/slide-prev, slides-pdf, presentazione-login-link); /formazione admin OK con nav-formazione, 3 tab (slide/manuale/servizi con conteggi 13/13/14), manuale con 13 manuale-nav-* e capitolo WhatsApp che renderizza tabella markdown, servizi con card 'Cosa offriamo' + 'Operatori e fornitori' + 7 link 'Apri portale'; formazione-copy-link, formazione-pdf (download per slide+servizi), formazione-add -> dialog con anteprima markdown live, create+edit+delete TEST_UI_CAP flow completo. Michael negozio (2FA enrolled temp): /formazione read-only (nessun formazione-add/reset/edit-cur/delete-cur). Backend sync-fogli dry_run:true admin -> 200 con energia{nuovi=0,aggiornati=0,invariati,negozi} + riparazioni{nuove=0,aggiornate,negozi}; non-admin (michael) -> 403.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_scenarios": {
+    "PUBLIC /api/public/formazione/presentazione no auth": "PASS - 200, 13 slide ordinate per 'ordine'",
+    "PUBLIC /api/public/formazione/presentazione.pdf": "PASS - 200 application/pdf, 13 pagine (pypdf reader)",
+    "AUTH GET /api/formazione admin (40 seed + eventuali TEST_)": "PASS - 40 seed rows (13 slide + 13 manuale + 14 servizi)",
+    "AUTH GET /api/formazione?sezione=manuale": "PASS - filtra 13 righe",
+    "AUTH GET /api/formazione/pdf?sezione=slide|manuale|servizi": "PASS - PDF; slide=13 pagine",
+    "AUTH GET /api/formazione/pdf?sezione=invalid": "PASS - 400",
+    "AUTH GET /api/formazione senza token": "PASS - 401",
+    "CRUD POST manuale TEST_CAP con ordine auto=max+1": "PASS - ordine=max+1, categoria='generale'",
+    "CRUD PATCH titolo": "PASS - persistenza verificata via GET",
+    "CRUD POST sezione invalid": "PASS - 400",
+    "RBAC Michael (2FA enrolled) GET /formazione": "PASS - lettura consentita (>=40 righe)",
+    "RBAC Michael POST/PATCH/DELETE /formazione": "PASS - 403 su tutti e 3",
+    "CRUD DELETE": "PASS - 200 e verifica assenza",
+    "SYNC POST /api/admin/sync-fogli dry_run:true admin": "PASS - dry_run=true, energia{nuovi:0, aggiornati:0, invariati, negozi[]}, riparazioni{nuove:0, aggiornate, negozi[]}",
+    "SYNC non-admin (Michael)": "PASS - 403",
+    "UI /formazione/presentazione pubblico (no login)": "PASS - slide-viewer + slide-title + slide-counter '1 / 13' + ArrowRight->'2 / 13' + slide-next/prev + slides-pdf + presentazione-login-link",
+    "UI admin nav-formazione -> /formazione": "PASS - formazione-page mount + tabs slide(13)/manuale(13)/servizi(14)",
+    "UI manuale: manuale-nav-* (13) + manuale-titolo + tabella markdown capitolo WhatsApp": "PASS - table renderizzata in manuale-capitolo",
+    "UI servizi: card 'Cosa offriamo' + 'Operatori e fornitori' + link 'Apri portale' (7)": "PASS",
+    "UI formazione-copy-link + formazione-pdf (download OK per slide e servizi)": "PASS dopo fix bug",
+    "UI formazione-add dialog con anteprima markdown live + salva TEST_UI_CAP in manuale": "PASS",
+    "UI formazione-edit-cur modifica titolo": "PASS",
+    "UI formazione-delete-cur con confirm": "PASS",
+    "UI Michael read-only: no formazione-add/reset/edit-cur/delete-cur": "PASS"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_formazione_iter13.py",
+    "/app/test_reports/pytest/iter13_formazione.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "BUG FIX APPLICATO: /app/frontend/src/pages/Formazione.jsx linea 121-124: il download PDF chiamava api.get() + downloadBlob(r.data, filename) ma downloadBlob(path, filename) esegue di nuovo api.get(path) internamente. Passando un Blob come path axios lanciava 'TypeError: relativeURL.replace is not a function' e mostrava un red-overlay 'Uncaught runtime errors'. Corretto in: await downloadBlob(`/formazione/pdf?sezione=${tab}`, `formazione_${tab}.pdf`). Coerente con tutte le altre chiamate a downloadBlob nel codebase (Ritiri, Magazzino, ClientDetail, ServizioDetail).",
+    "server.py /formazione: seed idempotente (skip se count>0); CRUD ben protetto (require_admin) mentre GET usa get_current_user (Michael pass 2FA gate OK con TOTP). ordine auto-assegnato correttamente come max+1 per sezione.",
+    "server.py /public/formazione/presentazione + /public/formazione/presentazione.pdf senza auth: OK. _formazione_public rimuove _id.",
+    "server.py sync-fogli dry_run:true idempotente: energia nuovi=0/aggiornati=0 e riparazioni nuove=0 (DB già allineato con Fogli).",
+    "Presentazione.jsx: usa axios diretto (non lib/api) per endpoint pubblico - OK visto che pubblico non necessita cookie.",
+    "SlideViewer: keyboard nav (ArrowRight/Left/Space/PageUp/Down) + fullscreen + pagination dots + pdf link + prev disabled a i=0 e next disabled a i=n-1 - OK.",
+    "Manuale.jsx: raggruppa capitoli per categoria, default sul primo (rows[0]) - se rows vuoto mostra manuale-empty. OK.",
+    "Formazione.jsx: bottoni Ripristina e Nuova voce esclusivamente per isAdmin. AdminBar (edit/delete) sempre condizionale a isAdmin. OK RBAC lato UI.",
+    "Nessun test su /formazione/ripristina-default come richiesto (endpoint esistente ma non toccato)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_formazione_iter13.py",
+    "/app/frontend/src/pages/Formazione.jsx"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% (tutti gli scenari OK dopo il fix downloadBlob)"},
+  "test_credentials": "admin rsriparazioni@gmail.com + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV; michael@cambiaora.local + Michael2026! (2FA enrolled temp durante test, resettata da admin a fine test)",
+  "seed_data_creation": "TEST_UI_CAP/TEST_UI_CAP_MOD (frontend flow) creata e cancellata. TEST_CAP/TEST_CAP_MOD (backend flow) creata e cancellata. Verificato zero TEST_ residui via GET /formazione a fine test. Michael 2FA resettata via POST /users/{id}/2fa/reset.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Suite regressione formazione + sync in /app/backend/tests/test_formazione_iter13.py (20 test, ~34s). Fixture michael_with_2fa gestisce enroll+confirm+reset TOTP automaticamente. Fix downloadBlob applicato in Formazione.jsx (allineato al pattern usato dagli altri componenti). Sync-fogli deve essere invocato SOLO con dry_run:true - preview/prod DB già allineato ai Fogli quindi nuovi/aggiornati devono restare a 0. Michael negozio richiede 2FA (obbligatoria dal 09/09/2026): per test UI serve enrollare TOTP prima con /auth/2fa/enroll+confirm.",
+  "rca of the issue": "Bug frontend trovato e fissato: Formazione.jsx faceva doppia chiamata axios per il download PDF (api.get -> downloadBlob(blob, name) dove downloadBlob rifaceva api.get(blob) trattando il Blob come URL). Axios `combineURLs` non poteva chiamare .replace su un Blob -> TypeError e red-overlay React. Fix: usare direttamente await downloadBlob(url, filename), coerente con il resto del codebase."
+}

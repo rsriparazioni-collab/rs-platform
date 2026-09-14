@@ -1688,6 +1688,368 @@ async def import_riparazioni_storiche(admin: dict = Depends(require_admin)):
     return {"status": "ok", "servizi_creati": tot_servizi,
             "clienti_creati": tot_clienti_new, "report": report}
 
+# ---------------- Sincronizzazione incrementale fogli Google (admin, ripetibile) ----------------
+
+SYNC_CLIENT_FIELDS = ["codice_fiscale", "p_iva", "indirizzo", "pod", "pdr", "iban", "email", "telefono", "kw_potenza",
+                      "fornitore_provenienza", "costo_kwh_attuale", "spese_fisse_attuale", "costo_smc_attuale",
+                      "data_contratto", "data_verifica", "data_cambio", "nuovo_fornitore", "costo_kwh_nuovo",
+                      "spese_fisse_nuovo", "costo_smc_nuovo", "note", "lavorazione"]
+
+def _client_sync_key(c: dict) -> tuple:
+    ref = (c.get("pod") or c.get("pdr") or c.get("indirizzo") or "").strip().lower()
+    return ((c.get("nome") or "").strip().lower(), (c.get("cognome") or "").strip().lower(), c.get("tipo_bolletta") or "luce", ref)
+
+def _client_sync_key_loose(c: dict) -> tuple:
+    return ((c.get("nome") or "").strip().lower(), (c.get("cognome") or "").strip().lower(), c.get("tipo_bolletta") or "luce")
+
+def _client_sync_key_tokens(c: dict) -> tuple:
+    toks = sorted(re.findall(r"\w+", f"{c.get('nome') or ''} {c.get('cognome') or ''}".lower()))
+    return (" ".join(toks), c.get("tipo_bolletta") or "luce")
+
+def _client_sync_key_pod(c: dict) -> Optional[str]:
+    ref = (c.get("pod") or c.get("pdr") or "").strip().upper()
+    return ref or None
+
+class SyncFogliInput(BaseModel):
+    dry_run: bool = True
+    energia: bool = True
+    riparazioni: bool = True
+
+ENERGY_TAB_ALIAS = {"Sondrio": ["CAMBIAORA"], "Gravedona": ["KEVIN"]}
+
+async def _sync_energia(admin: dict, dry_run: bool) -> dict:
+    vend_map = await _venditori_name_map()
+    vend_fallback = vend_map.get("enrico", "")
+    rep = {"nuovi": 0, "aggiornati": 0, "invariati": 0, "campi_aggiornati": {}, "negozi": [], "esempi_nuovi": []}
+    now = datetime.now(timezone.utc).isoformat()
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http:
+        page = await http.get(f"https://docs.google.com/spreadsheets/d/{ENERGY_SHEET_ID}/htmlview")
+        tabs = {name.strip().lower(): gid for name, gid in re.findall(r'items\.push\(\{name: "([^"]*)".*?gid: "(-?\d+)"', page.text)}
+        for s in await db.stores.find({}, {"_id": 0}).to_list(100):
+            r, tab_used = None, None
+            for tab in [s["nome"]] + ENERGY_TAB_ALIAS.get(s["nome"], []):
+                gid = tabs.get(tab.lower())
+                if gid is None:
+                    continue
+                r = await _fetch_tab_csv(http, ENERGY_SHEET_ID, gid=gid)
+                if r.status_code == 200:
+                    tab_used = tab
+                    break
+            if not tab_used:
+                rep["negozi"].append({"store": s["nome"], "status": "pagina_non_trovata"})
+                continue
+            parsed, err = _parse_any_csv(r.text, s["id"], admin, vend_map, vend_fallback)
+            if err:
+                rep["negozi"].append({"store": s["nome"], "status": "errore", "detail": err})
+                continue
+            docs, _ = parsed
+            seen, uniq = set(), []
+            for d in docs:
+                k = (_client_sync_key(d), d.get("data_contratto"))
+                if k in seen:
+                    continue
+                seen.add(k)
+                uniq.append(d)
+            docs = uniq
+            existing = await db.clients.find({"venditore_id": s["id"], "anonimizzato": {"$ne": True}}, {"_id": 0}).to_list(5000)
+            indexes = [(_client_sync_key, {}), (_client_sync_key_pod, {}), (_client_sync_key_loose, {}), (_client_sync_key_tokens, {})]
+            for c in existing:
+                for fn, idx in indexes:
+                    k = fn(c)
+                    if k:
+                        idx.setdefault(k, []).append(c)
+            n_new = n_upd = 0
+            for d in docs:
+                cands = next((idx.get(fn(d)) for fn, idx in indexes if fn(d) and idx.get(fn(d))), None)
+                if not cands:
+                    n_new += 1
+                    if len(rep["esempi_nuovi"]) < 15:
+                        rep["esempi_nuovi"].append(f"{s['nome']}: {d['cognome']} {d['nome']} ({d['tipo_bolletta']})")
+                    if not dry_run:
+                        d["import_source"] = "sync_fogli"
+                        await _insert_imported([d], admin)
+                    continue
+                c = cands.pop(0)
+                for fn, idx in indexes:
+                    lst = idx.get(fn(c)) if fn(c) else None
+                    if lst and c in lst:
+                        lst.remove(c)
+                changes = {}
+                for f in SYNC_CLIENT_FIELDS:
+                    v = d.get(f)
+                    if v in (None, "", 0.0) or v == c.get(f):
+                        continue
+                    if f == "lavorazione" and not v:
+                        continue
+                    changes[f] = v
+                if d.get("pagato") and not c.get("pagato"):
+                    changes["pagato"] = True
+                    changes["last_payment_date"] = date.today().isoformat()
+                if d.get("privacy_firmata") and not c.get("privacy_firmata"):
+                    changes["privacy_firmata"] = True
+                if d.get("operatore_id") and d["operatore_id"] != vend_fallback and not c.get("operatore_id"):
+                    changes["operatore_id"] = d["operatore_id"]
+                    changes["venditore_pagato"] = d.get("venditore_pagato", False)
+                if not changes:
+                    rep["invariati"] += 1
+                    continue
+                n_upd += 1
+                for f in changes:
+                    rep["campi_aggiornati"][f] = rep["campi_aggiornati"].get(f, 0) + 1
+                if not dry_run:
+                    changes["updated_at"] = now
+                    await db.clients.update_one({"id": c["id"]}, {"$set": changes})
+                    if "lavorazione" in changes:
+                        await db.lavorazioni_log.insert_one({
+                            "id": str(uuid.uuid4()), "client_id": c["id"], "client_name": f"{c['cognome']} {c['nome']}".strip(),
+                            "operatore_id": admin["id"], "operatore_name": admin["name"], "status": changes["lavorazione"],
+                            "note": "Aggiornato da foglio Google (sync)", "created_at": now})
+            rep["nuovi"] += n_new
+            rep["aggiornati"] += n_upd
+            rep["negozi"].append({"store": s["nome"], "tab": tab_used, "status": "ok", "righe_foglio": len(docs), "nuovi": n_new, "aggiornati": n_upd})
+    return rep
+
+async def _sync_riparazioni(admin: dict, dry_run: bool) -> dict:
+    stores_by_name = {s["nome"]: s["id"] for s in await db.stores.find({}, {"_id": 0}).to_list(100)}
+    marker = await db.import_state.find_one({"_id": "riparazioni_fogli_v1"})
+    import_at = (marker or {}).get("at")
+    now = datetime.now(timezone.utc).isoformat()
+    rep = {"nuove": 0, "aggiornate": 0, "invariate": 0, "saltate_modificate_in_app": 0, "negozi": [], "esempi_nuove": []}
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http:
+        for store_name, sheet_id in RIPARAZIONI_SHEETS.items():
+            store_id = stores_by_name.get(store_name)
+            if not store_id:
+                rep["negozi"].append({"store": store_name, "status": "negozio_mancante"})
+                continue
+            r = await http.get(f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid=0")
+            if r.status_code != 200:
+                rep["negozi"].append({"store": store_name, "status": "foglio_non_leggibile"})
+                continue
+            rows = list(csv.reader(io.StringIO(r.text)))
+            hdr_i = next((i for i, row in enumerate(rows[:5]) if any(c.strip().lower() == "cognome" for c in row)), None)
+            if hdr_i is None:
+                rep["negozi"].append({"store": store_name, "status": "intestazioni_mancanti"})
+                continue
+            hdr = [c.strip().lower() for c in rows[hdr_i]]
+            prefix = next((p for key, p in RIP_PREFIX.items() if key in store_name.lower()), "RIP")
+            existing = await db.servizi.find({"tipo": "riparazione", "venditore_id": store_id}, {"_id": 0}).to_list(10000)
+            cl_names = await clients_name_map(list({s["client_id"] for s in existing}))
+            by_key, by_dev = {}, {}
+            for s in existing:
+                if s.get("sheet_key"):
+                    by_key.setdefault(tuple(s["sheet_key"]), []).append(s)
+                    continue
+                nm = (cl_names.get(s["client_id"], "") or "").strip().lower()
+                by_key.setdefault((nm, (s.get("dispositivo") or "").strip().lower(), (s.get("created_at") or "")[:10]), []).append(s)
+                by_dev.setdefault(((s.get("dispositivo") or "").strip().lower(), (s.get("created_at") or "")[:10]), []).append((nm, s))
+            counter = await db.counters.find_one({"_id": f"riparazione:{store_id}"}) or {"seq": 1}
+            seq = counter.get("seq", 1)
+            n_new = n_upd = 0
+            for row in rows[hdr_i + 1:]:
+                row = row + [""] * (len(hdr) - len(row))
+                d = dict(zip(hdr, row))
+                cognome, nome = d.get("cognome", "").strip(), d.get("nome", "").strip()
+                if not cognome and not nome:
+                    continue
+                modello = d.get("modello", "").strip()
+                created = _rip_date(d.get("data di consegna", ""))
+                key = (f"{cognome} {nome}".strip().lower(), modello.lower(), created[:10])
+                cands = by_key.get(key)
+                if not cands:
+                    toks = set(re.findall(r"\w+", key[0]))
+                    alt = [s for nm, s in by_dev.get((key[1], key[2]), []) if toks & set(re.findall(r"\w+", nm))]
+                    if alt:
+                        cands = alt
+                        by_dev[(key[1], key[2])] = [(nm, s) for nm, s in by_dev[(key[1], key[2])] if s is not alt[0]]
+                if not cands:
+                    n_new += 1
+                    if len(rep["esempi_nuove"]) < 15:
+                        rep["esempi_nuove"].append(f"{store_name}: {cognome} {nome} - {modello} ({created[:10]})")
+                    if not dry_run:
+                        telefono = re.sub(r"[^\d]", "", d.get("numero", ""))
+                        cid = await _find_or_create_rip_client(nome.capitalize(), cognome.capitalize(), telefono, store_id, now)
+                        await db.servizi.insert_one({
+                            "id": str(uuid.uuid4()), "tipo": "riparazione", "client_id": cid, "venditore_id": store_id, "operatore_id": "",
+                            "dispositivo": modello, "problema": d.get("intervento", "").strip(), "note": d.get("note", "").strip(),
+                            "stato": _rip_stato(d.get("stato", "")), "pagato": _parse_bool(d.get("pagato", "")),
+                            "numero_riparazione": f"{prefix}{seq}", "created_at": created, "updated_at": now,
+                            "import_source": "fogli_riparazioni", "sheet_synced_at": now, "sheet_key": list(key)})
+                        seq += 1
+                    continue
+                s = cands.pop(0)
+                untouched = s.get("updated_at") in (import_at, s.get("sheet_synced_at"))
+                changes = {}
+                for f, v in (("stato", _rip_stato(d.get("stato", ""))), ("problema", d.get("intervento", "").strip()),
+                             ("note", d.get("note", "").strip())):
+                    if v and v != s.get(f):
+                        changes[f] = v
+                if _parse_bool(d.get("pagato", "")) and not s.get("pagato"):
+                    changes["pagato"] = True
+                if not changes:
+                    rep["invariate"] += 1
+                    continue
+                if not untouched:
+                    rep["saltate_modificate_in_app"] += 1
+                    continue
+                n_upd += 1
+                if not dry_run:
+                    changes.update({"updated_at": now, "sheet_synced_at": now})
+                    await db.servizi.update_one({"id": s["id"]}, {"$set": changes})
+            if not dry_run and n_new:
+                await db.counters.update_one({"_id": f"riparazione:{store_id}"}, {"$set": {"prefix": prefix, "seq": seq}}, upsert=True)
+            rep["nuove"] += n_new
+            rep["aggiornate"] += n_upd
+            rep["negozi"].append({"store": store_name, "status": "ok", "nuove": n_new, "aggiornate": n_upd})
+    return rep
+
+@api_router.post("/admin/sync-fogli")
+async def sync_fogli(input: SyncFogliInput, admin: dict = Depends(require_admin)):
+    """Sincronizzazione incrementale dai fogli Google: aggiunge le righe nuove e aggiorna quelle cambiate (ripetibile)."""
+    out = {"dry_run": input.dry_run}
+    if input.energia:
+        out["energia"] = await _sync_energia(admin, input.dry_run)
+    if input.riparazioni:
+        out["riparazioni"] = await _sync_riparazioni(admin, input.dry_run)
+    if not input.dry_run:
+        await db.import_state.update_one({"_id": "sync_fogli_last"}, {"$set": {"at": datetime.now(timezone.utc).isoformat(), "report": out}}, upsert=True)
+    return out
+
+# ---------------- Formazione (slide, manuale, servizi & operatori) ----------------
+from formazione_seed import build_seed as _formazione_seed
+
+class FormazioneInput(BaseModel):
+    sezione: str  # slide | manuale | servizi
+    titolo: str
+    sottotitolo: str = ""
+    contenuto: str = ""
+    categoria: str = ""
+    link: str = ""
+    ordine: int = 0
+
+FORMAZIONE_SEZIONI = {"slide", "manuale", "servizi"}
+
+async def seed_formazione():
+    if await db.formazione.count_documents({}) > 0:
+        return
+    portali = await db.portali.find({}, {"_id": 0}).to_list(200)
+    now = datetime.now(timezone.utc).isoformat()
+    docs = [{**d, "id": str(uuid.uuid4()), "link": d.get("link", ""), "created_at": now, "updated_at": now} for d in _formazione_seed(portali)]
+    if docs:
+        await db.formazione.insert_many(docs)
+
+def _formazione_public(d: dict) -> dict:
+    return {k: v for k, v in d.items() if k != "_id"}
+
+@api_router.get("/public/formazione/presentazione")
+async def public_presentazione():
+    rows = await db.formazione.find({"sezione": "slide"}, {"_id": 0}).sort("ordine", 1).to_list(500)
+    return rows
+
+@api_router.get("/formazione")
+async def list_formazione(user: dict = Depends(get_current_user), sezione: str = ""):
+    q = {"sezione": sezione} if sezione else {}
+    return await db.formazione.find(q, {"_id": 0}).sort([("sezione", 1), ("ordine", 1)]).to_list(1000)
+
+@api_router.post("/formazione")
+async def create_formazione(input: FormazioneInput, admin: dict = Depends(require_admin)):
+    if input.sezione not in FORMAZIONE_SEZIONI:
+        raise HTTPException(status_code=400, detail="Sezione non valida")
+    now = datetime.now(timezone.utc).isoformat()
+    doc = input.model_dump()
+    if not doc["ordine"]:
+        last = await db.formazione.find({"sezione": input.sezione}).sort("ordine", -1).limit(1).to_list(1)
+        doc["ordine"] = (last[0]["ordine"] + 1) if last else 1
+    doc.update({"id": str(uuid.uuid4()), "created_at": now, "updated_at": now, "updated_by": admin["name"]})
+    await db.formazione.insert_one(doc)
+    return _formazione_public(doc)
+
+@api_router.patch("/formazione/{item_id}")
+async def update_formazione(item_id: str, input: FormazioneInput, admin: dict = Depends(require_admin)):
+    if input.sezione not in FORMAZIONE_SEZIONI:
+        raise HTTPException(status_code=400, detail="Sezione non valida")
+    doc = input.model_dump()
+    doc.update({"updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": admin["name"]})
+    res = await db.formazione.update_one({"id": item_id}, {"$set": doc})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Voce non trovata")
+    return _formazione_public(await db.formazione.find_one({"id": item_id}))
+
+@api_router.delete("/formazione/{item_id}")
+async def delete_formazione(item_id: str, admin: dict = Depends(require_admin)):
+    res = await db.formazione.delete_one({"id": item_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Voce non trovata")
+    return {"status": "ok"}
+
+@api_router.post("/formazione/ripristina-default")
+async def reset_formazione(admin: dict = Depends(require_admin)):
+    await db.formazione.delete_many({})
+    await seed_formazione()
+    return {"status": "ok", "voci": await db.formazione.count_documents({})}
+
+def _pdf_txt(s: str) -> str:
+    s = (s or "").replace("→", "->").replace("−", "-").replace("’", "'").replace("“", '"').replace("”", '"').replace("·", "-").replace("€", "EUR")
+    s = re.sub(r"\*\*(.+?)\*\*", r"\1", s)
+    return s.encode("latin-1", "replace").decode("latin-1")
+
+def _pdf_markdown(pdf, text: str):
+    for raw in (text or "").split("\n"):
+        line = _pdf_txt(raw.rstrip())
+        if not line.strip():
+            pdf.ln(2)
+            continue
+        if line.startswith("## "):
+            pdf.ln(2); pdf.set_font("helvetica", "B", 12); pdf.multi_cell(0, 6, line[3:], new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10.5)
+        elif line.startswith("# "):
+            pdf.ln(2); pdf.set_font("helvetica", "B", 13); pdf.multi_cell(0, 7, line[2:], new_x="LMARGIN", new_y="NEXT"); pdf.set_font("helvetica", "", 10.5)
+        elif line.startswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if all(set(c) <= set("-: ") for c in cells):
+                continue
+            pdf.multi_cell(0, 5.5, "   " + "  -  ".join(cells), new_x="LMARGIN", new_y="NEXT")
+        elif line.lstrip().startswith(("- ", "* ")):
+            pdf.multi_cell(0, 5.5, "   - " + line.lstrip()[2:], new_x="LMARGIN", new_y="NEXT")
+        else:
+            pdf.multi_cell(0, 5.5, line, new_x="LMARGIN", new_y="NEXT")
+
+def _build_formazione_pdf(sezione: str, rows: list) -> bytes:
+    titles = {"slide": "Presentazione del Gestionale", "manuale": "Manuale operativo e gestionale", "servizi": "Servizi e Operatori"}
+    pdf = _new_pdf(titles.get(sezione, "Formazione"), f"RS Group - Cambia Ora - aggiornato al {date.today().strftime('%d/%m/%Y')}")
+    pdf.set_font("helvetica", "", 10.5)
+    for i, r in enumerate(rows):
+        if sezione == "slide" and i > 0:
+            pdf.add_page()
+        elif pdf.get_y() > 240:
+            pdf.add_page()
+        pdf.set_font("helvetica", "B", 15 if sezione == "slide" else 13)
+        pdf.multi_cell(0, 8, _pdf_txt(f"{i + 1}. {r['titolo']}"), new_x="LMARGIN", new_y="NEXT")
+        if r.get("sottotitolo"):
+            pdf.set_font("helvetica", "I", 10.5); pdf.multi_cell(0, 6, _pdf_txt(r["sottotitolo"]), new_x="LMARGIN", new_y="NEXT")
+        if r.get("categoria"):
+            pdf.set_font("helvetica", "", 9); pdf.set_text_color(120, 120, 120)
+            pdf.multi_cell(0, 5, _pdf_txt(f"Sezione: {r['categoria']}"), new_x="LMARGIN", new_y="NEXT"); pdf.set_text_color(0, 0, 0)
+        if r.get("link"):
+            pdf.set_font("helvetica", "", 9); pdf.multi_cell(0, 5, _pdf_txt(f"Link: {r['link'][:110]}"), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", "", 10.5)
+        pdf.ln(1)
+        _pdf_markdown(pdf, r.get("contenuto", ""))
+        pdf.ln(4)
+    return bytes(pdf.output())
+
+@api_router.get("/formazione/pdf")
+async def formazione_pdf(sezione: str = "manuale", user: dict = Depends(get_current_user)):
+    if sezione not in FORMAZIONE_SEZIONI:
+        raise HTTPException(status_code=400, detail="Sezione non valida")
+    rows = await db.formazione.find({"sezione": sezione}, {"_id": 0}).sort("ordine", 1).to_list(1000)
+    return Response(content=_build_formazione_pdf(sezione, rows), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="formazione_{sezione}.pdf"'})
+
+@api_router.get("/public/formazione/presentazione.pdf")
+async def public_presentazione_pdf():
+    rows = await db.formazione.find({"sezione": "slide"}, {"_id": 0}).sort("ordine", 1).to_list(500)
+    return Response(content=_build_formazione_pdf("slide", rows), media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="presentazione_gestionale.pdf"'})
+
 # ---------------- Object Storage (allegati bollette/documenti) ----------------
 
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
@@ -4034,6 +4396,7 @@ async def seed_data():
 @app.on_event("startup")
 async def startup():
     await seed_data()
+    await seed_formazione()
     await seed_portali()
     await migra_segreti_in_chiaro()
     try:
