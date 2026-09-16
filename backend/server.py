@@ -851,8 +851,10 @@ async def update_client(client_id: str, input: ClientInput, user: dict = Depends
     return compute_dates(updated)
 
 @api_router.delete("/clients/{client_id}")
-async def delete_client(client_id: str, admin: dict = Depends(require_admin)):
-    res = await db.clients.delete_one({"id": client_id})
+async def delete_client(client_id: str, user: dict = Depends(get_current_user)):
+    scope = client_scope_filter(user)
+    scope["id"] = client_id
+    res = await db.clients.delete_one(scope)
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Cliente non trovato")
     await db.lavorazioni_log.delete_many({"client_id": client_id})

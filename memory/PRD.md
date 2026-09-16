@@ -244,3 +244,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-09-13 — Regressione completa (testing agent iterazione 12)
 - Backend 58/58 pytest (`backend/tests/test_regression_iter12.py`): auth 2FA, dashboard, clienti (CRUD/filtri/GDPR/export), servizi (riparazioni, sim, internet, segreti), magazzino, ritiri, whatsapp+cron (dry run), portali, password, audit log. Frontend: tutte le 14 pagine caricano senza errori. Nessun bug trovato.
 - Promemoria JOY: `GET /portali/flag-scaduti?giorni=3` → servizi telefonia con operatore che ha `flag_label` (Fastweb/JOY) senza `portale_extra_at` e creati da >3gg; pannello ambra in Dashboard con "Apri JOY".
+
+## 2026-09-16 — Elimina cliente per tutti i ruoli
+- `DELETE /clients/{id}` ora aperto a tutti i ruoli con `client_scope_filter` (negozio solo propri clienti, 404 fuori scope); tasto "Elimina" in ClientDetail visibile a tutti (era solo admin → Debora non lo vedeva). Verificato: Michael scope Tirano OK / Sondrio negato; UI tasto visibile.
+- "Sessione non commerciale" segnalata dall'utente: NON riguarda il gestionale (confermato).

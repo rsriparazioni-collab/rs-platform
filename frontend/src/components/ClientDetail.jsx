@@ -365,7 +365,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                 <Button size="sm" variant="outline" data-testid="detail-edit-button" onClick={() => onEdit(detail)}>
                   <Pencil className="mr-2 h-4 w-4" /> Modifica
                 </Button>
-                {isAdmin && (
+                {(
                   <Button size="sm" variant="outline" data-testid="detail-delete-button"
                           className="text-rose-600 hover:text-rose-700" onClick={remove}>
                     <Trash2 className="mr-2 h-4 w-4" /> Elimina
