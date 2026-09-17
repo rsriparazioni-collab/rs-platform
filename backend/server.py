@@ -2977,11 +2977,34 @@ async def review_msg_cliente(c: dict) -> str:
     sess = await wa_session_cliente(c)
     return ENEL_REVIEW_MSG["gravedona" if sess != ENEL_SESSION_DEBORAH else ENEL_SESSION_DEBORAH]
 
+_DRY_RUN_CACHE = {"value": None, "at": 0.0}
+
+async def wa_dry_run_attivo() -> bool:
+    """Flag salvato nel DB (non in .env: il .env viene copiato in produzione dal deploy)."""
+    import time
+    if _DRY_RUN_CACHE["value"] is None or time.time() - _DRY_RUN_CACHE["at"] > 30:
+        doc = await db.settings.find_one({"key": "wa_dry_run"}, {"_id": 0})
+        _DRY_RUN_CACHE.update({"value": bool(doc and doc.get("value")), "at": time.time()})
+    return _DRY_RUN_CACHE["value"]
+
+@api_router.get("/whatsapp/dry-run")
+async def whatsapp_dry_run_get(admin: dict = Depends(require_admin)):
+    return {"dry_run": await wa_dry_run_attivo()}
+
+class DryRunInput(BaseModel):
+    value: bool
+
+@api_router.put("/whatsapp/dry-run")
+async def whatsapp_dry_run_set(input: DryRunInput, admin: dict = Depends(require_admin)):
+    await db.settings.update_one({"key": "wa_dry_run"}, {"$set": {"value": input.value}}, upsert=True)
+    _DRY_RUN_CACHE["value"] = None
+    return {"dry_run": input.value}
+
 async def wa_send(phone: str, message: str, session: str = "default", tipo: str = "", client_id: str = "", servizio_id: str = ""):
     log = {"id": str(uuid.uuid4()), "phone": phone, "session": session, "message": message[:1000], "tipo": tipo,
            "client_id": client_id, "servizio_id": servizio_id,
            "at": datetime.now(timezone.utc).isoformat(), "ok": False, "error": None, "session_used": None}
-    if os.environ.get("WA_DRY_RUN") == "1":
+    if await wa_dry_run_attivo():
         log.update({"ok": True, "session_used": "dry-run", "dry_run": True})
         await db.wa_log.insert_one(log)
         return {"status": "dry-run"}

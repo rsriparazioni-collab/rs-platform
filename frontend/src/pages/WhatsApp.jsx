@@ -10,6 +10,7 @@ export default function WhatsApp() {
   const { user } = useAuth();
   const seesAll = user?.role === "admin" || user?.can_view_all;
   const [sessions, setSessions] = useState([]);
+  const [dryRun, setDryRun] = useState(null);
   const [stores, setStores] = useState([]);
   const [openQr, setOpenQr] = useState(null);
   const [qrValue, setQrValue] = useState(null);
@@ -40,7 +41,8 @@ export default function WhatsApp() {
 
   useEffect(() => {
     api.get("/meta").then((r) => setStores(r.data.stores || [])).catch(() => {});
-  }, []);
+    if (user?.role === "admin") api.get("/whatsapp/dry-run").then((r) => setDryRun(r.data.dry_run)).catch(() => {});
+  }, [user?.role]);
 
   useEffect(() => {
     poll();
@@ -85,6 +87,15 @@ export default function WhatsApp() {
       {down && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" data-testid="whatsapp-service-down">
           Servizio WhatsApp non raggiungibile. Riprova tra poco.
+        </div>
+      )}
+      {dryRun !== null && user?.role === "admin" && (
+        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-sm ${dryRun ? "border-amber-300 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`} data-testid="whatsapp-dry-run-banner">
+          <span>{dryRun ? "MODALITÀ TEST attiva: i messaggi vengono solo registrati, NON inviati ai clienti." : "Invio reale attivo: i messaggi partono davvero verso i clienti."}</span>
+          <Button size="sm" variant="outline" data-testid="whatsapp-dry-run-toggle"
+                  onClick={async () => { const r = await api.put("/whatsapp/dry-run", { value: !dryRun }); setDryRun(r.data.dry_run); }}>
+            {dryRun ? "Attiva invio reale" : "Passa a modalità test"}
+          </Button>
         </div>
       )}
 
