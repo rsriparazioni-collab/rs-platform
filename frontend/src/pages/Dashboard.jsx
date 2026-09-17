@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import MarginiChart from "../components/MarginiChart";
 import DaRichiamare from "../components/DaRichiamare";
+import CodaWhatsApp from "../components/CodaWhatsApp";
 import ContattoDialog, { ContattoBadge, ContattoButton } from "../components/ContattoDialog";
 import { useAuth } from "../context/AuthContext";
 import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate } from "../lib/constants";
@@ -131,6 +132,7 @@ export default function Dashboard() {
       )}
 
       <ContattoDialog target={contatto} onClose={() => setContatto(null)} onSaved={reloadScadenze} />
+      {(user.role === "admin" || user.can_view_all) && <CodaWhatsApp />}
       <DaRichiamare refreshKey={refreshKey} onChanged={reloadScadenze} />
 
       {scadenze && (

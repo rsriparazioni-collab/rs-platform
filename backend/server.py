@@ -2964,6 +2964,43 @@ async def store_id_by_name(nome: str) -> str:
 def is_enel(c: dict) -> bool:
     return (c or {}).get("gestione") == "enel"
 
+ENEL_MSG_KEYS = {"recensione_deborah": ENEL_REVIEW_MSG[ENEL_SESSION_DEBORAH],
+                 "recensione_gravedona": ENEL_REVIEW_MSG["gravedona"], "truffe": ENEL_TRUFFE_MSG}
+
+async def messaggi_enel() -> dict:
+    doc = await db.settings.find_one({"key": "msg_enel"}, {"_id": 0}) or {}
+    return {k: (doc.get("value") or {}).get(k) or v for k, v in ENEL_MSG_KEYS.items()}
+
+class MessaggiEnelInput(BaseModel):
+    recensione_deborah: str = ""
+    recensione_gravedona: str = ""
+    truffe: str = ""
+
+@api_router.get("/messaggi-enel")
+async def messaggi_enel_get(admin: dict = Depends(require_admin)):
+    return {"messaggi": await messaggi_enel(), "defaults": ENEL_MSG_KEYS}
+
+@api_router.put("/messaggi-enel")
+async def messaggi_enel_put(input: MessaggiEnelInput, admin: dict = Depends(require_admin)):
+    await db.settings.update_one({"key": "msg_enel"}, {"$set": {"value": input.model_dump()}}, upsert=True)
+    return {"messaggi": await messaggi_enel()}
+
+@api_router.get("/whatsapp/coda-stato")
+async def whatsapp_coda_stato(user: dict = Depends(get_current_user)):
+    if not (user["role"] == "admin" or user.get("can_view_all")):
+        raise HTTPException(status_code=403, detail="Non autorizzato")
+    in_coda = await db.whatsapp_queue.count_documents({"sent": False})
+    prossimo = await db.whatsapp_queue.find_one({"sent": False}, {"_id": 0, "send_after": 1}, sort=[("send_after", 1)])
+    ultimo_ok = await db.wa_log.find_one({"ok": True}, {"_id": 0, "at": 1, "tipo": 1, "session_used": 1}, sort=[("at", -1)])
+    ultimo_err = await db.wa_log.find_one({"ok": False}, {"_id": 0, "at": 1, "tipo": 1, "error": 1}, sort=[("at", -1)])
+    da = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    loop = await db.cron_log.find_one({"job": "whatsapp-queue-loop"}, {"_id": 0, "last_run": 1})
+    return {"in_coda": in_coda, "prossimo_invio": (prossimo or {}).get("send_after"),
+            "ultimo_invio_ok": ultimo_ok, "ultimo_errore": ultimo_err,
+            "inviati_24h": await db.wa_log.count_documents({"ok": True, "at": {"$gte": da}}),
+            "falliti_24h": await db.wa_log.count_documents({"ok": False, "at": {"$gte": da}}),
+            "ultimo_giro_coda": (loop or {}).get("last_run"), "dry_run": await wa_dry_run_attivo()}
+
 async def wa_session_cliente(c: dict) -> str:
     """Sessione WhatsApp per i messaggi ENERGIA di un cliente."""
     if is_enel(c):
@@ -2975,7 +3012,8 @@ async def review_msg_cliente(c: dict) -> str:
     if not is_enel(c):
         return REVIEW_MSG
     sess = await wa_session_cliente(c)
-    return ENEL_REVIEW_MSG["gravedona" if sess != ENEL_SESSION_DEBORAH else ENEL_SESSION_DEBORAH]
+    msgs = await messaggi_enel()
+    return msgs["recensione_gravedona" if sess != ENEL_SESSION_DEBORAH else "recensione_deborah"]
 
 _DRY_RUN_CACHE = {"value": None, "at": 0.0}
 
@@ -4416,7 +4454,7 @@ async def invia_avvisi_truffe() -> dict:
         if not (TRUFFE_DOPO_GIORNI <= giorni <= TRUFFE_FINESTRA_GIORNI):
             continue
         store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
-        msg = ENEL_TRUFFE_MSG if is_enel(c) else store_msg(store, "msg_truffe", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
+        msg = (await messaggi_enel())["truffe"] if is_enel(c) else store_msg(store, "msg_truffe", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
         try:
             await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="truffe", client_id=c["id"])
             await db.clients.update_one({"id": c["id"]}, {"$set": {"truffe_msg_sent_at": datetime.now(timezone.utc).isoformat()}})

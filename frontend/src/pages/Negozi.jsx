@@ -10,6 +10,7 @@ import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import StoreMessaggiEditor from "../components/StoreMessaggiEditor";
+import MessaggiEnelEditor from "../components/MessaggiEnelEditor";
 
 const MSG_KEYS = ["msg_privacy", "msg_pronto", "msg_recensione", "msg_promemoria", "msg_vincolo", "msg_offerta_annuale", "msg_rinnovo_energia", "msg_truffe"];
 
@@ -69,6 +70,8 @@ export default function Negozi() {
           </Button>
         )}
       </div>
+
+      {isAdmin && <MessaggiEnelEditor />}
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
         {stores.map((s) => (
