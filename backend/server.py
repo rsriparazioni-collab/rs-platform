@@ -734,6 +734,7 @@ class ClientInput(BaseModel):
     operatore_id: str = ""
     provincia: str = ""
     venditore_pagato: bool = False
+    gestione: str = "cambiaora"
 
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(get_current_user),
@@ -2902,6 +2903,55 @@ Basta un clic qui
 https://g.page/r/CaSv3O7luiBPEAE/review
 Grazie per il supporto"""
 
+# Canali WhatsApp energia: CambiaOra sempre dal numero Sondrio (3519460591); ENEL da Deborah o dal negozio Gravedona
+CAMBIAORA_STORE_NAME = "Sondrio"
+ENEL_GRAVEDONA_STORE_NAME = "Gravedona"
+ENEL_SESSION_DEBORAH = "enel-deborah"
+ENEL_REVIEW_MSG = {
+    ENEL_SESSION_DEBORAH: """Ciao! 😊 Grazie per aver scelto ENEL Morbegno 🙌
+Se ti sei trovato bene, ci farebbe davvero piacere una tua recensione ⭐ Basta un clic qui 👇
+👉 https://g.page/r/CT15UUSXSQoCEAE/review
+Grazie per il supporto""",
+    "gravedona": """Ciao! 😊 Grazie per aver scelto ENEL Gravedona 🙌
+Se ti sei trovato bene, ci farebbe davvero piacere una tua recensione ⭐ Basta un clic qui 👇
+https://g.page/r/CWOpR0o29GE-EAE/review
+Grazie per il supporto 💙""",
+}
+ENEL_TRUFFE_MSG = """Le truffe telefoniche sono sempre più frequenti. Se ricevi una chiamata da chi si presenta come operatore di luce, gas, telefonia, banca o altri servizi...
+❌ *Non prendere decisioni di fretta.*
+❌ *Non comunicare codici, dati personali o bancari.*
+❌ *Non dire "SÌ" senza aver capito con chi stai parlando.*
+📞 *Hai già i tuoi consulenti di fiducia.*
+Prima di firmare, confermare o accettare qualsiasi proposta, *contatta noi*. Ti diremo gratuitamente se la chiamata è affidabile oppure se potrebbe trattarsi di un tentativo di truffa o di una proposta poco conveniente.
+🛡️ Un messaggio o una telefonata possono evitarti problemi e costi inutili.
+_Siamo al tuo fianco per aiutarti a scegliere in sicurezza._"""
+
+_STORE_ID_CACHE: dict = {}
+
+async def store_id_by_name(nome: str) -> str:
+    if nome not in _STORE_ID_CACHE:
+        s = await db.stores.find_one({"nome": {"$regex": f"^{re.escape(nome)}$", "$options": "i"}}, {"_id": 0, "id": 1})
+        if not s:
+            return ""
+        _STORE_ID_CACHE[nome] = s["id"]
+    return _STORE_ID_CACHE[nome]
+
+def is_enel(c: dict) -> bool:
+    return (c or {}).get("gestione") == "enel"
+
+async def wa_session_cliente(c: dict) -> str:
+    """Sessione WhatsApp per i messaggi ENERGIA di un cliente."""
+    if is_enel(c):
+        grav = await store_id_by_name(ENEL_GRAVEDONA_STORE_NAME)
+        return grav if grav and c.get("venditore_id") == grav else ENEL_SESSION_DEBORAH
+    return await store_id_by_name(CAMBIAORA_STORE_NAME) or c.get("venditore_id") or "default"
+
+async def review_msg_cliente(c: dict) -> str:
+    if not is_enel(c):
+        return REVIEW_MSG
+    sess = await wa_session_cliente(c)
+    return ENEL_REVIEW_MSG["gravedona" if sess != ENEL_SESSION_DEBORAH else ENEL_SESSION_DEBORAH]
+
 async def wa_send(phone: str, message: str, session: str = "default", tipo: str = "", client_id: str = "", servizio_id: str = ""):
     log = {"id": str(uuid.uuid4()), "phone": phone, "session": session, "message": message[:1000], "tipo": tipo,
            "client_id": client_id, "servizio_id": servizio_id,
@@ -2961,7 +3011,7 @@ async def whatsapp_log(admin: dict = Depends(require_admin)):
 
 @api_router.get("/whatsapp/sessions-summary")
 async def whatsapp_sessions_summary(admin: dict = Depends(require_admin)):
-    totale = await db.stores.count_documents({}) + 1
+    totale = await db.stores.count_documents({}) + 2
     try:
         async with httpx.AsyncClient(timeout=5) as http_client:
             resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
@@ -3026,8 +3076,9 @@ async def invia_privacy_cliente(c: dict, queue_review: bool = True) -> dict:
             logger.error(f"Registrazione privacy sito fallita per {client_id}: {reg_error}")
     wa_error = None
     store_c = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
+    sess = await wa_session_cliente(c)
     try:
-        await wa_send(c["telefono"], store_msg(store_c, "msg_privacy", nome=c.get("nome", "")), session=c.get("venditore_id") or "default", tipo="privacy", client_id=client_id)
+        await wa_send(c["telefono"], store_msg(store_c, "msg_privacy", nome=c.get("nome", "")), session=sess, tipo="privacy", client_id=client_id)
     except Exception as e:
         wa_error = getattr(e, "detail", str(e))
     if wa_error and not registered:
@@ -3039,8 +3090,8 @@ async def invia_privacy_cliente(c: dict, queue_review: bool = True) -> dict:
         if queue_review and not c.get("no_recensioni"):
             await db.whatsapp_queue.insert_one({
             "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
-            "type": "review", "message": REVIEW_MSG, "send_after": (now + timedelta(minutes=2)).isoformat(),
-            "session": c.get("venditore_id") or "default",
+            "type": "review", "message": await review_msg_cliente(c), "send_after": (now + timedelta(minutes=2)).isoformat(),
+            "session": sess,
             "sent": False, "created_at": now.isoformat()})
     if registered:
         updates["privacy_firmata"] = True
@@ -3055,7 +3106,7 @@ async def whatsapp_review(client_id: str, user: dict = Depends(get_current_user)
     c = await get_scoped_client(client_id, user)
     if not c.get("telefono"):
         raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
-    await wa_send(c["telefono"], REVIEW_MSG, session=c.get("venditore_id") or "default", tipo="recensione", client_id=client_id)
+    await wa_send(c["telefono"], await review_msg_cliente(c), session=await wa_session_cliente(c), tipo="recensione", client_id=client_id)
     await db.clients.update_one({"id": client_id},
                                 {"$set": {"review_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
     return {"status": "ok"}
@@ -4271,7 +4322,7 @@ async def invia_avvisi_rinnovo_energia() -> dict:
         store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
         msg = store_msg(store, "msg_rinnovo_energia", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
         try:
-            await wa_send(c["telefono"], msg, session=c.get("venditore_id") or "default", tipo="rinnovo_energia", client_id=c["id"])
+            await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="rinnovo_energia", client_id=c["id"])
             await db.clients.update_one({"id": c["id"]}, {"$set": {"rinnovo_msg_sent_for": c["data_scadenza"],
                                                                    "rinnovo_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
             report.append({"client_id": c["id"], "inviato": True, "scadenza": c["data_scadenza"]})
@@ -4300,9 +4351,9 @@ async def invia_avvisi_truffe() -> dict:
         if not (TRUFFE_DOPO_GIORNI <= giorni <= TRUFFE_FINESTRA_GIORNI):
             continue
         store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
-        msg = store_msg(store, "msg_truffe", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
+        msg = ENEL_TRUFFE_MSG if is_enel(c) else store_msg(store, "msg_truffe", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
         try:
-            await wa_send(c["telefono"], msg, session=c.get("venditore_id") or "default", tipo="truffe", client_id=c["id"])
+            await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="truffe", client_id=c["id"])
             await db.clients.update_one({"id": c["id"]}, {"$set": {"truffe_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
             report.append({"client_id": c["id"], "inviato": True})
         except HTTPException as e:

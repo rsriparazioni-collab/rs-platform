@@ -14,7 +14,7 @@ import { LAVORAZIONI } from "../lib/constants";
 const EMPTY = {
   nome: "", cognome: "", tipo_cliente: "privato", codice_fiscale: "", p_iva: "",
   indirizzo: "", provincia: "", pod: "", pdr: "", iban: "", email: "", telefono: "",
-  kw_potenza: "", tipo_bolletta: "luce", fornitore_provenienza: "",
+  kw_potenza: "", tipo_bolletta: "luce", fornitore_provenienza: "", gestione: "cambiaora",
   costo_kwh_attuale: "", spese_fisse_attuale: "", costo_smc_attuale: "",
   data_contratto: "", data_verifica: "", data_cambio: "", tipo_contratto: "fisso",
   nuovo_fornitore: "", costo_kwh_nuovo: "", spese_fisse_nuovo: "", costo_smc_nuovo: "",
@@ -165,6 +165,15 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
           <section>
             <h3 className="mb-3 font-heading text-sm font-semibold text-slate-800">Utenza attuale</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="Gestione (canale WhatsApp)" testid="gestione">
+                <Select value={form.gestione || "cambiaora"} onValueChange={(v) => set("gestione", v)}>
+                  <SelectTrigger data-testid="select-gestione"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cambiaora">CambiaOra (numero 3519460591)</SelectItem>
+                    <SelectItem value="enel">ENEL (numero Deborah / Gravedona)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
               <Field label="Tipo bolletta" testid="tipo-bolletta">
                 <Select value={form.tipo_bolletta} onValueChange={(v) => set("tipo_bolletta", v)}>
                   <SelectTrigger data-testid="select-tipo-bolletta"><SelectValue /></SelectTrigger>

@@ -16,7 +16,7 @@ export default function WhatsApp() {
 
   const storeName = (sid) => {
     if (sid === "default") return "Principale";
-    return stores.find((s) => s.id === sid)?.nome || (sid ? sid.slice(0, 8) : "-");
+    return stores.find((s) => s.id === sid)?.nome || (sid === "enel-deborah" ? "ENEL – Deborah" : sid ? sid.slice(0, 8) : "-");
   };
 
   const poll = useCallback(async () => {
@@ -64,7 +64,8 @@ export default function WhatsApp() {
 
   const cards = [
     { id: "default", nome: "Principale (fallback)", desc: "Usato quando il numero del negozio non è collegato" },
-    ...stores.map((s) => ({ id: s.id, nome: s.nome, desc: "Numero WhatsApp del negozio" })),
+    { id: "enel-deborah", nome: "ENEL – Deborah", desc: "Numero per i clienti ENEL (privacy, recensione, anti-truffa). Gravedona usa il proprio numero" },
+    ...stores.map((s) => ({ id: s.id, nome: s.nome, desc: s.nome === "Sondrio" ? "Numero del negozio + tutti i messaggi energia CambiaOra (3519460591)" : "Numero WhatsApp del negozio" })),
   ];
 
   return (
@@ -72,7 +73,7 @@ export default function WhatsApp() {
       <div>
         <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">WhatsApp</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Collega un numero per negozio: i messaggi privacy e recensione partono dal numero del negozio del cliente
+          Energia CambiaOra: sempre dal numero Sondrio (3519460591). Energia ENEL: dal numero di Deborah (o Gravedona). Riparazioni/telefonia: dal numero del negozio
         </p>
       </div>
 

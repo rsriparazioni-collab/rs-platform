@@ -184,6 +184,9 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
             <div className="mt-6 space-y-6">
               <div className="flex flex-wrap gap-2">
                 <span className={`status-badge ${lavorazioneBadge(detail.lavorazione)}`}>{lavorazioneLabel(detail.lavorazione)}</span>
+                <span data-testid="detail-gestione-badge" className={`status-badge ${detail.gestione === "enel" ? "bg-amber-500/15 text-amber-700 border-amber-300" : "bg-fuchsia-500/15 text-fuchsia-700 border-fuchsia-300"}`}>
+                  {detail.gestione === "enel" ? "ENEL" : "CambiaOra"}
+                </span>
                 <span className={`status-badge ${detail.tipo_contratto === "fisso" ? "bg-sky-500/15 text-sky-700 border-sky-300" : "bg-violet-500/15 text-violet-700 border-violet-300"}`}>
                   Contratto {detail.tipo_contratto}
                 </span>

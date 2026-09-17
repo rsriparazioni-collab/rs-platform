@@ -248,3 +248,10 @@ Vedi /app/memory/test_credentials.md
 ## 2026-09-16 — Elimina cliente per tutti i ruoli
 - `DELETE /clients/{id}` ora aperto a tutti i ruoli con `client_scope_filter` (negozio solo propri clienti, 404 fuori scope); tasto "Elimina" in ClientDetail visibile a tutti (era solo admin → Debora non lo vedeva). Verificato: Michael scope Tirano OK / Sondrio negato; UI tasto visibile.
 - "Sessione non commerciale" segnalata dall'utente: NON riguarda il gestionale (confermato).
+
+## 2026-09-17 — Canali WhatsApp energia: CambiaOra vs ENEL
+- Campo cliente `gestione` ("cambiaora" default | "enel"), select "Gestione (canale WhatsApp)" in ClientForm, badge in ClientDetail.
+- `wa_session_cliente(c)`: energia CambiaOra → SEMPRE sessione negozio Sondrio (3519460591) per qualsiasi negozio; ENEL → sessione `enel-deborah` (card "ENEL – Deborah" in WHP Collegamento, da collegare via QR) oppure sessione Gravedona se il cliente è del negozio Gravedona. Usata per privacy, recensione (coda), rinnovo energia, anti-truffa. Riparazioni/telefonia restano dal negozio.
+- Testi ENEL: `ENEL_REVIEW_MSG` (Morbegno/Gravedona con link Google forniti dall'utente), `ENEL_TRUFFE_MSG`. Flusso automatico invariato: privacy alla creazione → recensione dopo 2 min → anti-truffa 10–40gg dal cron.
+- Verificato in dry-run: Morbegno ENEL→enel-deborah, Gravedona ENEL→Gravedona, Tirano CambiaOra→Sondrio; testi recensione corretti. sessions-summary totale = negozi+2.
+- DA FARE UTENTE: collegare "ENEL – Deborah" e "Gravedona" dalla pagina WHP Collegamento in produzione (dopo redeploy).
