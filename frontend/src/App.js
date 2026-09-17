@@ -71,7 +71,7 @@ function App() {
             <Route path="ritiri" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="riparazioni"><Ritiri /></RequireRole>} />
             <Route path="negozi" element={<RequireRole roles={["admin", "operatore"]}><Negozi /></RequireRole>} />
             <Route path="operatori" element={<RequireRole roles={["admin", "operatore"]}><Operatori /></RequireRole>} />
-            <Route path="whatsapp" element={<RequireRole roles={["admin"]}><WhatsApp /></RequireRole>} />
+            <Route path="whatsapp" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><WhatsApp /></RequireRole>} />
             <Route path="utenti" element={<Utenti />} />
             <Route path="sicurezza" element={<Sicurezza />} />
             <Route path="registro-accessi" element={<RequireRole roles={["admin"]}><RegistroAccessi /></RequireRole>} />

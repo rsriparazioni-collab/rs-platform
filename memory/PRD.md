@@ -255,3 +255,7 @@ Vedi /app/memory/test_credentials.md
 - Testi ENEL: `ENEL_REVIEW_MSG` (Morbegno/Gravedona con link Google forniti dall'utente), `ENEL_TRUFFE_MSG`. Flusso automatico invariato: privacy alla creazione → recensione dopo 2 min → anti-truffa 10–40gg dal cron.
 - Verificato in dry-run: Morbegno ENEL→enel-deborah, Gravedona ENEL→Gravedona, Tirano CambiaOra→Sondrio; testi recensione corretti. sessions-summary totale = negozi+2.
 - DA FARE UTENTE: collegare "ENEL – Deborah" e "Gravedona" dalla pagina WHP Collegamento in produzione (dopo redeploy).
+
+## 2026-09-17 — Tipo cliente 3 livelli + WHP Collegamento per tutti
+- `tipo_cliente`: privato | ditta_individuale | societa (legacy "business" trattato come società). Validazione server (`valida_tipo_cliente`): business → P.IVA obbligatoria; ditta individuale → anche CF obbligatorio; privato → P.IVA svuotata. Filtro `GET /clients?tipo_cliente=privato|business|ditta_individuale|societa`. UI: select nel form (label Cognome/Ragione sociale dinamica, P.IVA 11 cifre), badge in lista e dettaglio, filtro "Privati e Business" in Clienti. Testato via API (400/200/filtri) + screenshot form.
+- WHP Collegamento visibile a tutti i ruoli: `/whatsapp/status|qr|pair` con `get_current_user` + `wa_sessions_allowed` (admin/can_view_all → tutte; negozio → solo store_ids, 403 altrimenti). Card default/ENEL-Deborah e log invii solo per admin/can_view_all (log solo admin). Nav + route aperti a admin/operatore/negozio/tecnico.

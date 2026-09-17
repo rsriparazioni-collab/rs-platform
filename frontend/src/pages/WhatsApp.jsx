@@ -4,8 +4,11 @@ import { MessageCircle, CheckCircle2, XCircle, RefreshCw, Store, QrCode } from "
 import api from "../lib/api";
 import { fmtDateTime } from "../lib/constants";
 import { Button } from "../components/ui/button";
+import { useAuth } from "../context/AuthContext";
 
 export default function WhatsApp() {
+  const { user } = useAuth();
+  const seesAll = user?.role === "admin" || user?.can_view_all;
   const [sessions, setSessions] = useState([]);
   const [stores, setStores] = useState([]);
   const [openQr, setOpenQr] = useState(null);
@@ -24,7 +27,7 @@ export default function WhatsApp() {
       const res = await api.get("/whatsapp/status");
       setSessions(res.data.sessions || []);
       setDown(false);
-      api.get("/whatsapp/log").then((r) => setWaLog(r.data)).catch(() => {});
+      if (user?.role === "admin") api.get("/whatsapp/log").then((r) => setWaLog(r.data)).catch(() => {});
       if (openQr) {
         const qrRes = await api.get("/whatsapp/qr", { params: { session: openQr } });
         setQrValue(qrRes.data.qr || null);
@@ -33,7 +36,7 @@ export default function WhatsApp() {
     } catch {
       setDown(true);
     }
-  }, [openQr]);
+  }, [openQr, user?.role]);
 
   useEffect(() => {
     api.get("/meta").then((r) => setStores(r.data.stores || [])).catch(() => {});
@@ -63,8 +66,10 @@ export default function WhatsApp() {
   const tid = (id) => (id === "default" ? "default" : id.slice(0, 8));
 
   const cards = [
-    { id: "default", nome: "Principale (fallback)", desc: "Usato quando il numero del negozio non è collegato" },
-    { id: "enel-deborah", nome: "ENEL – Deborah", desc: "Numero per i clienti ENEL (privacy, recensione, anti-truffa). Gravedona usa il proprio numero" },
+    ...(seesAll ? [
+      { id: "default", nome: "Principale (fallback)", desc: "Usato quando il numero del negozio non è collegato" },
+      { id: "enel-deborah", nome: "ENEL – Deborah", desc: "Numero per i clienti ENEL (privacy, recensione, anti-truffa). Gravedona usa il proprio numero" },
+    ] : []),
     ...stores.map((s) => ({ id: s.id, nome: s.nome, desc: s.nome === "Sondrio" ? "Numero del negozio + tutti i messaggi energia CambiaOra (3519460591)" : "Numero WhatsApp del negozio" })),
   ];
 

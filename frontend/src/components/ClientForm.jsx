@@ -75,6 +75,9 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isLuce = form.tipo_bolletta === "luce";
+  const tipoCliente = form.tipo_cliente === "business" ? "societa" : (form.tipo_cliente || "privato");
+  const isBusiness = tipoCliente !== "privato";
+  const isSocieta = tipoCliente === "societa";
 
   const handleClose = () => {
     if (dirty && !isEdit) {
@@ -86,7 +89,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const payload = { ...form };
+    const payload = { ...form, tipo_cliente: tipoCliente };
     NUM_FIELDS.forEach((k) => { payload[k] = payload[k] === "" ? null : parseFloat(payload[k]); });
     DATE_FIELDS.forEach((k) => { payload[k] = payload[k] || null; });
     try {
@@ -124,24 +127,27 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
               <Field label="Nome *" testid="nome">
                 <Input required value={form.nome} onChange={(e) => set("nome", e.target.value)} data-testid="input-nome" />
               </Field>
-              <Field label="Cognome / Rag. Sociale *" testid="cognome">
+              <Field label={isSocieta ? "Ragione sociale *" : "Cognome *"} testid="cognome">
                 <Input required value={form.cognome} onChange={(e) => set("cognome", e.target.value)} data-testid="input-cognome" />
               </Field>
               <Field label="Tipo cliente" testid="tipo-cliente">
-                <Select value={form.tipo_cliente} onValueChange={(v) => set("tipo_cliente", v)}>
+                <Select value={tipoCliente} onValueChange={(v) => set("tipo_cliente", v)}>
                   <SelectTrigger data-testid="select-tipo-cliente"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="privato">Privato</SelectItem>
-                    <SelectItem value="business">Business (P.IVA)</SelectItem>
+                    <SelectItem value="privato">Privato (solo CF)</SelectItem>
+                    <SelectItem value="ditta_individuale">Ditta individuale (CF + P.IVA)</SelectItem>
+                    <SelectItem value="societa">Società (P.IVA)</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Codice Fiscale" testid="cf">
-                <Input value={form.codice_fiscale} onChange={(e) => set("codice_fiscale", e.target.value.toUpperCase())} data-testid="input-codice-fiscale" />
+              <Field label={tipoCliente === "ditta_individuale" ? "Codice Fiscale *" : "Codice Fiscale"} testid="cf">
+                <Input required={tipoCliente === "ditta_individuale"} value={form.codice_fiscale}
+                       onChange={(e) => set("codice_fiscale", e.target.value.toUpperCase())} data-testid="input-codice-fiscale" />
               </Field>
-              {form.tipo_cliente === "business" && (
-                <Field label="Partita IVA" testid="piva">
-                  <Input value={form.p_iva} onChange={(e) => set("p_iva", e.target.value)} data-testid="input-p-iva" />
+              {isBusiness && (
+                <Field label="Partita IVA *" testid="piva">
+                  <Input required value={form.p_iva} onChange={(e) => set("p_iva", e.target.value.replace(/\D/g, "").slice(0, 11))}
+                         placeholder="11 cifre" data-testid="input-p-iva" />
                 </Field>
               )}
               <Field label="Indirizzo" testid="indirizzo">

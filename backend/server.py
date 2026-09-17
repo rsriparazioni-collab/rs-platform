@@ -700,6 +700,19 @@ async def delete_store(store_id: str, admin: dict = Depends(require_admin)):
 
 # ---------------- Clients (utenze) ----------------
 
+TIPI_BUSINESS = ["ditta_individuale", "societa", "business"]
+
+def valida_tipo_cliente(data: dict) -> None:
+    tipo = data.get("tipo_cliente") or "privato"
+    piva = (data.get("p_iva") or "").strip()
+    cf = (data.get("codice_fiscale") or "").strip()
+    if tipo in TIPI_BUSINESS and not piva:
+        raise HTTPException(status_code=400, detail="Partita IVA obbligatoria per i clienti business")
+    if tipo == "ditta_individuale" and not cf:
+        raise HTTPException(status_code=400, detail="Codice fiscale obbligatorio per la ditta individuale")
+    if tipo == "privato":
+        data["p_iva"] = ""
+
 class ClientInput(BaseModel):
     nome: str
     cognome: str
@@ -739,12 +752,18 @@ class ClientInput(BaseModel):
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(get_current_user),
                        lavorazione: str = "", tipo_bolletta: str = "", tipo_servizio: str = "",
-                       venditore_id: str = "", q: str = "", no_recensioni: str = ""):
+                       venditore_id: str = "", q: str = "", no_recensioni: str = "", tipo_cliente: str = ""):
     scope = client_scope_filter(user)
     if no_recensioni == "1":
         scope["no_recensioni"] = True
     if lavorazione:
         scope["lavorazione"] = lavorazione
+    if tipo_cliente == "privato":
+        scope["tipo_cliente"] = {"$in": ["privato", None, ""]}
+    elif tipo_cliente == "business":
+        scope["tipo_cliente"] = {"$in": TIPI_BUSINESS}
+    elif tipo_cliente:
+        scope["tipo_cliente"] = tipo_cliente
     if tipo_bolletta:
         scope["tipo_bolletta"] = tipo_bolletta
     if venditore_id and (user["role"] == "admin" or user.get("can_view_all")):
@@ -792,6 +811,7 @@ async def list_clients(user: dict = Depends(get_current_user),
 @api_router.post("/clients")
 async def create_client(input: ClientInput, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     data = input.model_dump()
+    valida_tipo_cliente(data)
     if user["role"] == "negozio" and data["venditore_id"] not in user.get("store_ids", []):
         if user.get("store_ids"):
             data["venditore_id"] = user["store_ids"][0]
@@ -842,6 +862,10 @@ async def update_client(client_id: str, input: ClientInput, user: dict = Depends
     if not old:
         raise HTTPException(status_code=404, detail="Cliente non trovato")
     data = input.model_dump(exclude_unset=True)
+    if "tipo_cliente" in data:
+        valida_tipo_cliente({**old, **data})
+        if (data.get("tipo_cliente") or "privato") == "privato":
+            data["p_iva"] = ""
     if user["role"] == "negozio":
         data.pop("venditore_id", None)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -3021,17 +3045,33 @@ async def whatsapp_sessions_summary(admin: dict = Depends(require_admin)):
     except Exception:
         return {"connessi": None, "totale": totale}
 
+def wa_sessions_allowed(user: dict) -> Optional[set]:
+    """None = tutte le sessioni (admin / chi vede tutto); altrimenti solo i propri negozi."""
+    if user["role"] == "admin" or user.get("can_view_all"):
+        return None
+    return set(user.get("store_ids", []))
+
+def check_wa_session(user: dict, session: str) -> None:
+    allowed = wa_sessions_allowed(user)
+    if allowed is not None and session not in allowed:
+        raise HTTPException(status_code=403, detail="Puoi collegare solo il numero del tuo negozio")
+
 @api_router.get("/whatsapp/status")
-async def whatsapp_status(admin: dict = Depends(require_admin)):
+async def whatsapp_status(user: dict = Depends(get_current_user)):
     try:
         async with httpx.AsyncClient(timeout=10) as http_client:
             resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
-        return resp.json()
+        data = resp.json()
+        allowed = wa_sessions_allowed(user)
+        if allowed is not None:
+            data["sessions"] = [s for s in data.get("sessions", []) if s.get("session") in allowed]
+        return data
     except Exception:
         return {"connected": False, "user": None, "has_qr": False, "service_down": True}
 
 @api_router.get("/whatsapp/qr")
-async def whatsapp_qr(session: str = "default", admin: dict = Depends(require_admin)):
+async def whatsapp_qr(session: str = "default", user: dict = Depends(get_current_user)):
+    check_wa_session(user, session)
     try:
         async with httpx.AsyncClient(timeout=10) as http_client:
             resp = await http_client.get(f"{WA_SERVICE}/qr", params={"session": session}, headers=wa_headers())
@@ -3044,7 +3084,8 @@ class PairInput(BaseModel):
     session: str = "default"
 
 @api_router.post("/whatsapp/pair")
-async def whatsapp_pair(input: PairInput, admin: dict = Depends(require_admin)):
+async def whatsapp_pair(input: PairInput, user: dict = Depends(get_current_user)):
+    check_wa_session(user, input.session)
     try:
         async with httpx.AsyncClient(timeout=25) as http_client:
             resp = await http_client.post(f"{WA_SERVICE}/pair", json={"phone": input.phone, "session": input.session}, headers=wa_headers())

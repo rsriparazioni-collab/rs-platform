@@ -5,7 +5,7 @@ import MessaggiPrevisti from "./MessaggiPrevisti";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import PortaleBox from "./PortaleBox";
-import { lavorazioneLabel, lavorazioneBadge, fmtDate, servizioTipoLabel, ripStatoLabel, ripStatoBadge } from "../lib/constants";
+import { lavorazioneLabel, lavorazioneBadge, fmtDate, servizioTipoLabel, ripStatoLabel, ripStatoBadge, tipoClienteInfo } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 
@@ -184,6 +184,9 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
             <div className="mt-6 space-y-6">
               <div className="flex flex-wrap gap-2">
                 <span className={`status-badge ${lavorazioneBadge(detail.lavorazione)}`}>{lavorazioneLabel(detail.lavorazione)}</span>
+                <span data-testid="detail-tipo-cliente-badge" className={`status-badge ${tipoClienteInfo(detail.tipo_cliente).badge}`}>
+                  {tipoClienteInfo(detail.tipo_cliente).label}
+                </span>
                 <span data-testid="detail-gestione-badge" className={`status-badge ${detail.gestione === "enel" ? "bg-amber-500/15 text-amber-700 border-amber-300" : "bg-fuchsia-500/15 text-fuchsia-700 border-fuchsia-300"}`}>
                   {detail.gestione === "enel" ? "ENEL" : "CambiaOra"}
                 </span>

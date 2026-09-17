@@ -89,6 +89,15 @@ export const MAGAZZINO_CATEGORIE = [
 export const magazzinoCategoriaLabel = (id) =>
   MAGAZZINO_CATEGORIE.find((c) => c.id === id)?.label || id || "-";
 
+export const TIPO_CLIENTE = {
+  privato: { label: "Privato", badge: "bg-slate-500/10 text-slate-600 border-slate-300" },
+  ditta_individuale: { label: "Ditta individuale", badge: "bg-orange-500/15 text-orange-700 border-orange-300" },
+  societa: { label: "Società", badge: "bg-indigo-500/15 text-indigo-700 border-indigo-300" },
+};
+export const tipoClienteInfo = (t) => TIPO_CLIENTE[t === "business" ? "societa" : (t || "privato")];
+export const isBusinessCliente = (t) => !!t && t !== "privato";
+
+
 export const PREMIUM_STEPS = {
   1: { label: "Step 1", badge: "bg-slate-500/15 text-slate-700 border-slate-300" },
   2: { label: "Step 2", badge: "bg-sky-500/15 text-sky-700 border-sky-300" },

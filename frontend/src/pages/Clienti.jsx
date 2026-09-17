@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import SyncFogliDialog from "../components/SyncFogliDialog";
 import { useAuth } from "../context/AuthContext";
-import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate, PREMIUM_STEPS } from "../lib/constants";
+import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate, PREMIUM_STEPS, tipoClienteInfo, isBusinessCliente } from "../lib/constants";
 
 const TIPI_SERVIZI = {
   luce: { label: "Luce", badge: "bg-sky-50 text-sky-700", icon: <Zap className="h-3 w-3" /> },
@@ -25,7 +25,7 @@ export default function Clienti() {
   const { user } = useAuth();
   const [clients, setClients] = useState([]);
   const [meta, setMeta] = useState({ suppliers: [], lavorazioni: [], stores: [], operators: [] });
-  const [filters, setFilters] = useState({ q: "", lavorazione: "all", tipo_bolletta: "all", venditore_id: "all", no_recensioni: false });
+  const [filters, setFilters] = useState({ q: "", lavorazione: "all", tipo_bolletta: "all", venditore_id: "all", no_recensioni: false, tipo_cliente: "all" });
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
@@ -45,6 +45,7 @@ export default function Clienti() {
     if (filters.tipo_bolletta !== "all") params.tipo_servizio = filters.tipo_bolletta;
     if (filters.venditore_id !== "all") params.venditore_id = filters.venditore_id;
     if (filters.no_recensioni) params.no_recensioni = "1";
+    if (filters.tipo_cliente !== "all") params.tipo_cliente = filters.tipo_cliente;
     api.get("/clients", { params }).then((r) => setClients(r.data))
       .catch((e) => toast.error(apiError(e, "Impossibile caricare i clienti")));
   }, [filters]);
@@ -149,6 +150,16 @@ export default function Clienti() {
             <SelectItem value="fis">Fis (fisso/internet)</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={filters.tipo_cliente} onValueChange={(v) => setFilters((f) => ({ ...f, tipo_cliente: v }))}>
+          <SelectTrigger className="w-[190px]" data-testid="filter-tipo-cliente-select"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Privati e Business</SelectItem>
+            <SelectItem value="privato">Solo privati</SelectItem>
+            <SelectItem value="business">Solo business</SelectItem>
+            <SelectItem value="ditta_individuale">Ditte individuali</SelectItem>
+            <SelectItem value="societa">Società</SelectItem>
+          </SelectContent>
+        </Select>
         {canSeeAll && (
           <Select value={filters.venditore_id} onValueChange={(v) => setFilters((f) => ({ ...f, venditore_id: v }))}>
             <SelectTrigger className="w-[200px]" data-testid="filter-negozio-select"><SelectValue /></SelectTrigger>
@@ -186,6 +197,11 @@ export default function Clienti() {
                   <td className="px-4 py-3">
                     <p className="font-medium text-slate-900">
                       {c.cognome} {c.nome}
+                      {isBusinessCliente(c.tipo_cliente) && (
+                        <span className={`ml-2 status-badge ${tipoClienteInfo(c.tipo_cliente).badge}`} data-testid={`client-business-${i}`}>
+                          {tipoClienteInfo(c.tipo_cliente).label}
+                        </span>
+                      )}
                       {c.premium_step > 0 && (
                         <span className={`ml-2 status-badge ${PREMIUM_STEPS[c.premium_step]?.badge}`} data-testid={`client-premium-${i}`}>
                           {c.premium_step === 3 && <Crown className="h-3 w-3" />}
@@ -193,7 +209,7 @@ export default function Clienti() {
                         </span>
                       )}
                     </p>
-                    <p className="text-xs text-slate-500">{c.tipo_cliente === "business" ? `P.IVA ${c.p_iva || "-"}` : c.telefono}</p>
+                    <p className="text-xs text-slate-500">{isBusinessCliente(c.tipo_cliente) ? `P.IVA ${c.p_iva || "-"} · ${c.telefono || ""}` : c.telefono}</p>
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex flex-wrap items-center gap-1" data-testid={`client-tipi-${i}`}>

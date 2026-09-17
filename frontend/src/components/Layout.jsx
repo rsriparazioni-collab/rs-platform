@@ -17,7 +17,7 @@ const NAV = [
   { to: "/ritiri", label: "Ritiri Telefoni", icon: Recycle, roles: ["admin", "operatore", "negozio", "tecnico"], section: "riparazioni", testid: "nav-ritiri" },
   { to: "/negozi", label: "Gestione Negozi", icon: Building2, roles: ["admin", "operatore"], testid: "nav-negozi" },
   { to: "/operatori", label: "Venditori", icon: UserCog, roles: ["admin", "operatore"], testid: "nav-operatori" },
-  { to: "/whatsapp", label: "WHP Collegamento", icon: MessageCircle, roles: ["admin"], testid: "nav-whatsapp" },
+  { to: "/whatsapp", label: "WHP Collegamento", icon: MessageCircle, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-whatsapp" },
   { to: "/utenti", label: "Utenti", icon: ShieldCheck, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-utenti" },
   { to: "/sicurezza", label: "Sicurezza", icon: Lock, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-sicurezza" },
   { to: "/registro-accessi", label: "Registro Accessi", icon: ScrollText, roles: ["admin"], testid: "nav-registro-accessi" },
