@@ -3,6 +3,7 @@ load_dotenv()
 
 import os
 import re
+import asyncio
 import hmac
 import io
 import uuid
@@ -4864,6 +4865,18 @@ async def startup():
         logger.info("Object storage inizializzato")
     except Exception as e:
         logger.error(f"Storage init fallito: {e}")
+    asyncio.create_task(whatsapp_queue_loop())
+
+async def whatsapp_queue_loop() -> None:
+    """Fallback interno al cron piattaforma: svuota la coda WhatsApp (recensioni) ogni 60s."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            await process_whatsapp_queue()
+            await db.cron_log.update_one({"job": "whatsapp-queue-loop"},
+                                         {"$set": {"last_run": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+        except Exception as e:
+            logger.error(f"whatsapp_queue_loop errore: {e}")
 
 app.include_router(api_router)
 
