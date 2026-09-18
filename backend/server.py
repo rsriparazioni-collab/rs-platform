@@ -74,10 +74,19 @@ def hash_password(password: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
-def create_token(user_id: str) -> str:
-    payload = {"sub": user_id, "type": "access",
-               "exp": datetime.now(timezone.utc) + timedelta(hours=24)}
+SESSION_INATTIVITA_MIN = 30
+SESSION_MAX_ORE = 8
+SESSION_REFRESH_DOPO_SEC = 60
+
+def create_token(user_id: str, login_at: Optional[int] = None) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {"sub": user_id, "type": "access", "login_at": login_at or int(now.timestamp()),
+               "iat": int(now.timestamp()), "exp": now + timedelta(minutes=SESSION_INATTIVITA_MIN)}
     return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
+
+def set_session_cookie(resp, token: str) -> None:
+    # Senza max_age: cookie di sessione, scade alla chiusura del browser
+    resp.set_cookie("gu_token", token, httponly=True, secure=True, samesite="lax")
 
 def serialize_user(u: dict) -> dict:
     return {"id": u["id"], "name": u["name"], "email": u["email"], "role": u["role"],
@@ -140,6 +149,12 @@ async def get_current_user(request: Request, creds: HTTPAuthorizationCredentials
         raise HTTPException(status_code=401, detail="Non autenticato")
     try:
         payload = jwt.decode(token, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="Token non valido")
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        login_at = payload.get("login_at", now_ts)
+        if now_ts - login_at > SESSION_MAX_ORE * 3600:
+            raise HTTPException(status_code=401, detail="Sessione scaduta: accedi di nuovo")
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
         if not user or not user.get("active", True):
             raise HTTPException(status_code=401, detail="Utente non trovato")
@@ -147,9 +162,11 @@ async def get_current_user(request: Request, creds: HTTPAuthorizationCredentials
             raise HTTPException(status_code=403, detail="Attiva la verifica in due passaggi per continuare",
                                 headers={"X-MFA-Setup-Required": "1"})
         request.state.user = user
+        if request.cookies.get("gu_token") and now_ts - payload.get("iat", now_ts) >= SESSION_REFRESH_DOPO_SEC:
+            request.state.refresh_token = create_token(user["id"], login_at=login_at)
         return user
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Sessione scaduta")
+        raise HTTPException(status_code=401, detail="Sessione scaduta per inattività: accedi di nuovo")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token non valido")
 
@@ -380,7 +397,7 @@ async def login(input: LoginInput):
         return JSONResponse({"mfa_required": True, "mfa_token": create_mfa_token(user["id"])})
     token = create_token(user["id"])
     resp = JSONResponse({"token": token, "user": serialize_user(user)})
-    resp.set_cookie("gu_token", token, httponly=True, secure=True, samesite="lax", max_age=86400)
+    set_session_cookie(resp, token)
     return resp
 
 class MfaLoginInput(BaseModel):
@@ -419,7 +436,7 @@ async def login_mfa(input: MfaLoginInput, request: Request):
     from fastapi.responses import JSONResponse
     token = create_token(user["id"])
     resp = JSONResponse({"token": token, "user": serialize_user(user)})
-    resp.set_cookie("gu_token", token, httponly=True, secure=True, samesite="lax", max_age=86400)
+    set_session_cookie(resp, token)
     return resp
 
 @api_router.post("/auth/2fa/enroll")
@@ -5004,6 +5021,9 @@ def _audit_classify(method: str, path: str):
 @app.middleware("http")
 async def audit_middleware(request: Request, call_next):
     response = await call_next(request)
+    refresh = getattr(request.state, "refresh_token", None)
+    if refresh and response.status_code < 400:
+        set_session_cookie(response, refresh)
     if request.method == "OPTIONS" or response.status_code >= 400:
         return response
     cls = _audit_classify(request.method, request.url.path)
