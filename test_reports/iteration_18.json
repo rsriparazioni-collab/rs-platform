@@ -1,0 +1,32 @@
+{
+  "summary": "Iter 18: full-stack test bug fix ClientForm (matita) + fornitori idempotente + client/collegati + azioni scheda 'Aggiungi al cliente' + ritiro con ?cliente=. Backend 7/7 PASS. Frontend: TUTTE le funzionalita richieste verificate — bug fix confermato (edit dalla matita ora ricarica GET /clients/{id} e non azzera indirizzo/civico/cap/comune/iban/note/data_verifica/data_cambio quando salvi cambiando solo telefono).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dialog Nuovo cliente / Scheda cliente", "issues": ["Warning React aria (persistente da iter16): 'Missing Description or aria-describedby={undefined} for {DialogContent}' — aggiungere <DialogDescription> ai DialogContent principali."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter18_clients_fornitori.py", "/app/test_reports/pytest/iter18.xml"],
+  "action_items": [
+    "(Non bloccante) Il review request cita 'select-fornitore-nuovo-btn' e 'select-nuovo-fornitore-nuovo-btn' — i testid effettivi coincidono, OK. (Precedente ambiguita — nessuna azione).",
+    "(Non bloccante) Aggiungere <DialogDescription> per rimuovere warning a11y su tutti i DialogContent (ricorrente da iter16).",
+    "(Non bloccante) server.py ora 5147 righe — split in moduli (clients, fornitori, ritiri, telefonia, regole_prezzi) sempre piu' urgente."
+  ],
+  "critical_code_review_comments": [
+    "Fix bug confermato: ClientForm.jsx (linee 103-121) in edit-mode chiama SEMPRE api.get(`/clients/${client.id}`) dopo applica(client) — cosi' evita di salvare i valori parziali della riga di lista. Il PATCH successivo usa i dati completi. Ottimo.",
+    "Il PATCH /clients/{id} in server.py usa ClientInput (modello COMPLETO, non parziale) — quindi ogni campo assente sarebbe azzerato al default: e' proprio la causa storica del bug 'indirizzo/iban perso'. Il fix lato client e' corretto ma fragile: se un altro punto del codice chiama PATCH senza tutti i campi, ricompare. Consigliato esporre un modello Optional o rinominare in PUT.",
+    "add_fornitore idempotente OK (case-insensitive), ma nessun endpoint DELETE fornitore custom — la pulizia QA passa da mongo diretto.",
+    "client_collegati usa regex case-insensitive su CF/P.IVA/telefono >=6 caratteri, esclude sempre l'id corrente — coerente con il requisito.",
+    "server.py 5147 righe: split modulare non piu' rinviabile."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter18_clients_fornitori.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% flussi principali"},
+  "test_credentials": "Admin rsriparazioni@gmail.com/Devis2026! + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV",
+  "seed_data_creation": "Solo TEST_ transient: 1 cliente QAMario08120 QARossi08120 (Ditta individuale con indirizzo/IBAN/note/date completi) e 1 utenza gas collegata creati durante i test. Fornitori 'QA Energia Test' e 'QA Energia Test 2' aggiunti tramite +Nuovo. TUTTO PULITO al termine (client + fornitori QA cancellati).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Fix accertato. Verifiche eseguite: (1) POST /clients con tutti i campi (civico/cap/comune/provincia/iban/note/data_verifica/data_cambio) -> GET conferma persistenza; (2) PATCH ripassando tutti i campi tranne telefono cambiato -> nessuna perdita dati; (3) POST /fornitori idempotente case-insensitive (QA Energia test != QA Energia TEST duplicati); (4) GET /clients/{id}/collegati trova record con stesso CF/tel escludendo se stesso; (5) UI: apertura form matita ora ricarica full record, +Nuovo fornitore funziona su entrambi i campi (testid select-fornitore-nuovo-btn e select-nuovo-fornitore-nuovo-btn), 'Utenza Gas' precompila anagrafica+tipo_bolletta=Gas, Riparazione/SIM/Internet mostrano servizio-client-selected, Ritiro naviga a /ritiri?cliente=<id> con ritiro-client-selected valorizzato; (6) /whatsapp e /dashboard (pannello Coda WhatsApp visibile) senza errori. detail-indirizzo formato: 'Via Verdi 12/A, 23100 Sondrio, SO'.",
+  "rca of the issue": "RCA del bug 'IBAN/indirizzo/note persi': il PATCH /clients/{id} lato backend accetta ClientInput COMPLETO (non parziale). Nella lista Clienti la riga contiene solo un sottoinsieme dei campi; il vecchio ClientForm applicava direttamente questo oggetto come stato iniziale del form senza fare GET, quindi il PATCH sovrascriveva con stringhe vuote i campi non presenti. FIX applicato in ClientForm.jsx lines 112-115: in edit-mode ora chiama api.get(`/clients/${client.id}`) e reapplica lo state completo — cosi' il payload PATCH contiene tutti i campi originali. Confermato via test UI end-to-end (indirizzo/IBAN/note/data_verifica/data_cambio invariati dopo modifica del solo telefono)."
+}

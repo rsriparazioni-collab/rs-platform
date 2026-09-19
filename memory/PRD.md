@@ -273,3 +273,9 @@ Vedi /app/memory/test_credentials.md
 ## 2026-09-17 — Sessione più sicura (a+b confermato dall'utente)
 - Segnalazione "entrato senza chiedermi nulla" = cookie sessione 24h ancora valido (login sempre password+TOTP, nessun bypass). Ora: cookie `gu_token` di SESSIONE (senza max_age → scade alla chiusura del browser), token con `exp` = 30 min di inattività (refresh scorrevole: nuovo cookie emesso dal middleware se il token ha >60s, stesso `login_at`), limite assoluto 8h da `login_at` (401 "Sessione scaduta"). Costanti `SESSION_INATTIVITA_MIN/SESSION_MAX_ORE/SESSION_REFRESH_DOPO_SEC`. Bearer resta per i test (nessun refresh). Verificato: cookie senza Max-Age, 401 inattività, 401 >8h, refresh cookie 200.
 - Pagina Utenti mostra già badge "2FA attiva/off" per utente (verificabile in produzione dall'admin).
+
+## 2026-09-17 — Fix perdita dati in modifica, indirizzo completo, fornitori custom, "Aggiungi al cliente" (iter 18 PASS)
+- BUG ROOT CAUSE "non salva indirizzo/IBAN/note/date": la matita nella lista apriva ClientForm con la riga proiettata (senza quei campi) e il PATCH li azzerava. Fix: ClientForm in edit carica SEMPRE `GET /clients/{id}`.
+- Indirizzo: nuovi campi `civico`, `cap`, `comune` (+ indirizzo, provincia) in ClientInput/form/dettaglio (`detail-indirizzo`).
+- Fornitori energia custom: collezione `fornitori`, `POST /fornitori {nome}` (tutti i ruoli, idempotente case-insensitive), `GET /meta` suppliers = SUPPLIERS + custom. UI: `FornitoreSelect` con "+ Nuovo" su fornitore provenienza e nuovo fornitore.
+- Cliente multi-servizio: `GET /clients/{id}/collegati` (altre utenze stesso CF/P.IVA/telefono, scope ruolo). ClientDetail: sezione "Altre utenze della stessa persona" + blocco "Aggiungi al cliente" (Utenza Gas/Luce → ClientForm `prefill` anagrafica; Riparazione/SIM/Internet → ServizioForm `presetClient`; Ritiro → `/ritiri?cliente=<id>` apre form precompilato).
