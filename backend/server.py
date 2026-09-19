@@ -738,6 +738,9 @@ class ClientInput(BaseModel):
     codice_fiscale: str = ""
     p_iva: str = ""
     indirizzo: str = ""
+    civico: str = ""
+    cap: str = ""
+    comune: str = ""
     pod: str = ""
     pdr: str = ""
     iban: str = ""
@@ -998,16 +1001,52 @@ async def toggle_venditore_pagato(client_id: str, user: dict = Depends(get_curre
 @api_router.get("/meta")
 async def get_meta(user: dict = Depends(get_current_user)):
     stores = await db.stores.find({}, {"_id": 0}).to_list(500)
+    custom = [f["nome"] async for f in db.fornitori.find({}, {"_id": 0, "nome": 1}).sort("nome", 1)]
+    suppliers = SUPPLIERS + [c for c in custom if c not in SUPPLIERS]
     if not (user["role"] == "admin" or user.get("can_view_all")):
         ids = set(user.get("store_ids", []))
         stores = [s for s in stores if s["id"] in ids]
     operators = await db.users.find({"role": {"$in": ["operatore", "admin"]}, "active": True},
                                     {"_id": 0, "password_hash": 0}).to_list(200)
-    return {"suppliers": SUPPLIERS, "lavorazioni": LAVORAZIONI,
+    return {"suppliers": suppliers, "lavorazioni": LAVORAZIONI,
             "tel_operators": {"sim": SIM_OPERATORS, "internet": INTERNET_OPERATORS, "fisso": FISSO_OPERATORS},
             "rip_stati": RIP_STATI, "servizio_tipi": SERVIZIO_TIPI,
             "stores": [{"id": s["id"], "nome": s["nome"], "referente": s.get("referente", "")} for s in stores],
             "operators": [{"id": o["id"], "name": o["name"]} for o in operators]}
+
+class FornitoreInput(BaseModel):
+    nome: str
+
+@api_router.post("/fornitori")
+async def add_fornitore(input: FornitoreInput, user: dict = Depends(get_current_user)):
+    nome = " ".join(input.nome.split()).strip()
+    if len(nome) < 2:
+        raise HTTPException(status_code=400, detail="Nome fornitore troppo corto")
+    esistenti = SUPPLIERS + [f["nome"] async for f in db.fornitori.find({}, {"_id": 0, "nome": 1})]
+    match = next((e for e in esistenti if e.lower() == nome.lower()), None)
+    if not match:
+        await db.fornitori.insert_one({"id": str(uuid.uuid4()), "nome": nome, "created_by": user["id"],
+                                       "created_at": datetime.now(timezone.utc).isoformat()})
+    return {"nome": match or nome}
+
+@api_router.get("/clients/{client_id}/collegati")
+async def client_collegati(client_id: str, user: dict = Depends(get_current_user)):
+    """Altre utenze (record clients) della stessa persona: stesso CF, P.IVA o telefono."""
+    c = await get_scoped_client(client_id, user)
+    ors = []
+    for k in ("codice_fiscale", "p_iva", "telefono"):
+        v = (c.get(k) or "").strip()
+        if len(v) >= 6:
+            ors.append({k: {"$regex": f"^{re.escape(v)}$", "$options": "i"}})
+    if not ors:
+        return []
+    scope = client_scope_filter(user)
+    scope.update({"$or": ors, "id": {"$ne": client_id}})
+    proj = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "tipo_bolletta": 1, "nuovo_fornitore": 1, "fornitore_provenienza": 1,
+            "lavorazione": 1, "data_contratto": 1, "venditore_id": 1, "pod": 1, "pdr": 1, "gestione": 1}
+    rows = await db.clients.find(scope, proj).sort("created_at", -1).to_list(50)
+    return [compute_dates(r) for r in rows]
+
 
 @api_router.get("/dashboard/stats")
 async def dashboard_stats(user: dict = Depends(get_current_user)):

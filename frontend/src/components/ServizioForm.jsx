@@ -49,7 +49,7 @@ function prezzoConsigliato(tipo, conRicambio, costo, minuti, tipoRicambio, regol
   return Math.round(base * 1.22 * 100) / 100;
 }
 
-export default function ServizioForm({ open, onClose, servizio, defaultTipo, meta, onSaved }) {
+export default function ServizioForm({ open, onClose, servizio, defaultTipo, meta, onSaved, presetClient }) {
   const isEdit = Boolean(servizio);
   const [tipo, setTipo] = useState(defaultTipo || "riparazione");
   const [form, setForm] = useState({});
@@ -65,13 +65,13 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
       const t = servizio?.tipo || defaultTipo || "riparazione";
       setTipo(t);
       setForm(servizio ? { ...servizio } : { stato: "ingresso", con_ricambio: false, pagato: false, data_ingresso: new Date().toISOString().slice(0, 10) });
-      setClientId(servizio?.client_id || "");
-      setClientLabel(servizio?.client_name || "");
+      setClientId(servizio?.client_id || presetClient?.id || "");
+      setClientLabel(servizio?.client_name || presetClient?.label || "");
       setSearch("");
       setResults([]);
       setNewClient(null);
     }
-  }, [open, servizio, defaultTipo]);
+  }, [open, servizio, defaultTipo, presetClient]);
 
   useEffect(() => {
     if (search.trim().length < 2 || clientId) {

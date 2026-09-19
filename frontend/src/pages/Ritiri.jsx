@@ -64,6 +64,16 @@ export default function Ritiri() {
     setFormOpen(true);
   };
 
+  const clienteParam = new URLSearchParams(window.location.search).get("cliente");
+  useEffect(() => {
+    if (!clienteParam || !meta.stores.length) return;
+    api.get(`/clients/${clienteParam}`).then((r) => {
+      const c = r.data;
+      setForm({ ...EMPTY, store_id: c.venditore_id || meta.stores[0]?.id || "", client_id: c.id, nome: c.nome || "", cognome: c.cognome || "", codice_fiscale: c.codice_fiscale || "" });
+      setFormOpen(true);
+    }).catch(() => {});
+  }, [clienteParam, meta.stores]);
+
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);

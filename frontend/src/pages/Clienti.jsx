@@ -15,6 +15,8 @@ const TIPI_SERVIZI = {
 };
 import ClientForm from "../components/ClientForm";
 import ClientDetail from "../components/ClientDetail";
+import ServizioForm from "../components/ServizioForm";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -28,6 +30,9 @@ export default function Clienti() {
   const [filters, setFilters] = useState({ q: "", lavorazione: "all", tipo_bolletta: "all", venditore_id: "all", no_recensioni: false, tipo_cliente: "all" });
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [prefill, setPrefill] = useState(null);
+  const [servizioForm, setServizioForm] = useState(null);
+  const navigate = useNavigate();
   const [detailRow, setDetailRow] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
@@ -119,7 +124,7 @@ export default function Clienti() {
               <Upload className="h-4 w-4" /> Importa da Google Sheet
             </Button>
           )}
-          <Button onClick={() => { setEditing(null); setFormOpen(true); }} data-testid="add-client-button"
+          <Button onClick={() => { setEditing(null); setPrefill(null); setFormOpen(true); }} data-testid="add-client-button"
                   className="gap-2 bg-slate-900 hover:bg-slate-800">
             <Plus className="h-4 w-4" /> Nuovo cliente
           </Button>
@@ -239,7 +244,7 @@ export default function Clienti() {
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <Button variant="ghost" size="icon" data-testid={`edit-client-${i}`}
-                            onClick={() => { setEditing(c); setFormOpen(true); }}>
+                            onClick={() => { setEditing(c); setPrefill(null); setFormOpen(true); }}>
                       <Pencil className="h-4 w-4 text-slate-500" />
                     </Button>
                   </td>
@@ -256,8 +261,23 @@ export default function Clienti() {
       </div>
 
       <ClientDetail client={detailRow} onClose={() => setDetailRow(null)} onChanged={load}
-                    onEdit={(c) => { setEditing(c); setFormOpen(true); }}
-                    isAdmin={user.role === "admin"} />
+                    onEdit={(c) => { setEditing(c); setPrefill(null); setFormOpen(true); }}
+                    isAdmin={user.role === "admin"}
+                    onNuovaUtenza={(d, tipo) => {
+                      const { id, created_at, updated_at, pod, pdr, kw_potenza, costo_kwh_attuale, costo_smc_attuale, costo_kwh_nuovo, costo_smc_nuovo,
+                        spese_fisse_attuale, spese_fisse_nuovo, data_contratto, data_verifica, data_cambio, note, history, premium_step, tipi_servizi, ...anag } = d;
+                      setEditing(null);
+                      setPrefill({ ...anag, tipo_bolletta: tipo, lavorazione: "da_quotare", pagato: undefined, privacy_firmata: !!d.privacy_firmata });
+                      setFormOpen(true);
+                    }}
+                    onNuovoServizio={(tipo, d) => {
+                      if (tipo === "apri_utenza") { setDetailRow(d); return; }
+                      if (tipo === "ritiro") { navigate(`/ritiri?cliente=${d.id}`); return; }
+                      setServizioForm({ tipo, client: { id: d.id, label: `${d.cognome} ${d.nome}` } });
+                    }} />
+      <ServizioForm open={Boolean(servizioForm)} onClose={() => setServizioForm(null)} servizio={null}
+                    defaultTipo={servizioForm?.tipo} presetClient={servizioForm?.client} meta={meta}
+                    onSaved={() => { setServizioForm(null); load(); setDetailRow((r) => (r ? { ...r } : r)); }} />
 
       <SyncFogliDialog open={syncOpen} onClose={() => setSyncOpen(false)} onDone={load} />
       <Dialog open={importOpen} onOpenChange={(o) => { setImportOpen(o); if (!o) setImportResult(null); }}>
@@ -321,7 +341,7 @@ export default function Clienti() {
         </DialogContent>
       </Dialog>
 
-      <ClientForm open={formOpen} onClose={() => setFormOpen(false)} client={editing} meta={meta} onSaved={load} />
+      <ClientForm open={formOpen} onClose={() => { setFormOpen(false); setPrefill(null); }} client={editing} meta={meta} onSaved={load} prefill={prefill} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen } from "lucide-react";
 import WhatsAppLog from "./WhatsAppLog";
 import MessaggiPrevisti from "./MessaggiPrevisti";
 import { toast } from "sonner";
@@ -9,12 +9,23 @@ import { lavorazioneLabel, lavorazioneBadge, fmtDate, servizioTipoLabel, ripStat
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 
-export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdmin }) {
+export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdmin, onNuovaUtenza, onNuovoServizio }) {
   const [detail, setDetail] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [waLoading, setWaLoading] = useState("");
   const [servizi, setServizi] = useState([]);
+  const [collegati, setCollegati] = useState([]);
   const [logKey, setLogKey] = useState(0);
+
+  const loadCollegati = useCallback(async () => {
+    if (!client) return;
+    try {
+      const res = await api.get(`/clients/${client.id}/collegati`);
+      setCollegati(res.data);
+    } catch {
+      setCollegati([]);
+    }
+  }, [client]);
 
   const toggleBlacklist = async () => {
     const next = !detail.no_recensioni;
@@ -66,8 +77,9 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
       refresh();
       loadAttachments();
       loadServizi();
+      loadCollegati();
     }
-  }, [client, refresh, loadAttachments, loadServizi]);
+  }, [client, refresh, loadAttachments, loadServizi, loadCollegati]);
 
   const downloadBlob = async (url, filename) => {
     try {
@@ -226,7 +238,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                 <div><p className="text-xs text-slate-500">Email</p><p className="font-medium">{detail.email || "-"}</p></div>
                 <div><p className="text-xs text-slate-500">Codice Fiscale</p><p className="font-medium">{detail.codice_fiscale || "-"}</p></div>
                 <div><p className="text-xs text-slate-500">P.IVA</p><p className="font-medium">{detail.p_iva || "-"}</p></div>
-                <div className="col-span-2"><p className="text-xs text-slate-500">Indirizzo</p><p className="font-medium">{[detail.indirizzo, detail.provincia].filter(Boolean).join(" ") || "-"}</p></div>
+                <div className="col-span-2"><p className="text-xs text-slate-500">Indirizzo</p><p className="font-medium" data-testid="detail-indirizzo">{[[detail.indirizzo, detail.civico].filter(Boolean).join(" "), [detail.cap, detail.comune].filter(Boolean).join(" "), detail.provincia].filter(Boolean).join(", ") || "-"}</p></div>
                 <div><p className="text-xs text-slate-500">POD</p><p className="font-medium">{detail.pod || "-"}</p></div>
                 <div><p className="text-xs text-slate-500">PDR</p><p className="font-medium">{detail.pdr || "-"}</p></div>
                 <div className="col-span-2"><p className="text-xs text-slate-500">IBAN</p><p className="font-medium">{detail.iban || "-"}</p></div>
@@ -270,6 +282,54 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   {(detail.history || []).length === 0 && <p className="text-xs text-slate-400">Nessuno storico</p>}
                 </div>
               </div>
+
+              {collegati.length > 0 && (
+                <div data-testid="client-utenze-collegate">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Altre utenze della stessa persona (stesso CF / P.IVA / telefono)</p>
+                  <div className="space-y-1.5">
+                    {collegati.map((u) => (
+                      <button type="button" key={u.id} onClick={() => onNuovoServizio?.("apri_utenza", u)}
+                              className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-left text-xs hover:bg-slate-100"
+                              data-testid={`utenza-collegata-${u.id}`}>
+                        <span className="font-medium text-slate-800">
+                          {u.tipo_bolletta === "gas" ? "Gas" : "Luce"}{u.pod ? ` · POD ${u.pod}` : ""}{u.pdr ? ` · PDR ${u.pdr}` : ""}{u.nuovo_fornitore ? ` · ${u.nuovo_fornitore}` : ""}
+                        </span>
+                        <span className={`status-badge ${lavorazioneBadge(u.lavorazione)}`}>{lavorazioneLabel(u.lavorazione)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(onNuovaUtenza || onNuovoServizio) && !detail.anonimizzato_at && (
+                <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-4" data-testid="aggiungi-al-cliente">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Aggiungi al cliente</p>
+                  <div className="flex flex-wrap gap-2">
+                    {onNuovaUtenza && (
+                      <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-utenza-button"
+                              onClick={() => onNuovaUtenza(detail, detail.tipo_bolletta === "luce" ? "gas" : "luce")}>
+                        <Zap className="h-4 w-4" /> Utenza {detail.tipo_bolletta === "luce" ? "Gas" : "Luce"}
+                      </Button>
+                    )}
+                    {onNuovoServizio && (
+                      <>
+                        <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-riparazione-button" onClick={() => onNuovoServizio("riparazione", detail)}>
+                          <Wrench className="h-4 w-4" /> Riparazione
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-sim-button" onClick={() => onNuovoServizio("sim", detail)}>
+                          <Smartphone className="h-4 w-4" /> SIM
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-internet-button" onClick={() => onNuovoServizio("internet", detail)}>
+                          <Wifi className="h-4 w-4" /> Internet / Fisso
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-ritiro-button" onClick={() => onNuovoServizio("ritiro", detail)}>
+                          <PackageOpen className="h-4 w-4" /> Ritiro telefono
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {servizi.length > 0 && (
                 <div data-testid="client-servizi-collegati">

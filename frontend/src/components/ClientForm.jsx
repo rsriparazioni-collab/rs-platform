@@ -13,7 +13,7 @@ import { LAVORAZIONI } from "../lib/constants";
 
 const EMPTY = {
   nome: "", cognome: "", tipo_cliente: "privato", codice_fiscale: "", p_iva: "",
-  indirizzo: "", provincia: "", pod: "", pdr: "", iban: "", email: "", telefono: "",
+  indirizzo: "", civico: "", cap: "", comune: "", provincia: "", pod: "", pdr: "", iban: "", email: "", telefono: "",
   kw_potenza: "", tipo_bolletta: "luce", fornitore_provenienza: "", gestione: "cambiaora",
   costo_kwh_attuale: "", spese_fisse_attuale: "", costo_smc_attuale: "",
   data_contratto: "", data_verifica: "", data_cambio: "", tipo_contratto: "fisso",
@@ -25,6 +25,32 @@ const NUM_FIELDS = ["kw_potenza", "costo_kwh_attuale", "spese_fisse_attuale", "c
   "costo_kwh_nuovo", "spese_fisse_nuovo", "costo_smc_nuovo"];
 const DATE_FIELDS = ["data_contratto", "data_verifica", "data_cambio"];
 
+function FornitoreSelect({ campo, value, set, suppliers, nuovo, setNuovo, onAdd, testid }) {
+  if (nuovo?.campo === campo) {
+    return (
+      <div className="flex gap-2">
+        <Input autoFocus placeholder="Nome nuovo fornitore" value={nuovo.value}
+               onChange={(e) => setNuovo({ campo, value: e.target.value })}
+               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onAdd(); } }} data-testid={`${testid}-nuovo-input`} />
+        <Button type="button" size="sm" onClick={onAdd} data-testid={`${testid}-nuovo-salva`}>Aggiungi</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => setNuovo(null)} data-testid={`${testid}-nuovo-annulla`}>✕</Button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex gap-2">
+      <Select value={value} onValueChange={(v) => set(campo, v)}>
+        <SelectTrigger data-testid={testid}><SelectValue placeholder="Seleziona fornitore" /></SelectTrigger>
+        <SelectContent className="max-h-64">
+          {suppliers.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <Button type="button" size="sm" variant="outline" title="Aggiungi un fornitore non in elenco"
+              onClick={() => setNuovo({ campo, value: "" })} data-testid={`${testid}-nuovo-btn`}>+ Nuovo</Button>
+    </div>
+  );
+}
+
 function Field({ label, children, testid }) {
   return (
     <div className="space-y-1.5" data-testid={testid ? `field-${testid}` : undefined}>
@@ -34,15 +60,32 @@ function Field({ label, children, testid }) {
   );
 }
 
-export default function ClientForm({ open, onClose, client, meta, onSaved }) {
+export default function ClientForm({ open, onClose, client, meta, onSaved, prefill }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [baseline, setBaseline] = useState(EMPTY);
   const [venditori, setVenditori] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [nuovoFornitore, setNuovoFornitore] = useState(null);
 
   useEffect(() => {
     api.get("/venditori").then((r) => setVenditori(r.data.filter((v) => v.attivo !== false))).catch(() => {});
   }, []);
+  useEffect(() => { setSuppliers(meta.suppliers || []); }, [meta.suppliers]);
+
+  const aggiungiFornitore = async () => {
+    const nome = (nuovoFornitore?.value || "").trim();
+    if (nome.length < 2) return;
+    try {
+      const r = await api.post("/fornitori", { nome });
+      setSuppliers((s) => (s.includes(r.data.nome) ? s : [...s, r.data.nome]));
+      set(nuovoFornitore.campo, r.data.nome);
+      setNuovoFornitore(null);
+      toast.success(`Fornitore "${r.data.nome}" aggiunto`);
+    } catch (e) {
+      toast.error(apiError(e, "Impossibile aggiungere il fornitore"));
+    }
+  };
   const isEdit = Boolean(client);
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
 
@@ -58,20 +101,24 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
   }, [open, dirty]);
 
   useEffect(() => {
-    if (open) {
-      if (client) {
-        const f = { ...EMPTY, ...client };
-        NUM_FIELDS.forEach((k) => { f[k] = f[k] ?? ""; });
-        DATE_FIELDS.forEach((k) => { f[k] = f[k] ? f[k].slice(0, 10) : ""; });
-        setForm(f);
-        setBaseline(f);
-      } else {
-        const f = { ...EMPTY, venditore_id: meta.stores[0]?.id || "" };
-        setForm(f);
-        setBaseline(f);
-      }
+    if (!open) return;
+    const applica = (src) => {
+      const f = { ...EMPTY, ...src };
+      NUM_FIELDS.forEach((k) => { f[k] = f[k] ?? ""; });
+      DATE_FIELDS.forEach((k) => { f[k] = f[k] ? f[k].slice(0, 10) : ""; });
+      setForm(f);
+      setBaseline(f);
+    };
+    if (client) {
+      applica(client);
+      // La riga della lista ha solo alcuni campi: carico SEMPRE la scheda completa per non sovrascrivere dati
+      api.get(`/clients/${client.id}`).then((r) => applica(r.data)).catch(() => toast.error("Impossibile caricare la scheda completa"));
+    } else {
+      const f = { ...EMPTY, venditore_id: meta.stores[0]?.id || "", ...(prefill || {}) };
+      setForm(f);
+      setBaseline(prefill ? { ...EMPTY, venditore_id: meta.stores[0]?.id || "" } : f);
     }
-  }, [open, client, meta]);
+  }, [open, client, meta, prefill]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isLuce = form.tipo_bolletta === "luce";
@@ -150,8 +197,17 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
                          placeholder="11 cifre" data-testid="input-p-iva" />
                 </Field>
               )}
-              <Field label="Indirizzo" testid="indirizzo">
+              <Field label="Via / Indirizzo" testid="indirizzo">
                 <Input value={form.indirizzo} onChange={(e) => set("indirizzo", e.target.value)} data-testid="input-indirizzo" />
+              </Field>
+              <Field label="N. civico" testid="civico">
+                <Input value={form.civico || ""} onChange={(e) => set("civico", e.target.value)} data-testid="input-civico" />
+              </Field>
+              <Field label="CAP" testid="cap">
+                <Input inputMode="numeric" maxLength={5} value={form.cap || ""} onChange={(e) => set("cap", e.target.value.replace(/\D/g, ""))} data-testid="input-cap" />
+              </Field>
+              <Field label="Comune" testid="comune">
+                <Input value={form.comune || ""} onChange={(e) => set("comune", e.target.value)} data-testid="input-comune" />
               </Field>
               <Field label="Provincia" testid="provincia">
                 <Input placeholder="es. SO" maxLength={2} value={form.provincia || ""} onChange={(e) => set("provincia", e.target.value.toUpperCase())} data-testid="input-provincia" />
@@ -215,12 +271,8 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
                 <Input type="number" step="0.5" value={form.spese_fisse_attuale} onChange={(e) => set("spese_fisse_attuale", e.target.value)} data-testid="input-spese-fisse" />
               </Field>
               <Field label="Fornitore di provenienza" testid="fornitore">
-                <Select value={form.fornitore_provenienza} onValueChange={(v) => set("fornitore_provenienza", v)}>
-                  <SelectTrigger data-testid="select-fornitore"><SelectValue placeholder="Seleziona fornitore" /></SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {meta.suppliers.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <FornitoreSelect campo="fornitore_provenienza" value={form.fornitore_provenienza} set={set} suppliers={suppliers}
+                                 nuovo={nuovoFornitore} setNuovo={setNuovoFornitore} onAdd={aggiungiFornitore} testid="select-fornitore" />
               </Field>
             </div>
           </section>
@@ -247,12 +299,8 @@ export default function ClientForm({ open, onClose, client, meta, onSaved }) {
                 </Select>
               </Field>
               <Field label="Nuovo fornitore" testid="nuovo-fornitore">
-                <Select value={form.nuovo_fornitore} onValueChange={(v) => set("nuovo_fornitore", v)}>
-                  <SelectTrigger data-testid="select-nuovo-fornitore"><SelectValue placeholder="Seleziona fornitore" /></SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {meta.suppliers.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <FornitoreSelect campo="nuovo_fornitore" value={form.nuovo_fornitore} set={set} suppliers={suppliers}
+                                 nuovo={nuovoFornitore} setNuovo={setNuovoFornitore} onAdd={aggiungiFornitore} testid="select-nuovo-fornitore" />
               </Field>
               {isLuce ? (
                 <Field label="Nuovo costo €/kWh" testid="costo-kwh-nuovo">
