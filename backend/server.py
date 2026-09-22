@@ -74,7 +74,7 @@ def hash_password(password: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
-SESSION_INATTIVITA_MIN = 30
+SESSION_INATTIVITA_MIN = 120
 SESSION_MAX_ORE = 8
 SESSION_REFRESH_DOPO_SEC = 60
 

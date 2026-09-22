@@ -12,6 +12,24 @@ export function AuthProvider({ children }) {
       .catch(() => setUser(false));
   }, []);
 
+  // Heartbeat: mentre l'utente lavora (mouse/tastiera/touch) rinnova la sessione ogni 5 minuti
+  useEffect(() => {
+    if (!user) return undefined;
+    let last = Date.now();
+    let attivo = false;
+    const segna = () => { attivo = true; };
+    const eventi = ["mousemove", "keydown", "click", "touchstart", "scroll"];
+    eventi.forEach((e) => window.addEventListener(e, segna, { passive: true }));
+    const id = setInterval(() => {
+      if (attivo && Date.now() - last >= 5 * 60 * 1000) {
+        attivo = false;
+        last = Date.now();
+        api.get("/auth/me").catch(() => {});
+      }
+    }, 30000);
+    return () => { clearInterval(id); eventi.forEach((e) => window.removeEventListener(e, segna)); };
+  }, [user]);
+
   const login = async (email, password) => {
     const res = await api.post("/auth/login", { email, password });
     if (res.data.mfa_required) return { mfaToken: res.data.mfa_token };
