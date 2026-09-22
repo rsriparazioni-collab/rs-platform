@@ -88,6 +88,24 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
   };
   const isEdit = Boolean(client);
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
+  const draftKey = `client_form_draft:${client?.id || "nuovo"}`;
+  const [draft, setDraft] = useState(null);
+
+  // Bozza automatica: salva in locale ogni modifica (solo se ci sono dati diversi dalla base)
+  useEffect(() => {
+    if (!open || draft || !dirty) return;
+    localStorage.setItem(draftKey, JSON.stringify({ form, at: new Date().toISOString() }));
+  }, [form, dirty, open, draftKey, draft]);
+
+  const ripristinaBozza = () => {
+    if (draft?.form) setForm({ ...EMPTY, ...draft.form });
+    setDraft(null);
+    toast.success("Bozza ripristinata");
+  };
+  const scartaBozza = () => {
+    localStorage.removeItem(draftKey);
+    setDraft(null);
+  };
 
   useEffect(() => {
     const handler = (e) => {
@@ -102,6 +120,12 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
 
   useEffect(() => {
     if (!open) return;
+    try {
+      const raw = localStorage.getItem(`client_form_draft:${client?.id || "nuovo"}`);
+      setDraft(raw ? JSON.parse(raw) : null);
+    } catch {
+      setDraft(null);
+    }
     const applica = (src) => {
       const f = { ...EMPTY, ...src };
       NUM_FIELDS.forEach((k) => { f[k] = f[k] ?? ""; });
@@ -128,7 +152,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
 
   const handleClose = () => {
     if (dirty && !isEdit) {
-      if (!window.confirm("Ci sono dati non salvati. Vuoi uscire senza salvare?")) return;
+      if (!window.confirm("Ci sono dati non salvati. Vuoi uscire senza salvare? (La bozza resta salvata in locale)")) return;
     }
     onClose();
   };
@@ -150,6 +174,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
       }
       setForm(EMPTY);
       setBaseline(EMPTY);
+      localStorage.removeItem(draftKey);
       onSaved();
       onClose();
     } catch (err) {
@@ -168,6 +193,18 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-6" data-testid="client-form">
+          {draft && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="client-draft-banner">
+              <span>
+                Bozza non salvata trovata ({new Date(draft.at).toLocaleString("it-IT")})
+                {draft.form?.cognome || draft.form?.nome ? ` — ${draft.form.cognome || ""} ${draft.form.nome || ""}`.trimEnd() : ""}
+              </span>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" onClick={ripristinaBozza} data-testid="client-draft-restore" className="bg-amber-600 hover:bg-amber-700">Ripristina bozza</Button>
+                <Button type="button" size="sm" variant="outline" onClick={scartaBozza} data-testid="client-draft-discard">Scarta</Button>
+              </div>
+            </div>
+          )}
           <section>
             <h3 className="mb-3 font-heading text-sm font-semibold text-slate-800">Anagrafica</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
