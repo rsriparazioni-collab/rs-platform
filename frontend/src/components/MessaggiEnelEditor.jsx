@@ -6,7 +6,7 @@ import { Textarea } from "./ui/textarea";
 import { Button } from "./ui/button";
 
 const CAMPI = [
-  { key: "recensione_deborah", label: "Recensione ENEL – numero Deborah (Morbegno)", hint: "Inviata 2 minuti dopo la privacy ai clienti ENEL non di Gravedona" },
+  { key: "recensione_deborah", label: "Recensione ENEL – numero Deborah (Morbegno)", hint: "Inviata 5 secondi dopo la privacy ai clienti ENEL non di Gravedona" },
   { key: "recensione_gravedona", label: "Recensione ENEL – Gravedona", hint: "Inviata dal numero del negozio Gravedona ai suoi clienti ENEL" },
   { key: "truffe", label: "Anti-truffa ENEL", hint: "Inviato 10 giorni dopo l'attivazione. *testo* = grassetto, _testo_ = corsivo" },
 ];

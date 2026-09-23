@@ -3125,6 +3125,18 @@ async def wa_send(phone: str, message: str, session: str = "default", tipo: str 
 
 PRIVACY_PROXY = "https://rsriparazioni.com/api/proxy.php"
 
+REVIEW_DELAY_SEC = 5
+
+def programma_svuota_coda(dopo_sec: int = REVIEW_DELAY_SEC + 1) -> None:
+    """Svuota la coda WhatsApp poco dopo l'accodamento (senza aspettare il giro da 60s)."""
+    async def _run():
+        await asyncio.sleep(dopo_sec)
+        try:
+            await process_whatsapp_queue()
+        except Exception as e:
+            logger.error(f"svuota coda immediata: {e}")
+    asyncio.create_task(_run())
+
 STORE_TO_SITO = {"tirano": "tirano", "sondalo": "sondalo", "sondrio": "sondrio",
                  "sondrio grosio": "grosio", "gravedona": "gravedona"}
 
@@ -3251,16 +3263,17 @@ async def invia_privacy_cliente(c: dict, queue_review: bool = True) -> dict:
         if queue_review and not c.get("no_recensioni"):
             await db.whatsapp_queue.insert_one({
             "id": str(uuid.uuid4()), "client_id": client_id, "phone": c["telefono"],
-            "type": "review", "message": await review_msg_cliente(c), "send_after": (now + timedelta(minutes=2)).isoformat(),
+            "type": "review", "message": await review_msg_cliente(c), "send_after": (now + timedelta(seconds=REVIEW_DELAY_SEC)).isoformat(),
             "session": sess,
             "sent": False, "created_at": now.isoformat()})
+            programma_svuota_coda()
     if registered:
         updates["privacy_firmata"] = True
         updates["privacy_registered_at"] = now.isoformat()
     if updates:
         await db.clients.update_one({"id": client_id}, {"$set": updates})
     return {"status": "ok", "privacy_registered": registered, "registration_error": reg_error,
-            "wa_error": wa_error, "review_scheduled_at": (now + timedelta(minutes=2)).isoformat() if not wa_error else None}
+            "wa_error": wa_error, "review_scheduled_at": (now + timedelta(seconds=REVIEW_DELAY_SEC)).isoformat() if not wa_error else None}
 
 @api_router.post("/clients/{client_id}/whatsapp/review")
 async def whatsapp_review(client_id: str, user: dict = Depends(get_current_user)):
@@ -3884,8 +3897,9 @@ async def accoda_recensione_riparazione(svc: dict) -> bool:
         "id": str(uuid.uuid4()), "client_id": svc["client_id"], "servizio_id": svc["id"],
         "phone": client_doc["telefono"], "type": "review", "message": store_msg(store, "msg_recensione"),
         "session": svc.get("venditore_id") or "default",
-        "send_after": (now + timedelta(minutes=2)).isoformat(), "sent": False, "created_at": now.isoformat()})
+        "send_after": (now + timedelta(seconds=REVIEW_DELAY_SEC)).isoformat(), "sent": False, "created_at": now.isoformat()})
     await db.servizi.update_one({"id": svc["id"]}, {"$set": {"review_queued_at": now.isoformat()}})
+    programma_svuota_coda()
     return True
 
 class BlacklistInput(BaseModel):
@@ -4641,9 +4655,10 @@ async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_c
                 "id": str(uuid.uuid4()), "client_id": svc["client_id"], "servizio_id": servizio_id,
                 "phone": client_doc["telefono"], "type": "review", "message": review_msg,
                 "session": svc.get("venditore_id") or "default",
-                "send_after": (now + timedelta(minutes=2)).isoformat(), "sent": False,
+                "send_after": (now + timedelta(seconds=REVIEW_DELAY_SEC)).isoformat(), "sent": False,
                 "created_at": now.isoformat()})
             review_queued = True
+            programma_svuota_coda()
     if registered:
         updates["privacy_firmata"] = True
         updates["privacy_registered_at"] = now.isoformat()

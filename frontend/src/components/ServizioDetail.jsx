@@ -171,7 +171,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
         : stato === "pronto"
           ? "Stato aggiornato: Pronto in laboratorio. Avviso WhatsApp al negozio in invio..."
         : stato === "consegnato" && !detail.client_contacts?.no_recensioni
-          ? "Dispositivo consegnato. Richiesta recensione in partenza tra 2 minuti."
+          ? "Dispositivo consegnato. Richiesta recensione in partenza tra pochi secondi."
           : `Stato aggiornato: ${ripStatoLabel(stato)}`);
       setTimeout(refresh, 2500);
       refresh();
@@ -213,7 +213,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
       if (res.data.registration_error) toast.warning(`Registrazione sito: ${res.data.registration_error}`);
       if (res.data.wa_error) toast.warning(`WhatsApp non inviato: ${res.data.wa_error}`);
       else toast.success(res.data.review_queued
-        ? "Messaggio privacy inviato. Recensione del negozio in partenza tra 2 minuti."
+        ? "Messaggio privacy inviato. Recensione del negozio in partenza tra pochi secondi."
         : detail.tipo === "riparazione"
           ? "Messaggio privacy inviato. La recensione partirà alla consegna del dispositivo."
           : "Messaggio privacy inviato (nessun link recensioni configurato per questo negozio)");

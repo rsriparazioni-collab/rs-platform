@@ -8,7 +8,7 @@ const CAMPI = [
   { key: "msg_privacy", label: "Messaggio privacy", hint: "Inviato col link privacy" },
   { key: "msg_pronto", label: "Messaggio 'pronto per il ritiro'", hint: "Inviato quando la riparazione passa a Pronto" },
   { key: "msg_promemoria", label: "Promemoria ritiro (dopo 7 giorni)", hint: "Se il cliente non ritira entro 7 giorni dall'avviso" },
-  { key: "msg_recensione", label: "Richiesta recensione", hint: "Inviata 2 minuti dopo la consegna del dispositivo" },
+  { key: "msg_recensione", label: "Richiesta recensione", hint: "Inviata 5 secondi dopo la consegna del dispositivo" },
   { key: "msg_vincolo", label: "Scadenza vincolo telefonia (30 gg prima)", hint: "Per Mobile/Fisso con vincolo > 0 mesi" },
   { key: "msg_offerta_annuale", label: "Scadenza offerta annuale (30 gg prima)", hint: "Per Mobile/Fisso con vincolo 0: ogni anno dall'attivazione" },
   { key: "msg_rinnovo_energia", label: "Rinnovo contratto luce/gas (60 gg prima)", hint: "Inviato al 10° mese dall'attivazione del contratto energia" },
