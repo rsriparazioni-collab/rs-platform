@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "react-qr-code";
-import { MessageCircle, CheckCircle2, XCircle, RefreshCw, Store, QrCode } from "lucide-react";
+import { MessageCircle, CheckCircle2, XCircle, RefreshCw, Store, QrCode, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 import api from "../lib/api";
 import { fmtDateTime } from "../lib/constants";
 import { Button } from "../components/ui/button";
@@ -61,6 +62,19 @@ export default function WhatsApp() {
       setPairField(sessionId, { loading: false, code: res.data.code });
     } catch (e) {
       setPairField(sessionId, { loading: false, error: e.response?.data?.detail || "Richiesta codice fallita, riprova" });
+    }
+  };
+
+  const resetSession = async (sessionId) => {
+    if (!window.confirm("Reimpostare il collegamento? Le credenziali salvate per questo numero vengono cancellate e viene generato un nuovo QR.")) return;
+    setPairField(sessionId, { resetting: true, error: "", code: null });
+    try {
+      await api.post("/whatsapp/reset", { session: sessionId });
+      setPairField(sessionId, { resetting: false });
+      setOpenQr(sessionId);
+      toast.success("Collegamento reimpostato: nuovo QR in generazione (attendi qualche secondo)");
+    } catch (e) {
+      setPairField(sessionId, { resetting: false, error: e.response?.data?.detail || "Reset fallito" });
     }
   };
 
@@ -134,10 +148,14 @@ export default function WhatsApp() {
                 </p>
               ) : (
                 <div className="mt-3 space-y-3">
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" className="gap-1.5"
                             onClick={() => setOpenQr(openQr === c.id ? null : c.id)} data-testid={`wa-qr-button-${tid(c.id)}`}>
                       <QrCode className="h-3.5 w-3.5" /> {openQr === c.id ? "Nascondi QR" : "Mostra QR"}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="gap-1.5 text-rose-600 hover:text-rose-700" disabled={p.resetting}
+                            onClick={() => resetSession(c.id)} data-testid={`wa-reset-button-${tid(c.id)}`} title="Usa se il QR non compare o il codice non funziona">
+                      <RotateCcw className="h-3.5 w-3.5" /> {p.resetting ? "Reimposto..." : "Reimposta collegamento"}
                     </Button>
                   </div>
                   {openQr === c.id && (
@@ -147,7 +165,10 @@ export default function WhatsApp() {
                           <QRCode value={qrValue} size={180} />
                         </div>
                       ) : (
-                        <p className="text-xs text-slate-500">Generazione QR in corso...</p>
+                        <div className="space-y-1">
+                          <p className="text-xs text-slate-500">Generazione QR in corso...</p>
+                          <p className="text-xs text-amber-700">Se dopo 20 secondi non compare, premi "Reimposta collegamento".</p>
+                        </div>
                       )}
                       <p className="mt-2 text-xs text-slate-500">WhatsApp → Dispositivi collegati → Collega un dispositivo</p>
                     </div>

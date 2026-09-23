@@ -3269,6 +3269,24 @@ class PairInput(BaseModel):
     phone: str
     session: str = "default"
 
+class ResetInput(BaseModel):
+    session: str = "default"
+
+@api_router.post("/whatsapp/reset")
+async def whatsapp_reset(input: ResetInput, user: dict = Depends(get_current_user)):
+    """Reimposta una sessione bloccata (nessun QR / codice non valido): cancella le credenziali e rigenera il QR."""
+    check_wa_session(user, input.session)
+    try:
+        async with httpx.AsyncClient(timeout=25) as http_client:
+            resp = await http_client.post(f"{WA_SERVICE}/reset", json={"session": input.session}, headers=wa_headers())
+        if resp.status_code == 404:
+            raise HTTPException(status_code=501, detail="Il servizio WhatsApp su Railway va aggiornato (manca /reset): fai il redeploy della cartella whatsapp-service")
+        return resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Servizio WhatsApp non raggiungibile: {e}")
+
 @api_router.post("/whatsapp/pair")
 async def whatsapp_pair(input: PairInput, user: dict = Depends(get_current_user)):
     check_wa_session(user, input.session)

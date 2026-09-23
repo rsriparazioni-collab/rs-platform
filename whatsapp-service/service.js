@@ -96,6 +96,25 @@ app.post('/pair', async (req, res) => {
   }
 });
 
+app.post('/reset', async (req, res) => {
+  const id = sanitizeId(req.body && req.body.session);
+  const sess = sessions[id];
+  try {
+    if (sess && sess.sock) {
+      try { if (sess.connected) await sess.sock.logout(); } catch (e) { console.error(`[${id}] logout:`, e.message); }
+      try { sess.sock.end(undefined); } catch (e) { /* ignore */ }
+    }
+    delete sessions[id];
+    fs.rmSync(path.join(AUTH_DIR, id), { recursive: true, force: true });
+    console.log(`[${id}] Sessione reimpostata`);
+    const fresh = await initSession(id);
+    res.json({ ok: true, session: id, has_qr: Boolean(fresh.qr) });
+  } catch (e) {
+    console.error(`[${id}] Reset error:`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/send', async (req, res) => {
   const { phone, message, session } = req.body || {};
   if (!phone || !message) return res.status(400).json({ success: false, error: 'phone e message obbligatori' });
