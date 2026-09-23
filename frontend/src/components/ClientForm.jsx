@@ -9,12 +9,12 @@ import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
-import { LAVORAZIONI } from "../lib/constants";
+import { LAVORAZIONI, ENEL_OPERAZIONI } from "../lib/constants";
 
 const EMPTY = {
   nome: "", cognome: "", tipo_cliente: "privato", codice_fiscale: "", p_iva: "",
   indirizzo: "", civico: "", cap: "", comune: "", provincia: "", pod: "", pdr: "", iban: "", email: "", telefono: "",
-  kw_potenza: "", tipo_bolletta: "luce", fornitore_provenienza: "", gestione: "cambiaora",
+  kw_potenza: "", tipo_bolletta: "luce", fornitore_provenienza: "", gestione: "cambiaora", enel_operazione: "",
   costo_kwh_attuale: "", spese_fisse_attuale: "", costo_smc_attuale: "",
   data_contratto: "", data_verifica: "", data_cambio: "", tipo_contratto: "fisso",
   nuovo_fornitore: "", costo_kwh_nuovo: "", spese_fisse_nuovo: "", costo_smc_nuovo: "",
@@ -264,15 +264,28 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
           <section>
             <h3 className="mb-3 font-heading text-sm font-semibold text-slate-800">Utenza attuale</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Gestione (canale WhatsApp)" testid="gestione">
-                <Select value={form.gestione || "cambiaora"} onValueChange={(v) => set("gestione", v)}>
+              <Field label={isEdit && client?.gestione === "enel" ? "Gestione (ENEL — bloccata)" : "Gestione"} testid="gestione">
+                <Select value={form.gestione || "cambiaora"} onValueChange={(v) => set("gestione", v)} disabled={isEdit && form.gestione === "enel" && baseline.gestione === "enel"}>
                   <SelectTrigger data-testid="select-gestione"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cambiaora">CambiaOra (numero 3519460591)</SelectItem>
-                    <SelectItem value="enel">ENEL (numero Deborah / Gravedona)</SelectItem>
+                    <SelectItem value="cambiaora">CambiaOra (progetto energia, num. 3519460591)</SelectItem>
+                    <SelectItem value="enel">ENEL (ufficio utenze dirette Enel)</SelectItem>
                   </SelectContent>
                 </Select>
+                {isEdit && baseline.gestione === "enel" && (
+                  <p className="text-xs text-amber-700">Cliente ENEL: si sposta solo con il tasto "Sposta a CambiaOra" nella scheda.</p>
+                )}
               </Field>
+              {form.gestione === "enel" && (
+                <Field label="Operazione ENEL *" testid="enel-operazione">
+                  <Select value={form.enel_operazione || ""} onValueChange={(v) => set("enel_operazione", v)} required>
+                    <SelectTrigger data-testid="select-enel-operazione"><SelectValue placeholder="Seleziona operazione" /></SelectTrigger>
+                    <SelectContent>
+                      {ENEL_OPERAZIONI.map((o) => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
               <Field label="Tipo bolletta" testid="tipo-bolletta">
                 <Select value={form.tipo_bolletta} onValueChange={(v) => set("tipo_bolletta", v)}>
                   <SelectTrigger data-testid="select-tipo-bolletta"><SelectValue /></SelectTrigger>

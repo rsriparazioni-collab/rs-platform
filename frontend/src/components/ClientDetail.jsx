@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen, ArrowLeftRight } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 import WhatsAppLog from "./WhatsAppLog";
 import MessaggiPrevisti from "./MessaggiPrevisti";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import PortaleBox from "./PortaleBox";
-import { lavorazioneLabel, lavorazioneBadge, fmtDate, servizioTipoLabel, ripStatoLabel, ripStatoBadge, tipoClienteInfo } from "../lib/constants";
+import { lavorazioneLabel, lavorazioneBadge, fmtDate, servizioTipoLabel, ripStatoLabel, ripStatoBadge, tipoClienteInfo, enelOperazioneLabel } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 
 export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdmin, onNuovaUtenza, onNuovoServizio }) {
+  const { user } = useAuth();
+  const canSposta = user?.role === "admin" || user?.role === "operatore" || user?.can_view_all;
   const [detail, setDetail] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [waLoading, setWaLoading] = useState("");
@@ -157,6 +160,22 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
     }
   };
 
+  const spostaGestione = async () => {
+    const aEnel = detail.gestione !== "enel";
+    const motivo = window.prompt(aEnel
+      ? "Spostare questo cliente nell'ufficio ENEL (utenza diretta Enel)? Indica il motivo:"
+      : "SBLOCCO cliente ENEL → CambiaOra. Usare solo se il cliente si è spostato di sua volontà o risulta vecchio cliente Enel. Indica il motivo:");
+    if (motivo === null) return;
+    try {
+      await api.post(`/clients/${detail.id}/sposta-gestione`, { gestione: aEnel ? "enel" : "cambiaora", motivo, enel_operazione: aEnel ? "altro" : "" });
+      toast.success(aEnel ? "Cliente spostato in gestione ENEL" : "Cliente sbloccato e spostato a CambiaOra");
+      refresh();
+      onChanged();
+    } catch (e) {
+      toast.error(apiError(e, "Spostamento non riuscito"));
+    }
+  };
+
   const remove = async () => {
     if (!window.confirm(`Eliminare ${detail.cognome} ${detail.nome}?`)) return;
     try {
@@ -200,8 +219,13 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   {tipoClienteInfo(detail.tipo_cliente).label}
                 </span>
                 <span data-testid="detail-gestione-badge" className={`status-badge ${detail.gestione === "enel" ? "bg-amber-500/15 text-amber-700 border-amber-300" : "bg-fuchsia-500/15 text-fuchsia-700 border-fuchsia-300"}`}>
-                  {detail.gestione === "enel" ? "ENEL" : "CambiaOra"}
+                  {detail.gestione === "enel" ? `ENEL${detail.enel_operazione ? ` · ${enelOperazioneLabel(detail.enel_operazione)}` : ""}` : "CambiaOra"}
                 </span>
+                {detail.gestione !== "enel" && /enel/i.test(detail.fornitore_provenienza || "") && (
+                  <span className="status-badge bg-slate-500/10 text-slate-600 border-slate-300" data-testid="detail-da-enel-badge" title="Cliente CambiaOra proveniente da Enel (fornitore precedente), NON cliente ufficio ENEL">
+                    da Enel (fornitore precedente)
+                  </span>
+                )}
                 <span className={`status-badge ${detail.tipo_contratto === "fisso" ? "bg-sky-500/15 text-sky-700 border-sky-300" : "bg-violet-500/15 text-violet-700 border-violet-300"}`}>
                   Contratto {detail.tipo_contratto}
                 </span>
@@ -431,6 +455,13 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                 <Button size="sm" variant="outline" data-testid="detail-edit-button" onClick={() => onEdit(detail)}>
                   <Pencil className="mr-2 h-4 w-4" /> Modifica
                 </Button>
+                {canSposta && !detail.anonimizzato_at && (
+                  <Button size="sm" variant="outline" data-testid="detail-sposta-gestione-button" onClick={spostaGestione}
+                          className={detail.gestione === "enel" ? "border-amber-300 text-amber-700" : "border-fuchsia-300 text-fuchsia-700"}
+                          title={detail.gestione === "enel" ? "Sblocca: il cliente lascia l'ufficio ENEL e passa a CambiaOra" : "Sposta il cliente nell'ufficio ENEL (utenza diretta)"}>
+                    <ArrowLeftRight className="mr-2 h-4 w-4" /> {detail.gestione === "enel" ? "Sblocca → CambiaOra" : "Sposta a ENEL"}
+                  </Button>
+                )}
                 {(
                   <Button size="sm" variant="outline" data-testid="detail-delete-button"
                           className="text-rose-600 hover:text-rose-700" onClick={remove}>

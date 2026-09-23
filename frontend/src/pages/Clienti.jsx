@@ -223,7 +223,7 @@ export default function Clienti() {
                     <p className="font-medium text-slate-900">
                       {c.cognome} {c.nome}
                       {c.gestione === "enel" && filters.gestione === "all" && (
-                        <span className="ml-2 status-badge bg-amber-500/15 text-amber-700 border-amber-300" data-testid={`client-enel-${i}`}>ENEL</span>
+                        <span className="ml-2 status-badge bg-amber-500/15 text-amber-700 border-amber-300" data-testid={`client-enel-${i}`}>ENEL{c.enel_operazione ? ` · ${c.enel_operazione.toUpperCase()}` : ""}</span>
                       )}
                       {isBusinessCliente(c.tipo_cliente) && (
                         <span className={`ml-2 status-badge ${tipoClienteInfo(c.tipo_cliente).badge}`} data-testid={`client-business-${i}`}>

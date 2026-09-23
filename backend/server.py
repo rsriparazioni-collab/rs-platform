@@ -769,6 +769,34 @@ class ClientInput(BaseModel):
     provincia: str = ""
     venditore_pagato: bool = False
     gestione: str = "cambiaora"
+    enel_operazione: str = ""
+
+ENEL_OPERAZIONI = ["swa", "voltura", "voltura_swa", "subentro", "allaccio", "prima_attivazione", "altro"]
+
+class SpostaGestioneInput(BaseModel):
+    gestione: str
+    motivo: str = ""
+    enel_operazione: str = ""
+
+@api_router.post("/clients/{client_id}/sposta-gestione")
+async def sposta_gestione(client_id: str, input: SpostaGestioneInput, user: dict = Depends(get_current_user)):
+    """Forza lo spostamento ENEL <-> CambiaOra (sblocco). Solo admin/operatore o chi vede tutto."""
+    if not (user["role"] in ("admin", "operatore") or user.get("can_view_all")):
+        raise HTTPException(status_code=403, detail="Solo admin o ufficio possono spostare un cliente ENEL")
+    if input.gestione not in ("enel", "cambiaora"):
+        raise HTTPException(status_code=400, detail="Gestione non valida")
+    c = await get_scoped_client(client_id, user)
+    if c.get("gestione", "cambiaora") == input.gestione:
+        raise HTTPException(status_code=400, detail="Il cliente è già in questa gestione")
+    if not input.motivo.strip():
+        raise HTTPException(status_code=400, detail="Indica il motivo dello spostamento")
+    now = datetime.now(timezone.utc).isoformat()
+    upd = {"gestione": input.gestione, "updated_at": now,
+           "enel_operazione": input.enel_operazione if input.gestione == "enel" else ""}
+    await db.clients.update_one({"id": client_id}, {"$set": upd, "$push": {"spostamenti_gestione": {
+        "da": c.get("gestione", "cambiaora"), "a": input.gestione, "motivo": input.motivo.strip(), "user_name": user["name"], "at": now}}})
+    await log_lavorazione(c, user, c.get("lavorazione", ""), f"Spostato da {c.get('gestione', 'cambiaora').upper()} a {input.gestione.upper()}: {input.motivo.strip()}")
+    return compute_dates(await db.clients.find_one({"id": client_id}, {"_id": 0}))
 
 @api_router.get("/clients/conteggio-gestione")
 async def clients_conteggio_gestione(user: dict = Depends(get_current_user)):
@@ -808,7 +836,7 @@ async def list_clients(user: dict = Depends(get_current_user),
             "telefono": 1, "email": 1, "codice_fiscale": 1, "pod": 1, "pdr": 1,
             "tipo_bolletta": 1, "fornitore_provenienza": 1, "lavorazione": 1,
             "data_contratto": 1, "venditore_id": 1, "pagato": 1, "last_payment_date": 1,
-            "privacy_firmata": 1, "created_at": 1, "no_recensioni": 1, "gestione": 1}
+            "privacy_firmata": 1, "created_at": 1, "no_recensioni": 1, "gestione": 1, "enel_operazione": 1}
     clients = await db.clients.find(scope, proj).sort("created_at", -1).to_list(5000)
     tipi_per_client = {}
     async for row in db.servizi.aggregate([{"$group": {"_id": "$client_id", "tipi": {"$addToSet": "$tipo"}}}]):
@@ -894,6 +922,8 @@ async def update_client(client_id: str, input: ClientInput, user: dict = Depends
     if not old:
         raise HTTPException(status_code=404, detail="Cliente non trovato")
     data = input.model_dump(exclude_unset=True)
+    if old.get("gestione") == "enel" and data.get("gestione", "enel") != "enel":
+        raise HTTPException(status_code=400, detail="Cliente ENEL bloccato: per spostarlo a CambiaOra usa il tasto 'Sposta a CambiaOra' nella scheda")
     if "tipo_cliente" in data:
         valida_tipo_cliente({**old, **data})
         if (data.get("tipo_cliente") or "privato") == "privato":

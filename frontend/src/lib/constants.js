@@ -89,6 +89,18 @@ export const MAGAZZINO_CATEGORIE = [
 
 export const magazzinoCategoriaLabel = (id) =>
   MAGAZZINO_CATEGORIE.find((c) => c.id === id)?.label || id || "-";
+export const ENEL_OPERAZIONI = [
+  { id: "swa", label: "SWA – Switch da altro operatore" },
+  { id: "voltura", label: "Voltura" },
+  { id: "voltura_swa", label: "Voltura con switch (VSA/SWA)" },
+  { id: "subentro", label: "Subentro" },
+  { id: "allaccio", label: "Allaccio" },
+  { id: "prima_attivazione", label: "Prima attivazione" },
+  { id: "altro", label: "Altro" },
+];
+export const enelOperazioneLabel = (id) => ENEL_OPERAZIONI.find((o) => o.id === id)?.label || id || "";
+
+
 
 export const TIPO_CLIENTE = {
   privato: { label: "Privato", badge: "bg-slate-500/10 text-slate-600 border-slate-300" },
