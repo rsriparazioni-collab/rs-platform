@@ -27,7 +27,10 @@ export default function Clienti() {
   const { user } = useAuth();
   const [clients, setClients] = useState([]);
   const [meta, setMeta] = useState({ suppliers: [], lavorazioni: [], stores: [], operators: [] });
-  const [filters, setFilters] = useState({ q: "", lavorazione: "all", tipo_bolletta: "all", venditore_id: "all", no_recensioni: false, tipo_cliente: "all" });
+  const [filters, setFilters] = useState({ q: "", lavorazione: "all", tipo_bolletta: "all", venditore_id: "all", no_recensioni: false, tipo_cliente: "all",
+    gestione: localStorage.getItem("clienti_gestione") || "all" });
+  const [conteggi, setConteggi] = useState(null);
+  const setGestione = (g) => { localStorage.setItem("clienti_gestione", g); setFilters((f) => ({ ...f, gestione: g })); };
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [prefill, setPrefill] = useState(null);
@@ -51,6 +54,8 @@ export default function Clienti() {
     if (filters.venditore_id !== "all") params.venditore_id = filters.venditore_id;
     if (filters.no_recensioni) params.no_recensioni = "1";
     if (filters.tipo_cliente !== "all") params.tipo_cliente = filters.tipo_cliente;
+    if (filters.gestione !== "all") params.gestione = filters.gestione;
+    api.get("/clients/conteggio-gestione").then((r) => setConteggi(r.data)).catch(() => {});
     api.get("/clients", { params }).then((r) => setClients(r.data))
       .catch((e) => toast.error(apiError(e, "Impossibile caricare i clienti")));
   }, [filters]);
@@ -131,6 +136,21 @@ export default function Clienti() {
         </div>
       </div>
 
+      <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" data-testid="gestione-switch" role="tablist">
+        {[
+          { id: "all", label: "Tutti", cls: "bg-slate-900 text-white" },
+          { id: "cambiaora", label: "CambiaOra", cls: "bg-fuchsia-600 text-white" },
+          { id: "enel", label: "ENEL", cls: "bg-amber-500 text-white" },
+        ].map((g) => (
+          <button key={g.id} type="button" role="tab" aria-selected={filters.gestione === g.id} onClick={() => setGestione(g.id)}
+                  data-testid={`gestione-tab-${g.id}`}
+                  className={`flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-colors ${filters.gestione === g.id ? g.cls : "text-slate-600 hover:bg-slate-100"}`}>
+            {g.label}
+            {conteggi && <span className={`rounded-full px-2 py-0.5 text-xs ${filters.gestione === g.id ? "bg-white/25" : "bg-slate-100 text-slate-600"}`}>{conteggi[g.id === "all" ? "tutti" : g.id]}</span>}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="filters-bar">
         <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -202,6 +222,9 @@ export default function Clienti() {
                   <td className="px-4 py-3">
                     <p className="font-medium text-slate-900">
                       {c.cognome} {c.nome}
+                      {c.gestione === "enel" && filters.gestione === "all" && (
+                        <span className="ml-2 status-badge bg-amber-500/15 text-amber-700 border-amber-300" data-testid={`client-enel-${i}`}>ENEL</span>
+                      )}
                       {isBusinessCliente(c.tipo_cliente) && (
                         <span className={`ml-2 status-badge ${tipoClienteInfo(c.tipo_cliente).badge}`} data-testid={`client-business-${i}`}>
                           {tipoClienteInfo(c.tipo_cliente).label}
