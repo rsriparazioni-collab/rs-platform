@@ -1238,7 +1238,7 @@ async def scadenze_settimana(user: dict = Depends(get_current_user)):
     if "riparazioni" in sections:
         svc_scope = servizio_scope(user)
         svc_scope["tipo"] = "riparazione"
-        svc_scope["stato"] = "pronto"
+        svc_scope["stato"] = {"$in": ["pronto", "pronto_ritiro"]}
         rips = await db.servizi.find(svc_scope, {"_id": 0, "id": 1, "client_id": 1, "dispositivo": 1,
                                                  "problema": 1, "updated_at": 1}).to_list(1000)
         names = await clients_name_map(list({s["client_id"] for s in rips}))
@@ -2295,7 +2295,7 @@ async def anonimizza_cliente_core(c: dict, by: str) -> dict:
     return {"status": "ok", "allegati_eliminati": n_att, "messaggi_eliminati": n_wa, "servizi_anonimizzati": n_svc, "ritiri_anonimizzati": n_rit}
 
 RETENTION_ANNI = 5
-STATI_RIP_APERTI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "in_attesa_cliente", "preventivo", "in_lavorazione", "pronto"]
+STATI_RIP_APERTI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "in_attesa_cliente", "preventivo", "in_lavorazione", "pronto", "pronto_ritiro"]
 
 async def pulizia_retention_gdpr() -> dict:
     """Anonimizza i clienti senza alcuna attività (contratti, servizi, ritiri) negli ultimi RETENTION_ANNI anni."""
@@ -2330,7 +2330,7 @@ async def retention_anteprima(admin: dict = Depends(require_admin)):
 async def margini_12_mesi(admin: dict = Depends(require_admin)):
     oggi = date.today().replace(day=1)
     mesi = [(oggi - relativedelta(months=i)).strftime("%Y-%m") for i in range(11, -1, -1)]
-    rips = await db.servizi.find({"tipo": "riparazione", "stato": {"$in": ["consegnato", "pronto", "in_lavorazione"]}}, {"_id": 0}).to_list(50000)
+    rips = await db.servizi.find({"tipo": "riparazione", "stato": {"$in": ["consegnato", "pronto", "pronto_ritiro", "in_lavorazione"]}}, {"_id": 0}).to_list(50000)
     stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)}
     rows = {m: {"mese": m, "label": m[5:] + "/" + m[2:4]} for m in mesi}
     usati = set()
@@ -2450,6 +2450,7 @@ MAGAZZINO_CATEGORIE = ["display", "ricambi", "accessori", "sim", "rigenerati", "
 
 class MagazzinoInput(BaseModel):
     nome: str
+    barcode: str = ""
     categoria: str = "altro"
     store_id: str = ""
     quantita: int = 0
@@ -2471,7 +2472,8 @@ async def list_magazzino(user: dict = Depends(get_current_user), categoria: str 
     if venditore_id and (user["role"] in ("admin", "tecnico") or user.get("can_view_all")):
         scope["store_id"] = venditore_id
     if q:
-        scope["nome"] = {"$regex": re.escape(q), "$options": "i"}
+        rx = {"$regex": re.escape(q), "$options": "i"}
+        scope["$or"] = [{"nome": rx}, {"barcode": rx}]
     items = await db.magazzino.find(scope, {"_id": 0}).sort("nome", 1).to_list(5000)
     store_ids = list({i.get("store_id", "") for i in items if i.get("store_id")})
     stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)
@@ -3341,7 +3343,7 @@ async def export_clients(user: dict = Depends(get_current_user)):
 # ---------------- Servizi (riparazioni / telefonia) ----------------
 
 RIP_STATI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "in_attesa_cliente",
-             "preventivo", "in_lavorazione", "pronto", "consegnato", "non_riparabile"]
+             "preventivo", "in_lavorazione", "pronto", "pronto_ritiro", "consegnato", "non_riparabile"]
 
 SERVIZIO_TIPI = ["riparazione", "accessori", "vendita", "sim", "internet", "fisso"]
 
@@ -3780,7 +3782,7 @@ def apply_rip_dates(data: dict, old: Optional[dict] = None) -> None:
         data["data_ingresso"] = today
     stato = data.get("stato")
     if stato and stato != old.get("stato"):
-        if stato in ("in_lavorazione", "pronto", "consegnato") and not data.get("data_lavorazione") and not old.get("data_lavorazione"):
+        if stato in ("in_lavorazione", "pronto", "pronto_ritiro", "consegnato") and not data.get("data_lavorazione") and not old.get("data_lavorazione"):
             data["data_lavorazione"] = today
         if stato == "consegnato" and not data.get("data_uscita") and not old.get("data_uscita"):
             data["data_uscita"] = today
@@ -3857,9 +3859,11 @@ async def update_servizio(servizio_id: str, input: ServizioInput, background_tas
     if data.get("stato") in ("consegnato", "non_riparabile") and old.get("stato") not in ("consegnato", "non_riparabile"):
         await db.servizi.update_one({"id": servizio_id}, cancella_segreti_update())
     updated = await db.servizi.find_one({"id": servizio_id}, {"_id": 0})
-    if updated.get("tipo") == "riparazione" and updated.get("stato") == "pronto" and old.get("stato") != "pronto" \
+    if updated.get("tipo") == "riparazione" and updated.get("stato") == "pronto_ritiro" and old.get("stato") != "pronto_ritiro" \
             and not updated.get("pronto_msg_sent_at"):
         background_tasks.add_task(invia_avviso_pronto, updated)
+    if updated.get("tipo") == "riparazione" and updated.get("stato") == "pronto" and old.get("stato") != "pronto":
+        background_tasks.add_task(invia_avviso_pronto_negozio, updated)
     if updated.get("tipo") == "riparazione" and updated.get("stato") == "consegnato" and old.get("stato") != "consegnato":
         if await accoda_recensione_riparazione(updated):
             updated["review_queued_at"] = datetime.now(timezone.utc).isoformat()
@@ -4034,7 +4038,7 @@ async def client_gdpr_export(client_id: str, admin: dict = Depends(require_admin
 async def margini_negozi(admin: dict = Depends(require_admin), mese: str = ""):
     mese = mese or date.today().strftime("%Y-%m")
     prec = (date.fromisoformat(mese + "-01") - relativedelta(months=1)).strftime("%Y-%m")
-    rips = await db.servizi.find({"tipo": "riparazione", "stato": {"$in": ["consegnato", "pronto", "in_lavorazione"]}}, {"_id": 0}).to_list(20000)
+    rips = await db.servizi.find({"tipo": "riparazione", "stato": {"$in": ["consegnato", "pronto", "pronto_ritiro", "in_lavorazione"]}}, {"_id": 0}).to_list(20000)
     stores = {s["id"]: s["nome"] for s in await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)}
     acc: dict = {}
     prec_acc: dict = {}
@@ -4408,7 +4412,7 @@ PROMEMORIA_GIORNI = 7
 
 async def invia_promemoria_ritiro() -> dict:
     limite = (datetime.now(timezone.utc) - timedelta(days=PROMEMORIA_GIORNI)).isoformat()
-    svcs = await db.servizi.find({"tipo": "riparazione", "stato": "pronto", "pronto_msg_sent_at": {"$ne": None, "$lte": limite},
+    svcs = await db.servizi.find({"tipo": "riparazione", "stato": "pronto_ritiro", "pronto_msg_sent_at": {"$ne": None, "$lte": limite},
                                   "promemoria_msg_sent_at": {"$in": [None]}}, {"_id": 0}).to_list(1000)
     report = []
     for svc in svcs:
@@ -4526,6 +4530,24 @@ async def avvisi_truffe_ora(admin: dict = Depends(require_admin)):
     return await invia_avvisi_truffe()
 
 PRONTO_MSG = MSG_DEFAULTS["msg_pronto"]
+
+async def invia_avviso_pronto_negozio(svc: dict) -> None:
+    """Stato 'pronto' (in laboratorio): avvisa SOLO il negozio (telefono_avvisi) che deve ritirarlo dal laboratorio."""
+    store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
+    if not store or not store.get("telefono_avvisi"):
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_error": "Negozio senza telefono avvisi"}})
+        return
+    client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "cognome": 1})
+    nome = f"{(client_doc or {}).get('cognome', '')} {(client_doc or {}).get('nome', '')}".strip()
+    msg = (f"Laboratorio: la riparazione N. {svc.get('numero_riparazione', '-')} ({svc.get('dispositivo', 'dispositivo')} di {nome}) "
+           f"è PRONTA. Passa a ritirarla dal laboratorio e portala in negozio {store['nome']}; "
+           "poi metti lo stato 'Pronto da ritirare' per avvisare il cliente.")
+    try:
+        await wa_send(store["telefono_avvisi"], msg, session=svc.get("venditore_id") or "default", tipo="avviso_negozio",
+                      client_id=svc["client_id"], servizio_id=svc["id"])
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_sent_at": datetime.now(timezone.utc).isoformat(), "pronto_negozio_error": None}})
+    except HTTPException as e:
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_error": str(e.detail)}})
 
 async def invia_avviso_pronto(svc: dict) -> None:
     client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "telefono": 1})
@@ -4754,7 +4776,7 @@ async def riparazioni_ferme_per_negozio() -> dict:
 
 RIP_STATO_LABEL = {"ingresso": "Ingresso", "attesa_ricambio_cliente": "Attesa ricambio (cliente)",
                    "attesa_ricambio_carico": "Attesa ricambio (in carico)", "in_attesa_cliente": "In attesa cliente",
-                   "preventivo": "Preventivo", "in_lavorazione": "In lavorazione", "pronto": "Pronto"}
+                   "preventivo": "Preventivo", "in_lavorazione": "In lavorazione", "pronto": "Pronto (laboratorio)", "pronto_ritiro": "Pronto da ritirare"}
 
 def messaggio_riparazioni_ferme(store_name: str, items: list, joy: Optional[list] = None) -> str:
     parti = [f"Buongiorno {store_name}!"]
@@ -4849,6 +4871,8 @@ SEED_USERS = [
      "role": "negozio", "can_view_all": False, "stores": ["Sondalo"]},
     {"name": "Kevin", "email": "kevin@cambiaora.local", "password": "Kevin2026!",
      "role": "negozio", "can_view_all": False, "stores": ["Gravedona"]},
+    {"name": "Bruno", "email": "bruno@cambiaora.local", "password": "Bruno2026!",
+     "role": "tecnico", "can_view_all": False, "stores": ["Morbegno"], "sections": ["riparazioni"]},
 ]
 
 SEED_CLIENT_SAMPLES = [
@@ -4899,6 +4923,7 @@ async def _seed_users():
                                        "password_hash": hash_password(su["password"]), "role": su["role"],
                                        "store_ids": [stores[n] for n in su["stores"] if n in stores],
                                        "can_view_all": su["can_view_all"], "active": True,
+                                       "sections": su.get("sections", ALL_SECTIONS),
                                        "created_at": datetime.now(timezone.utc).isoformat()})
 
 def _sample_client_doc(nome, cognome, tipo_c, bolletta, forn, lav, store_id, dc, pagato, last_pay, op_id, now):

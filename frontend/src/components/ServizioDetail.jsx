@@ -166,8 +166,10 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
   const changeStato = async (stato) => {
     try {
       await api.patch(`/servizi/${detail.id}`, { client_id: detail.client_id, tipo: detail.tipo, stato });
-      toast.success(stato === "pronto" && !detail.pronto_msg_sent_at
-        ? "Stato aggiornato: Pronto. Avviso WhatsApp al cliente in invio..."
+      toast.success(stato === "pronto_ritiro" && !detail.pronto_msg_sent_at
+        ? "Stato aggiornato: Pronto da ritirare. Avviso WhatsApp al cliente in invio..."
+        : stato === "pronto"
+          ? "Stato aggiornato: Pronto in laboratorio. Avviso WhatsApp al negozio in invio..."
         : stato === "consegnato" && !detail.client_contacts?.no_recensioni
           ? "Dispositivo consegnato. Richiesta recensione in partenza tra 2 minuti."
           : `Stato aggiornato: ${ripStatoLabel(stato)}`);
@@ -511,7 +513,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                         className="gap-2 bg-emerald-600 hover:bg-emerald-700">
                   <MessageCircle className="h-4 w-4" /> {waLoading ? "Invio..." : "Invia privacy WhatsApp"}
                 </Button>
-                {isRip && detail.stato === "pronto" && (
+                {isRip && detail.stato === "pronto_ritiro" && (
                   <Button size="sm" variant="outline" onClick={sendPronto} disabled={waLoading} className="border-emerald-300 text-emerald-700" data-testid="servizio-wa-pronto-button">
                     <MessageCircle className="mr-2 h-4 w-4" /> {detail.pronto_msg_sent_at ? "Reinvia avviso pronto" : "Avvisa cliente: pronto"}
                   </Button>

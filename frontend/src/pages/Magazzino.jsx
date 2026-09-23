@@ -12,7 +12,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
-const EMPTY = { nome: "", categoria: "altro", store_id: "", quantita: 0, prezzo_acquisto: "", prezzo_vendita: "", note: "" };
+const EMPTY = { nome: "", barcode: "", categoria: "altro", store_id: "", quantita: 0, prezzo_acquisto: "", prezzo_vendita: "", note: "" };
 
 export default function Magazzino() {
   const { user } = useAuth();
@@ -133,7 +133,7 @@ export default function Magazzino() {
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="magazzino-filters">
         <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input placeholder="Cerca articolo..." className="pl-9" value={filters.q}
+          <Input placeholder="Cerca articolo o barcode..." className="pl-9" value={filters.q}
                  onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))} data-testid="magazzino-search" />
         </div>
         <Select value={filters.categoria} onValueChange={(v) => setFilters((f) => ({ ...f, categoria: v }))}>
@@ -173,6 +173,7 @@ export default function Magazzino() {
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5 font-medium text-slate-900">
                       <Package className="h-3.5 w-3.5 text-slate-400" /> {m.nome}
+                      {m.barcode && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600" data-testid={`magazzino-barcode-${m.id}`}>{m.barcode}</span>}
                     </span>
                     {m.note && <p className="text-xs text-slate-400">{m.note}</p>}
                   </td>
@@ -254,6 +255,11 @@ export default function Magazzino() {
               <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nome articolo *</Label>
               <Input required placeholder="es. Display iPhone 13" value={form.nome}
                      onChange={(e) => setForm({ ...form, nome: e.target.value })} data-testid="magazzino-form-nome" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Barcode / codice fornitore</Label>
+              <Input placeholder="Scansiona o digita il codice a barre (EAN / codice Sifar)" value={form.barcode || ""}
+                     onChange={(e) => setForm({ ...form, barcode: e.target.value.trim() })} data-testid="magazzino-form-barcode" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">

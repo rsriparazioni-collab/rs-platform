@@ -44,7 +44,8 @@ export const RIP_STATI = [
   { id: "in_attesa_cliente", label: "In attesa cliente", badge: "bg-yellow-500/15 text-yellow-700 border-yellow-300" },
   { id: "preventivo", label: "Preventivo", badge: "bg-violet-500/15 text-violet-700 border-violet-300" },
   { id: "in_lavorazione", label: "In lavorazione", badge: "bg-cyan-500/15 text-cyan-700 border-cyan-300" },
-  { id: "pronto", label: "Pronto", badge: "bg-emerald-500/15 text-emerald-700 border-emerald-300" },
+  { id: "pronto", label: "Pronto (in laboratorio)", badge: "bg-emerald-500/15 text-emerald-700 border-emerald-300" },
+  { id: "pronto_ritiro", label: "Pronto da ritirare (in negozio)", badge: "bg-teal-500/15 text-teal-700 border-teal-300" },
   { id: "consegnato", label: "Consegnato", badge: "bg-green-600/15 text-green-800 border-green-300" },
   { id: "non_riparabile", label: "Non riparabile", badge: "bg-rose-500/15 text-rose-700 border-rose-300" },
 ];
