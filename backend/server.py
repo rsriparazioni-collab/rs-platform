@@ -3063,6 +3063,16 @@ async def store_id_by_name(nome: str) -> str:
 def is_enel(c: dict) -> bool:
     return (c or {}).get("gestione") == "enel"
 
+LAB_SESSION = "laboratorio"
+LAB_STORE_NAME = "Morbegno"
+
+async def wa_session_servizio(svc: dict) -> str:
+    """Riparazioni del negozio Morbegno → WhatsApp del laboratorio (Bruno); altrimenti numero del negozio."""
+    sid = svc.get("venditore_id") or "default"
+    if svc.get("tipo") == "riparazione" and sid == await store_id_by_name(LAB_STORE_NAME):
+        return LAB_SESSION
+    return sid
+
 ENEL_MSG_KEYS = {"recensione_deborah": ENEL_REVIEW_MSG[ENEL_SESSION_DEBORAH],
                  "recensione_gravedona": ENEL_REVIEW_MSG["gravedona"], "truffe": ENEL_TRUFFE_MSG}
 
@@ -3208,7 +3218,7 @@ async def whatsapp_log(admin: dict = Depends(require_admin)):
 
 @api_router.get("/whatsapp/sessions-summary")
 async def whatsapp_sessions_summary(admin: dict = Depends(require_admin)):
-    totale = await db.stores.count_documents({}) + 2
+    totale = await db.stores.count_documents({}) + 3
     try:
         async with httpx.AsyncClient(timeout=5) as http_client:
             resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
@@ -3222,7 +3232,10 @@ def wa_sessions_allowed(user: dict) -> Optional[set]:
     """None = tutte le sessioni (admin / chi vede tutto); altrimenti solo i propri negozi."""
     if user["role"] == "admin" or user.get("can_view_all"):
         return None
-    return set(user.get("store_ids", []))
+    allowed = set(user.get("store_ids", []))
+    if user["role"] == "tecnico":
+        allowed.add(LAB_SESSION)
+    return allowed
 
 def check_wa_session(user: dict, session: str) -> None:
     allowed = wa_sessions_allowed(user)
@@ -3937,7 +3950,7 @@ async def accoda_recensione_riparazione(svc: dict) -> bool:
     await db.whatsapp_queue.insert_one({
         "id": str(uuid.uuid4()), "client_id": svc["client_id"], "servizio_id": svc["id"],
         "phone": client_doc["telefono"], "type": "review", "message": store_msg(store, "msg_recensione"),
-        "session": svc.get("venditore_id") or "default",
+        "session": await wa_session_servizio(svc),
         "send_after": (now + timedelta(seconds=REVIEW_DELAY_SEC)).isoformat(), "sent": False, "created_at": now.isoformat()})
     await db.servizi.update_one({"id": svc["id"]}, {"$set": {"review_queued_at": now.isoformat()}})
     programma_svuota_coda()
@@ -4480,7 +4493,7 @@ async def invia_promemoria_ritiro() -> dict:
         msg = store_msg(store, "msg_promemoria", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", ""),
                         numero=svc.get("numero_riparazione", "-"))
         try:
-            await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default", tipo="promemoria", client_id=svc["client_id"], servizio_id=svc["id"])
+            await wa_send(client_doc["telefono"], msg, session=await wa_session_servizio(svc), tipo="promemoria", client_id=svc["client_id"], servizio_id=svc["id"])
             await db.servizi.update_one({"id": svc["id"]}, {"$set": {"promemoria_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
             report.append({"numero": svc.get("numero_riparazione"), "inviato": True})
         except HTTPException as e:
@@ -4598,7 +4611,7 @@ async def invia_avviso_pronto_negozio(svc: dict) -> None:
            f"è PRONTA. Passa a ritirarla dal laboratorio e portala in negozio {store['nome']}; "
            "poi metti lo stato 'Pronto da ritirare' per avvisare il cliente.")
     try:
-        await wa_send(store["telefono_avvisi"], msg, session=svc.get("venditore_id") or "default", tipo="avviso_negozio",
+        await wa_send(store["telefono_avvisi"], msg, session=await wa_session_servizio(svc), tipo="avviso_negozio",
                       client_id=svc["client_id"], servizio_id=svc["id"])
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_sent_at": datetime.now(timezone.utc).isoformat(), "pronto_negozio_error": None}})
     except HTTPException as e:
@@ -4613,7 +4626,7 @@ async def invia_avviso_pronto(svc: dict) -> None:
     msg = store_msg(store, "msg_pronto", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", "dispositivo"),
                     numero=svc.get("numero_riparazione", "-"))
     try:
-        await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default", tipo="pronto", client_id=svc["client_id"], servizio_id=svc["id"])
+        await wa_send(client_doc["telefono"], msg, session=await wa_session_servizio(svc), tipo="pronto", client_id=svc["client_id"], servizio_id=svc["id"])
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_sent_at": datetime.now(timezone.utc).isoformat(),
                                                                  "pronto_msg_error": None}})
     except HTTPException as e:
@@ -4679,7 +4692,7 @@ async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_c
             logger.error(f"Registrazione privacy sito fallita per servizio {servizio_id}: {reg_error}")
     wa_error = None
     try:
-        await wa_send(client_doc["telefono"], store_msg(store, "msg_privacy", nome=client_doc.get("nome", "")), session=client_doc.get("venditore_id") or "default", tipo="privacy", client_id=svc["client_id"], servizio_id=servizio_id)
+        await wa_send(client_doc["telefono"], store_msg(store, "msg_privacy", nome=client_doc.get("nome", "")), session=await wa_session_servizio(svc), tipo="privacy", client_id=svc["client_id"], servizio_id=servizio_id)
     except Exception as e:
         wa_error = getattr(e, "detail", str(e))
     if wa_error and not registered:
@@ -4695,7 +4708,7 @@ async def whatsapp_privacy_servizio(servizio_id: str, user: dict = Depends(get_c
             await db.whatsapp_queue.insert_one({
                 "id": str(uuid.uuid4()), "client_id": svc["client_id"], "servizio_id": servizio_id,
                 "phone": client_doc["telefono"], "type": "review", "message": review_msg,
-                "session": svc.get("venditore_id") or "default",
+                "session": await wa_session_servizio(svc),
                 "send_after": (now + timedelta(seconds=REVIEW_DELAY_SEC)).isoformat(), "sent": False,
                 "created_at": now.isoformat()})
             review_queued = True

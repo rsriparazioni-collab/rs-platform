@@ -20,7 +20,7 @@ export default function WhatsApp() {
 
   const storeName = (sid) => {
     if (sid === "default") return "Principale";
-    return stores.find((s) => s.id === sid)?.nome || (sid === "enel-deborah" ? "ENEL – Deborah" : sid ? sid.slice(0, 8) : "-");
+    return stores.find((s) => s.id === sid)?.nome || (sid === "enel-deborah" ? "ENEL – Deborah" : sid === "laboratorio" ? "Laboratorio (Bruno)" : sid ? sid.slice(0, 8) : "-");
   };
 
   const poll = useCallback(async () => {
@@ -68,11 +68,14 @@ export default function WhatsApp() {
   const tid = (id) => (id === "default" ? "default" : id.slice(0, 8));
 
   const cards = [
+    ...(seesAll || user?.role === "tecnico" ? [
+      { id: "laboratorio", nome: "Laboratorio – Bruno (tecnico)", desc: "Riparazioni del negozio Morbegno: avvisi pronto/promemoria/recensione al cliente partono da qui (3522891840)" },
+    ] : []),
     ...(seesAll ? [
       { id: "default", nome: "Principale (fallback)", desc: "Usato quando il numero del negozio non è collegato" },
       { id: "enel-deborah", nome: "ENEL – Deborah", desc: "Numero per i clienti ENEL (privacy, recensione, anti-truffa). Gravedona usa il proprio numero" },
     ] : []),
-    ...stores.map((s) => ({ id: s.id, nome: s.nome, desc: s.nome === "Sondrio" ? "Numero del negozio + tutti i messaggi energia CambiaOra (3519460591)" : "Numero WhatsApp del negozio" })),
+    ...stores.map((s) => ({ id: s.id, nome: s.nome, desc: s.nome === "Sondrio" ? "Numero del negozio + tutti i messaggi energia CambiaOra (3519460591)" : s.nome === "Morbegno" ? "Numero del negozio: clienti generici, energia e telefonia (le riparazioni usano il Laboratorio)" : "Numero WhatsApp del negozio" })),
   ];
 
   return (
