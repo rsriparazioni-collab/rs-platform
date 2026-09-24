@@ -224,6 +224,8 @@ async def invia_report_mensile(store_id: str, anno: int, mese: int, extra_to: Op
     ids = []
     for dest in to:
         ids.append(await _d["send_email"](to=dest, subject=subject, html=html))
+    if _d.get("carica_report_su_drive"):
+        await _d["carica_report_su_drive"](nome, anno, mese, rep["pdf"], rep["zip"])
     await db.report_ritiri_log.insert_one({"id": str(uuid.uuid4()), "store_id": store_id, "anno": anno, "mese": mese, "to": to,
                                            "ritiri": len(rep["ritiri"]), "link_pdf": link_pdf, "link_zip": link_zip,
                                            "at": datetime.now(timezone.utc).isoformat()})
@@ -377,6 +379,27 @@ async def invia_report(input: ReportInput, user: dict = _user()):
     _solo_ufficio(user)
     extra = [e.strip() for e in re.split(r"[;,\s]+", input.email_extra) if "@" in e]
     return await invia_report_mensile(input.store_id, input.anno, input.mese, extra_to=extra, forza=True)
+
+
+@router.get("/ritiri/report-mensile/anteprima")
+async def anteprima_report(anno: int, mese: int, user: dict = _user()):
+    _solo_ufficio(user)
+    db = _d["db"]
+    out = []
+    async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1, "email_commercialista": 1}).sort("nome", 1):
+        ritiri = await _ritiri_mese(s["id"], anno, mese)
+        conteggi = {}
+        for r in ritiri:
+            st = r.get("stato") or ("in_vendita" if r.get("crea_rigenerato", True) else "ritirato")
+            conteggi[st] = conteggi.get(st, 0) + 1
+        inviato = await db.report_ritiri_log.find_one({"store_id": s["id"], "anno": anno, "mese": mese}, {"_id": 0, "at": 1, "to": 1})
+        out.append({"store_id": s["id"], "nome": s["nome"], "email_commercialista": s.get("email_commercialista") or "",
+                    "ritiri": len(ritiri), "valore": round(sum(float(r.get("prezzo_ritiro") or 0) for r in ritiri), 2),
+                    "documenti": sum(len(r.get("documenti") or []) for r in ritiri), "senza_documenti": sum(1 for r in ritiri if not r.get("documenti")),
+                    "stati": conteggi, "inviato_at": inviato["at"] if inviato else None,
+                    "righe": [{"numero": r.get("numero"), "data": r.get("data_ritiro"), "cliente": f"{r.get('cognome', '')} {r.get('nome', '')}".strip(),
+                               "articolo": r.get("articolo", ""), "valore": r.get("prezzo_ritiro"), "stato": _stato_testo(r), "documenti": len(r.get("documenti") or [])} for r in ritiri]})
+    return out
 
 
 @router.get("/ritiri/report-mensile/log")

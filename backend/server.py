@@ -3004,6 +3004,7 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
         await db.servizi.update_one({"id": data["servizio_id"]},
                                     {"$set": {"ritiro_id": data["id"], "ritiro_numero": data["numero"],
                                               "updated_at": now}})
+    asyncio.create_task(google_drive_module.carica_ritiro_su_drive(data["id"]))
     return data
 
 RITIRO_DOC_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
@@ -3047,6 +3048,7 @@ async def upload_ritiro_documenti(ritiro_id: str, files: List[UploadFile] = File
     await db.ritiri.update_one({"id": ritiro_id}, {
         "$set": {"storage_path": result["path"], "updated_at": now},
         "$push": {"documenti": {"$each": [{"nome": n, "at": now, "by": user["id"]} for n in names]}}})
+    asyncio.create_task(google_drive_module.carica_ritiro_su_drive(ritiro_id))
     return {"status": "ok", "documenti": (r.get("documenti") or []) + [{"nome": n, "at": now} for n in names]}
 
 @api_router.get("/ritiri/{ritiro_id}/pdf")
@@ -3989,7 +3991,8 @@ async def get_servizio_segreti(servizio_id: str, user: dict = Depends(get_curren
 async def get_servizio(servizio_id: str, user: dict = Depends(get_current_user)):
     s = await get_scoped_servizio(servizio_id, user)
     names = await clients_name_map([s["client_id"]])
-    client_doc = await db.clients.find_one({"id": s["client_id"]}, {"_id": 0, "telefono": 1, "email": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1, "no_recensioni": 1})
+    client_doc = await db.clients.find_one({"id": s["client_id"]}, {"_id": 0, "telefono": 1, "email": 1, "nome": 1, "cognome": 1, "codice_fiscale": 1, "p_iva": 1, "no_recensioni": 1,
+                                                                    "indirizzo": 1, "civico": 1, "cap": 1, "comune": 1, "provincia": 1})
     out = serialize_servizio(s, names.get(s["client_id"], ""))
     out["client_contacts"] = client_doc or {}
     return out
@@ -5315,6 +5318,11 @@ import report_ritiri as report_ritiri_module
 report_ritiri_module.setup(db=db, get_current_user=get_current_user, ritiri_scope=ritiri_scope, get_object=get_object,
                            put_object=put_object, send_email=send_email, app_name=APP_NAME, build_bolla_pdf=_build_bolla_pdf)
 api_router.include_router(report_ritiri_module.router)
+
+import google_drive as google_drive_module
+google_drive_module.setup(db=db, get_current_user=get_current_user, get_object=get_object, fernet=_fernet)
+api_router.include_router(google_drive_module.router)
+report_ritiri_module.setup(carica_report_su_drive=google_drive_module.carica_report_su_drive)
 
 app.include_router(api_router)
 

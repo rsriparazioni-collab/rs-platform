@@ -404,7 +404,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
 
               <PortaleBox kind="cliente" id={detail.id} sezione="energia" operatore={detail.nuovo_fornitore}
                           insertedAt={detail.portale_inserito_at} insertedBy={detail.portale_inserito_da}
-                          extraAt={detail.portale_extra_at} extraBy={detail.portale_extra_da} onChanged={refresh} />
+                          extraAt={detail.portale_extra_at} extraBy={detail.portale_extra_da} onChanged={refresh} cliente={detail} />
               <MessaggiPrevisti clientId={detail.id} refreshKey={logKey} />
               {isAdmin && (
                 <Button size="sm" variant="outline" className="w-full gap-2" data-testid="client-gdpr-export-button"

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { Button } from "./ui/button";
 import { fmtDate } from "../lib/constants";
+import CopiaDatiButton from "./CopiaDatiButton";
 
 const SEZ_BY_TIPO = { sim: "mobile", internet: "fisso", fisso: "fisso", riparazione: "riparazioni" };
 const norm = (v) => String(v || "").trim().toUpperCase();
@@ -23,7 +24,7 @@ export function apriPortaleDopoSalvataggio(portali, sezione, operatore) {
   });
 }
 
-export default function PortaleBox({ kind, id, tipo, sezione: sezioneProp, operatore, insertedAt, insertedBy, extraAt, extraBy, onChanged }) {
+export default function PortaleBox({ kind, id, tipo, sezione: sezioneProp, operatore, insertedAt, insertedBy, extraAt, extraBy, onChanged, cliente }) {
   const sezione = sezioneProp || SEZ_BY_TIPO[tipo];
   const [portali, setPortali] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -56,6 +57,7 @@ export default function PortaleBox({ kind, id, tipo, sezione: sezioneProp, opera
             {principale.url
               ? <Button size="sm" className="gap-1 bg-sky-700 hover:bg-sky-800" onClick={() => window.open(principale.url, "_blank", "noopener")} data-testid="portale-open-button"><ExternalLink className="h-3.5 w-3.5" /> Apri portale</Button>
               : <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800" data-testid="portale-info"><Info className="h-3.5 w-3.5" /> {principale.note || "Apri app"}</span>}
+            <CopiaDatiButton cliente={cliente} />
             <Button size="sm" variant="outline" disabled={busy} onClick={() => flag("inserito", !insertedAt)} data-testid="portale-flag-button">
               {insertedAt ? "Segna da inserire" : "Segna inserito"}
             </Button>

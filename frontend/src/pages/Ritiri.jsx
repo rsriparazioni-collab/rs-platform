@@ -7,6 +7,7 @@ import { uploadRitiroDocumenti } from "../components/RitiroDaRiparazione";
 import { useAuth } from "../context/AuthContext";
 import { fmtDate } from "../lib/constants";
 import ReportCommercialistaDialog from "../components/ReportCommercialistaDialog";
+import GoogleDriveCard from "../components/GoogleDriveCard";
 
 const RITIRO_STATI = [
   { id: "ritirato", label: "Ritirato" },
@@ -190,6 +191,8 @@ export default function Ritiri() {
         </div>
       </div>
 
+      {(user.role === "admin" || user.can_view_all) && <GoogleDriveCard isAdmin={user.role === "admin"} />}
+
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="ritiri-filters">
         <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -236,6 +239,7 @@ export default function Ritiri() {
                   <td className="px-4 py-3 text-slate-600">{r.articolo}{r.imei ? ` · IMEI ${r.imei}` : ""}
                     <span className="mt-0.5 flex flex-wrap gap-1">
                       {(r.documenti || []).length > 0 && <span className="rounded bg-sky-50 px-1.5 text-[10px] font-semibold text-sky-700" data-testid={`ritiro-docs-badge-${i}`}><Paperclip className="inline h-3 w-3" /> {r.documenti.length} doc.</span>}
+                      {r.drive_link && <a href={r.drive_link} target="_blank" rel="noopener noreferrer" className="rounded bg-emerald-50 px-1.5 text-[10px] font-semibold text-emerald-700 hover:underline" data-testid={`ritiro-drive-badge-${i}`}>Drive</a>}
                       {r.magazzino_id && <span className="rounded bg-violet-50 px-1.5 text-[10px] font-semibold text-violet-700" data-testid={`ritiro-rigenerato-badge-${i}`}><Package className="inline h-3 w-3" /> rigenerato</span>}
                     </span>
                   </td>
