@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 
 const MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
@@ -49,8 +49,8 @@ export default function ReportCommercialistaDialog({ stores }) {
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto" data-testid="report-commercialista-dialog">
-          <DialogHeader><DialogTitle className="font-heading text-xl">Registro ritiri mensile per la commercialista</DialogTitle></DialogHeader>
-          <p className="text-sm text-slate-600">Viene inviato automaticamente il 1° di ogni mese per il mese precedente. Qui puoi scaricarlo o inviarlo subito.</p>
+          <DialogHeader><DialogTitle className="font-heading text-xl">Registro ritiri mensile per la commercialista</DialogTitle>
+            <DialogDescription>Viene inviato automaticamente il 1° di ogni mese per il mese precedente. Qui puoi scaricarlo o inviarlo subito.</DialogDescription></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2 space-y-1.5">
               <Label className="text-xs uppercase text-slate-500">Negozio</Label>

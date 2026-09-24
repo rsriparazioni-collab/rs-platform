@@ -78,6 +78,7 @@ export default function PortaleBox({ kind, id, tipo, sezione: sezioneProp, opera
         <div className="rounded-xl border border-slate-200 p-3" data-testid="portale-generici">
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">{sezione === "riparazioni" ? "Fornitori ricambi e telefoni" : "Passaggi / portali della sezione"}</p>
           <div className="flex flex-wrap gap-1.5">
+            {!principale && <CopiaDatiButton cliente={cliente} className="h-7 text-xs" />}
             {generici.map((p) => (
               <Button key={p.id} size="sm" variant="outline" className="h-7 gap-1 text-xs" title={p.note} onClick={() => window.open(p.url, "_blank", "noopener")} data-testid={`portale-generico-${p.id}`}>
                 <ExternalLink className="h-3 w-3" /> {p.nome}

@@ -316,3 +316,9 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-09-24 — Test invio report ritiri (API)
 - POST /ritiri/report-mensile/invia Morbegno 06/2026 → inviato=true a info@paghesas.it (email_commercialista preview!) + rsriparazioni@gmail.com; 3 ritiri (M06/M07/M08), link PDF+ZIP pubblici verificati (200, ZIP con 3 bolle). NOTA: in preview Morbegno ha la mail reale della commercialista → test futuri partono anche a lei.
+
+## 2026-09-24 — Google Drive + anteprima report + copia dati cliente (iter 20 PASS)
+- `backend/google_drive.py`: OAuth web (GOOGLE_CLIENT_ID/SECRET in .env, redirect dinamico https://<host>/api/google-drive/callback), refresh token cifrato Fernet in `settings.key=google_drive` (collegamento unico aziendale, solo admin). Upload automatico bolla (+documenti uniti) in `Gestionale RS/Ritiri/<Negozio>/<Anno>` alla creazione ritiro e all allegato documenti (campi `drive_file_id/drive_link`); report mensile PDF+ZIP in `Gestionale RS/Report commercialista/<Negozio>`. Endpoint: status/connect/callback/disconnect/sync-ritiri. UI `GoogleDriveCard.jsx` in Ritiri (admin: Collega/Scollega/Carica mancanti; badge Drive per riga). DA FARE UTENTE: cliccare "Collega Google Drive" con l account aziendale (preview e poi produzione). Redirect URI registrati: preview + gestionale.rsriparazioni.com.
+- `GET /ritiri/report-mensile/anteprima?anno&mese` → per negozio ritiri/valore/senza_documenti/inviato_at/righe; card cliccabili + tabella nel dialog Report commercialista.
+- `CopiaDatiButton.jsx` (nome, cognome, CF, P.IVA, tel, email, indirizzo, POD/PDR/IBAN) accanto ad Apri portale in PortaleBox (cliente + servizio via client_contacts esteso).
+- Email commercialista SVUOTATE in preview (7 negozi) per evitare invii reali durante i test; in produzione restano. Report test giugno Morbegno rinviato solo a rsriparazioni@gmail.com. Documenti caricati dall utente NON in preview (0 ritiri con documenti) → probabilmente in produzione.

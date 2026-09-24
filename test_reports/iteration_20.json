@@ -1,0 +1,39 @@
+{
+  "summary": "Iter 20: testing Google Drive integration, anteprima report ritiri commercialista e bottone 'Copia dati cliente' in PortaleBox. Backend 7/7 PASS (+1 skip informativo su client_contacts perché nessun cliente esistente ha tutti i campi indirizzo popolati — la projection lato server include correttamente indirizzo/civico/cap/comune/provincia/p_iva). Frontend: card google-drive OK con testo 'Google Drive non collegato' e bottone connect; Report commercialista → anteprima 7 negozi, cambio mese=Giugno anno=2026 → Morbegno mostra 3 ritiri 210.00€ e tabella con M06/2026, M07/2026, M08/2026 come richiesto. Copia dati cliente in ClientDetail (CambiaOra) → toast 'Dati cliente copiati' verificato, nessun errore JS. In ServizioDetail (riparazioni) il bottone copia-dati è renderizzato SOLO dentro la 'principale' card di PortaleBox: su 40 riparazioni testate nessuna aveva un fornitore_ricambio/operatore_tel valorizzato → PortaleBox mostra solo i portali generici e il bottone copia-dati non appare. Questo è un limite del render (non un bug del componente), da segnalare.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PortaleBox (ServizioDetail riparazioni)", "issue": "copia-dati-cliente-button è renderizzato solo nella 'principale' card. Se il servizio non ha fornitore_ricambio/operatore_tel valorizzato, PortaleBox mostra soltanto la sezione 'generici' (senza copia-dati). Su 40 riparazioni testate nessuna esponeva il bottone.", "selector": "[data-testid=\"copia-dati-cliente-button\"]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ReportCommercialistaDialog", "issues": ["Warning React aria persistente (già segnalato iter16-19): 'Missing Description or aria-describedby' su DialogContent — aggiungere <DialogDescription>."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter20_drive_report_copia.py", "/app/test_reports/pytest/iter20.xml"],
+  "action_items": [
+    "(Consigliato) In PortaleBox spostare CopiaDatiButton fuori dal blocco 'principale' oppure aggiungere un fallback nel blocco 'generici' quando non c'è portale principale — così sarà sempre disponibile in ServizioDetail per riparazioni senza fornitore_ricambio.",
+    "(Non bloccante) Aggiungere <DialogDescription> al DialogContent di ReportCommercialistaDialog per rimuovere warning a11y.",
+    "(Non bloccante) client_contacts: il codice server proietta correttamente indirizzo/civico/cap/comune/provincia/p_iva; MongoDB non aggiunge chiavi mancanti nel documento cliente. Se il requisito è avere sempre TUTTE le chiavi presenti (anche con null), aggiungere un default lato serialize in get_servizio."
+  ],
+  "critical_code_review_comments": [
+    "google_drive.py: _redirect_uri usa x-forwarded-host e scheme='https' quando non localhost — corretto per Kubernetes ingress. authorization_url include scope drive.file, access_type=offline, prompt=consent — best practice per ottenere refresh_token.",
+    "google_drive.py callback: gestione robusta di error/state/code con redirect a /ritiri?drive=error&msg=... e cleanup dello state (find_one_and_delete). Buona igiene sicurezza.",
+    "google_drive.py: refresh_token cifrato con fernet in Mongo settings — corretto. Verifica sottoinsieme SCOPES coerente sulla callback (permessi_drive_mancanti).",
+    "report_ritiri.py anteprima_report: unica query per store, calcolo conteggi/valore/senza_documenti/righe in memoria. Ok per volumi attuali; se il numero di negozi cresce, considerare aggregazione Mongo.",
+    "report_ritiri.py _solo_ufficio corretto: admin/operatore/can_view_all. Michael (negozio) correttamente 403.",
+    "PortaleBox.jsx: copia-dati-cliente-button posizionato SOLO nel blocco 'principale' (line 60). Consigliato spostarlo/duplicarlo così è visibile anche quando c'è solo la sezione 'generici' (caso comune nelle riparazioni senza fornitore_ricambio). Vedi ui_bugs sopra.",
+    "CopiaDatiButton.jsx: gestione clipboard con .catch → toast 'Copia non riuscita', buon UX in ambienti senza permessi (es. headless).",
+    "GoogleDriveCard.jsx: rendering condizionale corretto (null se non admin e non connesso). Toast di ritorno OAuth via searchParams (drive=ok/error) pulito con setParams. Buon design.",
+    "server.py get_servizio (~3990): projection include tutti i campi indirizzo/civico/cap/comune/provincia/p_iva — coerente con requisito. Nessun _id nel client_contacts. OK.",
+    "report_ritiri.py cron_report_ritiri: usa hmac.compare_digest per il webhook secret. Buona security practice."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter20_drive_report_copia.py", "/app/test_reports/iteration_20.json"],
+  "success_rate": {"backend": "100% (7/7 pass, 1 skip informativo)", "frontend": "95% — tutti i flussi richiesti verificati; copia-dati in riparazioni non testabile su dati attuali (nessun fornitore_ricambio)"},
+  "test_credentials": "Admin rsriparazioni@gmail.com/Devis2026! + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV (input placeholder='123456'). Anti-replay TOTP gestito con attesa finestra 30s.",
+  "seed_data_creation": "Nessun dato creato/modificato. Nessun invio email eseguito (POST /ritiri/report-mensile/invia NON chiamato come da istruzioni). Nessun OAuth Google completato.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test riutilizzabile: /app/backend/tests/test_iter20_drive_report_copia.py. Selettori chiave verificati: google-drive-card, google-drive-status, google-drive-connect, report-commercialista-button, report-commercialista-dialog, report-anteprima, report-anteprima-<store_id>, report-anteprima-righe, report-mese, report-anno, copia-dati-cliente-button, portale-box, portale-open-button. Nota: TOTP admin subisce anti-replay ~5s, sfruttare finestra 30s. Per ClientDetail iterare fino a client #5 nella tab CambiaOra (nuovo_fornitore valorizzato). ServizioDetail riparazioni: copia-dati visibile SOLO se detail.operatore_tel || detail.fornitore_ricambio matcha un portale principale — condizione rara sui dati esistenti. Se main agent sposta CopiaDatiButton nel blocco 'generici' fallback, il flusso sarà completamente verificabile.",
+  "rca of the issue": "copia-dati-cliente-button in riparazioni: root cause è che il bottone è posizionato dentro il blocco principale (line 60 PortaleBox.jsx) che richiede matchPortali con operatore specifico (non wildcard). Le riparazioni test-data non hanno fornitore_ricambio/operatore_tel valorizzato, quindi principale=undefined e viene renderizzato solo il blocco 'generici' (senza CopiaDatiButton). Mitigation: aggiungere CopiaDatiButton anche nel blocco generici, oppure renderlo come toolbar sempre visibile fuori dai due blocchi condizionali."
+}
