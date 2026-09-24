@@ -54,8 +54,8 @@ export default function Clienti() {
     if (filters.venditore_id !== "all") params.venditore_id = filters.venditore_id;
     if (filters.no_recensioni) params.no_recensioni = "1";
     if (filters.tipo_cliente !== "all") params.tipo_cliente = filters.tipo_cliente;
-    if (filters.gestione !== "all") params.gestione = filters.gestione;
-    api.get("/clients/conteggio-gestione").then((r) => setConteggi(r.data)).catch(() => {});
+    if (filters.gestione !== "all") params.sezione = filters.gestione;
+    api.get("/clients/conteggio-sezioni").then((r) => setConteggi(r.data)).catch(() => {});
     api.get("/clients", { params }).then((r) => setClients(r.data))
       .catch((e) => toast.error(apiError(e, "Impossibile caricare i clienti")));
   }, [filters]);
@@ -142,17 +142,22 @@ export default function Clienti() {
         </div>
       </div>
 
-      <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" data-testid="gestione-switch" role="tablist">
+      <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm" data-testid="gestione-switch" role="tablist">
         {[
           { id: "all", label: "Tutti", cls: "bg-slate-900 text-white" },
           { id: "cambiaora", label: "CambiaOra", cls: "bg-fuchsia-600 text-white" },
           { id: "enel", label: "ENEL", cls: "bg-amber-500 text-white" },
+          { id: "riparazioni", label: "Riparazioni", cls: "bg-violet-600 text-white" },
+          { id: "telefonia", label: "Telefonia", cls: "bg-sky-600 text-white" },
+          { id: "vendite", label: "Vendite", cls: "bg-emerald-600 text-white" },
+          { id: "ritiri", label: "Ritiri", cls: "bg-teal-600 text-white" },
+          { id: "premium", label: "★ Premium", cls: "bg-amber-600 text-white" },
         ].map((g) => (
           <button key={g.id} type="button" role="tab" aria-selected={filters.gestione === g.id} onClick={() => setGestione(g.id)}
                   data-testid={`gestione-tab-${g.id}`}
-                  className={`flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-colors ${filters.gestione === g.id ? g.cls : "text-slate-600 hover:bg-slate-100"}`}>
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${filters.gestione === g.id ? g.cls : "text-slate-600 hover:bg-slate-100"}`}>
             {g.label}
-            {conteggi && <span className={`rounded-full px-2 py-0.5 text-xs ${filters.gestione === g.id ? "bg-white/25" : "bg-slate-100 text-slate-600"}`}>{conteggi[g.id === "all" ? "tutti" : g.id]}</span>}
+            {conteggi && <span className={`rounded-full px-2 py-0.5 text-xs ${filters.gestione === g.id ? "bg-white/25" : "bg-slate-100 text-slate-600"}`}>{conteggi[g.id === "all" ? "tutti" : g.id] ?? 0}</span>}
           </button>
         ))}
       </div>

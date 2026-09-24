@@ -1,0 +1,35 @@
+{
+  "summary": "Iter 19: full-stack testing sezione VENDITE + regime IVA in magazzino + password modificabili da non-admin. Backend 8/8 PASS. Frontend: TUTTI i flussi principali verificati (KPI/tabella/filtri Vendite; Nuova vendita form; magazzino badge IVA visibili sui 12 articoli importati; ricerca 'Prendi dal magazzino' funzionante; scheda cliente → aggiungi-vendita-button → /vendite?cliente=<id> con vendita-client-selected). Import-sheet idempotente confermato (seconda chiamata vendite=0).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dialog Vendite (form + detail)", "issues": ["Warning React aria persistente (da iter16/18): 'Missing Description or aria-describedby' su vendita-form-dialog e vendita-detail — aggiungere <DialogDescription>."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter19_vendite.py", "/app/test_reports/pytest/iter19.xml"],
+  "action_items": [
+    "(Non bloccante) Aggiungere <DialogDescription> ai DialogContent di Vendite (form + detail) per rimuovere warning a11y.",
+    "(Non bloccante) Esporre GET /api/magazzino/{id} — attualmente inesistente (405). I test devono usare list+filter; utile per ricariche mirate.",
+    "(Non bloccante) server.py 5275 righe: split modulare rimandato di nuovo (vendite.py già scorporato, buona strada)."
+  ],
+  "critical_code_review_comments": [
+    "vendite.py _valida: correttamente forza regime_iva=iva22 quando categoria non è telefono_rigenerato/telefono_usato — coerente con requisito. Verificato via API.",
+    "POST /vendite con magazzino_item_id: eredita costo=prezzo_acquisto se non passato, scala giacenza (-quantita) e, se rigenerati e giacenza scende a 0, marca stato='venduto' con margine calcolato. DELETE ripristina giacenza +stato='disponibile'. Buon design.",
+    "import-sheet: idempotenza garantita da import_key=`{sheet_id}:{gid}:{idx}` verificato su vendite E magazzino — seconda esecuzione ritorna vendite=0, magazzino=0. Corretto.",
+    "PATCH /passwords/{id} usa Depends(get_current_user) — quindi aperto a tutti; DELETE usa require_admin. Coerente con spec 'password modificabili da tutti, cancellazione solo admin'.",
+    "MagazzinoInput ora accetta condizione/regime_iva e li persiste — verificato con POST+GET list.",
+    "vendite_scope: admin/tecnico/can_view_all → {} (globale); negozio → filtro store_ids. OK, coerente con altre sezioni.",
+    "Bug latente non-critico: create_vendita non impone che categoria sia coerente con la condizione dell'articolo di magazzino selezionato (es. magazzino condizione='usato' ma frontend potrebbe inviare categoria='router' → salta la forzatura regime_iva=art36). Il frontend gestisce con pickItem ma il backend non convalida — se altri client accedono API si può creare inconsistenza. Consigliato: se magazzino_item_id ha condizione in ('rigenerato','usato'), forzare categoria=telefono_<condizione>.",
+    "Nota code review: vendite.py._valida modifica il dict in-place per forzare iva22; poi model_dump nel PATCH ri-crea l'oggetto → OK. Attenzione: PATCH accetta VenditaInput completo (non parziale), stesso schema del bug clienti già segnalato in iter18. Se in futuro si vorranno update parziali, va introdotto un modello Optional.",
+    "server.py 5275 righe: continuare split (magazzino, passwords sono buoni candidati)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter19_vendite.py", "/app/test_reports/iteration_19.json"],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% flussi richiesti"},
+  "test_credentials": "Admin rsriparazioni@gmail.com/Devis2026! + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV (input placeholder='123456', selettore: input[placeholder=\"123456\"] o unico input visibile della schermata MFA)",
+  "seed_data_creation": "Nessun dato residuo. Le vendite/magazzino QA transitorie sono state pulite (1 vendita QA leftover residua rimossa via script DB). Preservati: 12 vendite import_key e 12 magazzino import_key.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Sezione VENDITE completamente funzionante. Test file riutilizzabile: /app/backend/tests/test_iter19_vendite.py. Selettori chiave verificati: nav-vendite, vendite-page, vendite-kpi, vendite-add-button, vendite-filter-iva (Select shadcn — usare page.get_by_role('option', name='Art. 36')), vendita-form-dialog, vendita-new-client-button, vendita-mag-search, vendita-mag-option-*, vendita-client-selected, vendita-detail, vendita-aggiungi-al-cliente (visibile SOLO se v.client_id valorizzato), vendita-delete-button, aggiungi-vendita-button (in ClientDetail), magazzino-iva-*, magazzino-form-condizione, magazzino-form-regime-iva. MFA admin: sfruttare anti-replay attendendo se remaining<5s. GET /api/magazzino/{id} NON esiste (405) — usare GET /api/magazzino?q= filter."
+}

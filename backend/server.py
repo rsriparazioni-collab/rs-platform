@@ -798,6 +798,43 @@ async def sposta_gestione(client_id: str, input: SpostaGestioneInput, user: dict
     await log_lavorazione(c, user, c.get("lavorazione", ""), f"Spostato da {c.get('gestione', 'cambiaora').upper()} a {input.gestione.upper()}: {input.motivo.strip()}")
     return compute_dates(await db.clients.find_one({"id": client_id}, {"_id": 0}))
 
+SEZIONI_CLIENTI = ["cambiaora", "enel", "riparazioni", "telefonia", "vendite", "ritiri", "premium"]
+
+async def _ids_servizi(tipi: list) -> set:
+    return {r["_id"] async for r in db.servizi.aggregate([{"$match": {"tipo": {"$in": tipi}}}, {"$group": {"_id": "$client_id"}}])}
+
+async def _premium_ids() -> set:
+    energia = {c["id"] async for c in db.clients.find({"data_contratto": {"$nin": [None, ""]}}, {"_id": 0, "id": 1})}
+    return energia & await _ids_servizi(["sim", "internet", "fisso"]) & await _ids_servizi(["riparazione", "accessori", "vendita"])
+
+async def sezione_filter(sezione: str) -> Optional[dict]:
+    """Filtro Mongo per la sezione clienti (None = nessun filtro)."""
+    if sezione == "cambiaora":
+        return {"gestione": {"$ne": "enel"}, "$or": [{"data_contratto": {"$nin": [None, ""]}}, {"pod": {"$nin": [None, ""]}}, {"pdr": {"$nin": [None, ""]}},
+                                                     {"fornitore_provenienza": {"$nin": [None, ""]}}, {"nuovo_fornitore": {"$nin": [None, ""]}}]}
+    if sezione == "enel":
+        return {"gestione": "enel"}
+    if sezione == "riparazioni":
+        return {"id": {"$in": list(await _ids_servizi(["riparazione", "accessori"]))}}
+    if sezione == "telefonia":
+        return {"id": {"$in": list(await _ids_servizi(["sim", "internet", "fisso"]))}}
+    if sezione == "vendite":
+        return {"id": {"$in": [r["_id"] async for r in db.vendite.aggregate([{"$match": {"client_id": {"$nin": [None, ""]}}}, {"$group": {"_id": "$client_id"}}])]}}
+    if sezione == "ritiri":
+        return {"id": {"$in": [r["_id"] async for r in db.ritiri.aggregate([{"$match": {"client_id": {"$nin": [None, ""]}}}, {"$group": {"_id": "$client_id"}}])]}}
+    if sezione == "premium":
+        return {"id": {"$in": list(await _premium_ids())}}
+    return None
+
+@api_router.get("/clients/conteggio-sezioni")
+async def clients_conteggio_sezioni(user: dict = Depends(get_current_user)):
+    scope = client_scope_filter(user)
+    out = {"tutti": await db.clients.count_documents(scope)}
+    for sez in SEZIONI_CLIENTI:
+        f = await sezione_filter(sez)
+        out[sez] = await db.clients.count_documents({"$and": [scope, f]} if scope else f)
+    return out
+
 @api_router.get("/clients/conteggio-gestione")
 async def clients_conteggio_gestione(user: dict = Depends(get_current_user)):
     scope = client_scope_filter(user)
@@ -808,8 +845,11 @@ async def clients_conteggio_gestione(user: dict = Depends(get_current_user)):
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(get_current_user),
                        lavorazione: str = "", tipo_bolletta: str = "", tipo_servizio: str = "",
-                       venditore_id: str = "", q: str = "", no_recensioni: str = "", tipo_cliente: str = "", gestione: str = ""):
+                       venditore_id: str = "", q: str = "", no_recensioni: str = "", tipo_cliente: str = "", gestione: str = "", sezione: str = ""):
     scope = client_scope_filter(user)
+    sez_f = await sezione_filter(sezione) if sezione else None
+    if sez_f:
+        scope = {"$and": [scope, sez_f]} if scope else sez_f
     if gestione == "enel":
         scope["gestione"] = "enel"
     elif gestione == "cambiaora":
