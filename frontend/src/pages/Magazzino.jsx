@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
 import RigeneratiVenduti from "../components/RigeneratiVenduti";
 import { useAuth } from "../context/AuthContext";
-import { MAGAZZINO_CATEGORIE, magazzinoCategoriaLabel } from "../lib/constants";
+import { MAGAZZINO_CATEGORIE, magazzinoCategoriaLabel, CONDIZIONI, REGIMI_IVA, regimeIvaLabel, regimeIvaBadge } from "../lib/constants";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -12,7 +12,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
-const EMPTY = { nome: "", barcode: "", categoria: "altro", store_id: "", quantita: 0, prezzo_acquisto: "", prezzo_vendita: "", note: "" };
+const EMPTY = { nome: "", barcode: "", categoria: "altro", condizione: "", regime_iva: "", store_id: "", quantita: 0, prezzo_acquisto: "", prezzo_vendita: "", note: "" };
 
 export default function Magazzino() {
   const { user } = useAuth();
@@ -29,6 +29,7 @@ export default function Magazzino() {
     const params = {};
     if (filters.q) params.q = filters.q;
     if (filters.categoria !== "all") params.categoria = filters.categoria;
+    if (filters.regime_iva && filters.regime_iva !== "all") params.regime_iva = filters.regime_iva;
     if (filters.venditore_id !== "all") params.venditore_id = filters.venditore_id;
     api.get("/magazzino", { params }).then((r) => setItems(r.data))
       .catch((e) => toast.error(apiError(e, "Impossibile caricare il magazzino")));
@@ -143,6 +144,13 @@ export default function Magazzino() {
             {MAGAZZINO_CATEGORIE.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={filters.regime_iva || "all"} onValueChange={(v) => setFilters((f) => ({ ...f, regime_iva: v }))}>
+          <SelectTrigger className="w-[180px]" data-testid="magazzino-iva-filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tutti i regimi IVA</SelectItem>
+            {REGIMI_IVA.map((r) => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
         {canSeeAll && (
           <Select value={filters.venditore_id} onValueChange={(v) => setFilters((f) => ({ ...f, venditore_id: v }))}>
             <SelectTrigger className="w-[200px]" data-testid="magazzino-negozio-filter"><SelectValue /></SelectTrigger>
@@ -177,7 +185,10 @@ export default function Magazzino() {
                     </span>
                     {m.note && <p className="text-xs text-slate-400">{m.note}</p>}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{magazzinoCategoriaLabel(m.categoria)}</td>
+                  <td className="px-4 py-3 text-slate-600">{magazzinoCategoriaLabel(m.categoria)}
+                    {m.condizione && <span className="ml-1 text-xs text-slate-500">· {CONDIZIONI.find((c) => c.id === m.condizione)?.label}</span>}
+                    {m.regime_iva && <span className={`ml-2 status-badge ${regimeIvaBadge(m.regime_iva)}`} data-testid={`magazzino-iva-${i}`}>{regimeIvaLabel(m.regime_iva)}</span>}
+                  </td>
                   {canSeeAll && <td className="px-4 py-3 text-slate-600">{m.store_name || "-"}</td>}
                   <td className="px-4 py-3">
                     <span className={`status-badge ${qtyBadge(m.quantita || 0)}`} data-testid={`magazzino-qty-${i}`}>{m.quantita || 0} pz</span>
@@ -280,6 +291,28 @@ export default function Magazzino() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Condizione</Label>
+                <Select value={form.condizione || "none"} onValueChange={(v) => setForm({ ...form, condizione: v === "none" ? "" : v, regime_iva: v === "nuovo" || v === "none" ? "" : form.regime_iva })}>
+                  <SelectTrigger data-testid="magazzino-form-condizione"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">-</SelectItem>
+                    {CONDIZIONI.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {(form.condizione === "rigenerato" || form.condizione === "usato" || form.categoria === "rigenerati") && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Regime IVA (rigenerato/usato)</Label>
+                  <Select value={form.regime_iva || "none"} onValueChange={(v) => setForm({ ...form, regime_iva: v === "none" ? "" : v })}>
+                    <SelectTrigger data-testid="magazzino-form-regime-iva"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">-</SelectItem>
+                      {REGIMI_IVA.map((r) => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Giacenza (pz)</Label>
                 <Input type="number" min="0" value={form.quantita}

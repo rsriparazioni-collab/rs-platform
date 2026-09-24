@@ -2492,6 +2492,8 @@ MAGAZZINO_CATEGORIE = ["display", "ricambi", "accessori", "sim", "rigenerati", "
 class MagazzinoInput(BaseModel):
     nome: str
     barcode: str = ""
+    condizione: str = ""  # nuovo | rigenerato | usato
+    regime_iva: str = ""  # iva22 | art36 | art17 (solo rigenerato/usato)
     categoria: str = "altro"
     store_id: str = ""
     quantita: int = 0
@@ -2506,8 +2508,12 @@ def magazzino_scope(user: dict) -> dict:
 
 @api_router.get("/magazzino")
 async def list_magazzino(user: dict = Depends(get_current_user), categoria: str = "",
-                         venditore_id: str = "", q: str = ""):
+                         venditore_id: str = "", q: str = "", regime_iva: str = "", condizione: str = ""):
     scope = magazzino_scope(user)
+    if regime_iva:
+        scope["regime_iva"] = regime_iva
+    if condizione:
+        scope["condizione"] = condizione
     if categoria:
         scope["categoria"] = categoria
     if venditore_id and (user["role"] in ("admin", "tecnico") or user.get("can_view_all")):
@@ -2925,7 +2931,7 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
     data["documenti"] = []
     if data.get("crea_rigenerato"):
         costo = float(data.get("prezzo_ritiro") or 0) + float(data.get("costo_ricambi") or 0)
-        item = {"id": str(uuid.uuid4()), "nome": data["articolo"], "categoria": "rigenerati", "store_id": data["store_id"],
+        item = {"id": str(uuid.uuid4()), "nome": data["articolo"], "categoria": "rigenerati", "condizione": "usato", "regime_iva": "art36", "store_id": data["store_id"],
                 "quantita": 1, "prezzo_acquisto": round(costo, 2), "prezzo_vendita": None, "imei": data.get("imei", ""),
                 "ritiro_id": data["id"], "ritiro_numero": data["numero"], "servizio_id": data.get("servizio_id", ""),
                 "riparazione_numero": data.get("riparazione_numero", ""),
@@ -4274,12 +4280,17 @@ async def create_password(input: PasswordInput, admin: dict = Depends(require_ad
     return serialize_password(doc)
 
 @api_router.patch("/passwords/{password_id}")
-async def update_password(password_id: str, input: PasswordInput, admin: dict = Depends(require_admin)):
-    doc = _password_doc(input.model_dump())
-    doc.update({"updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": admin["id"]})
-    res = await db.passwords.update_one({"id": password_id}, {"$set": doc})
-    if res.matched_count == 0:
+async def update_password(password_id: str, input: PasswordInput, user: dict = Depends(get_current_user)):
+    scope = password_scope(user)
+    scope["id"] = password_id
+    old = await db.passwords.find_one(scope)
+    if not old:
         raise HTTPException(status_code=404, detail="Voce non trovata")
+    doc = _password_doc(input.model_dump())
+    if user["role"] != "admin":
+        doc["store_ids"] = old.get("store_ids", [])  # la visibilità la decide solo l'admin
+    doc.update({"updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user["id"], "updated_by_name": user["name"]})
+    await db.passwords.update_one({"id": password_id}, {"$set": doc})
     return serialize_password(await db.passwords.find_one({"id": password_id}))
 
 @api_router.delete("/passwords/{password_id}")
@@ -5236,6 +5247,10 @@ async def audit_log_list(admin: dict = Depends(require_admin), q: str = "", user
                     {"path": {"$regex": re.escape(q), "$options": "i"}}]
     rows = await db.audit_log.find(f, {"_id": 0}).sort("at", -1).to_list(min(max(limit, 1), 1000))
     return rows
+
+import vendite as vendite_module
+vendite_module.setup(db, get_current_user, magazzino_scope)
+api_router.include_router(vendite_module.router)
 
 app.include_router(api_router)
 

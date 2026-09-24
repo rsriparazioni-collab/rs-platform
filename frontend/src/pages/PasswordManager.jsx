@@ -35,12 +35,10 @@ function PasswordCard({ p, i, stores, users, isAdmin, onEdit, onDelete }) {
           <h3 className="truncate font-heading text-base font-semibold text-slate-900" data-testid={`password-servizio-${i}`}>{p.servizio}</h3>
           {p.titolo && <p className="text-xs text-slate-500">{p.titolo}</p>}
         </div>
-        {isAdmin && (
-          <div className="flex shrink-0 gap-1">
-            <Button variant="ghost" size="icon" onClick={() => onEdit(p)} data-testid={`password-edit-${i}`}><Pencil className="h-4 w-4 text-slate-500" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => onDelete(p)} data-testid={`password-delete-${i}`}><Trash2 className="h-4 w-4 text-rose-500" /></Button>
-          </div>
-        )}
+        <div className="flex shrink-0 gap-1">
+          <Button variant="ghost" size="icon" onClick={() => onEdit(p)} data-testid={`password-edit-${i}`}><Pencil className="h-4 w-4 text-slate-500" /></Button>
+          {isAdmin && <Button variant="ghost" size="icon" onClick={() => onDelete(p)} data-testid={`password-delete-${i}`}><Trash2 className="h-4 w-4 text-rose-500" /></Button>}
+        </div>
       </div>
 
       <div className="mt-3 space-y-2 text-sm">

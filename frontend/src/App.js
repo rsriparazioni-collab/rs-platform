@@ -18,6 +18,7 @@ import Riparazioni from "./pages/Riparazioni";
 import Telefonia from "./pages/Telefonia";
 import Magazzino from "./pages/Magazzino";
 import Ritiri from "./pages/Ritiri";
+import Vendite from "./pages/Vendite";
 import Formazione from "./pages/Formazione";
 import PrezziRiparazioni from "./pages/PrezziRiparazioni";
 import Presentazione from "./pages/Presentazione";
@@ -69,6 +70,7 @@ function App() {
             <Route path="telefonia" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="telefonia"><Telefonia /></RequireRole>} />
             <Route path="magazzino" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><Magazzino /></RequireRole>} />
             <Route path="ritiri" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="riparazioni"><Ritiri /></RequireRole>} />
+            <Route path="vendite" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><Vendite /></RequireRole>} />
             <Route path="negozi" element={<RequireRole roles={["admin", "operatore"]}><Negozi /></RequireRole>} />
             <Route path="operatori" element={<RequireRole roles={["admin", "operatore"]}><Operatori /></RequireRole>} />
             <Route path="whatsapp" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><WhatsApp /></RequireRole>} />

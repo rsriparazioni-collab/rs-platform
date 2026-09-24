@@ -61,6 +61,12 @@ export default function Clienti() {
   }, [filters]);
 
   useEffect(() => { load(); }, [load]);
+
+  const apriParam = new URLSearchParams(window.location.search).get("apri");
+  useEffect(() => {
+    if (!apriParam) return;
+    api.get(`/clients/${apriParam}`).then((r) => setDetailRow(r.data)).catch(() => {});
+  }, [apriParam]);
   useEffect(() => {
     api.get("/meta").then((r) => setMeta(r.data)).catch(() => {});
   }, []);
@@ -296,6 +302,7 @@ export default function Clienti() {
                     onNuovoServizio={(tipo, d) => {
                       if (tipo === "apri_utenza") { setDetailRow(d); return; }
                       if (tipo === "ritiro") { navigate(`/ritiri?cliente=${d.id}`); return; }
+                      if (tipo === "vendita") { navigate(`/vendite?cliente=${d.id}`); return; }
                       setServizioForm({ tipo, client: { id: d.id, label: `${d.cognome} ${d.nome}` } });
                     }} />
       <ServizioForm open={Boolean(servizioForm)} onClose={() => setServizioForm(null)} servizio={null}

@@ -89,6 +89,32 @@ export const MAGAZZINO_CATEGORIE = [
 
 export const magazzinoCategoriaLabel = (id) =>
   MAGAZZINO_CATEGORIE.find((c) => c.id === id)?.label || id || "-";
+export const VENDITE_CATEGORIE = [
+  { id: "telefono_nuovo", label: "Telefono nuovo" },
+  { id: "telefono_rigenerato", label: "Telefono rigenerato" },
+  { id: "telefono_usato", label: "Telefono usato" },
+  { id: "pc", label: "PC" },
+  { id: "router", label: "Router" },
+  { id: "accessori", label: "Accessori" },
+  { id: "stampanti", label: "Stampanti" },
+  { id: "altro", label: "Altro" },
+];
+export const venditaCategoriaLabel = (id) => VENDITE_CATEGORIE.find((c) => c.id === id)?.label || id || "-";
+export const isCategoriaUsato = (id) => id === "telefono_rigenerato" || id === "telefono_usato";
+export const REGIMI_IVA = [
+  { id: "iva22", label: "IVA 22%", badge: "bg-slate-500/10 text-slate-700 border-slate-300" },
+  { id: "art36", label: "Art. 36 (margine)", badge: "bg-orange-500/15 text-orange-700 border-orange-300" },
+  { id: "art17", label: "Art. 17", badge: "bg-sky-500/15 text-sky-700 border-sky-300" },
+];
+export const regimeIvaLabel = (id) => REGIMI_IVA.find((r) => r.id === id)?.label || (id ? id : "-");
+export const regimeIvaBadge = (id) => REGIMI_IVA.find((r) => r.id === id)?.badge || "bg-slate-500/10 text-slate-700 border-slate-300";
+export const CONDIZIONI = [
+  { id: "nuovo", label: "Nuovo" },
+  { id: "rigenerato", label: "Rigenerato" },
+  { id: "usato", label: "Usato" },
+];
+
+
 export const ENEL_OPERAZIONI = [
   { id: "swa", label: "SWA – Switch da altro operatore" },
   { id: "voltura", label: "Voltura" },

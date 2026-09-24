@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen, ArrowLeftRight } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen, ArrowLeftRight, ShoppingBag } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import WhatsAppLog from "./WhatsAppLog";
 import MessaggiPrevisti from "./MessaggiPrevisti";
@@ -348,6 +348,9 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                         </Button>
                         <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-ritiro-button" onClick={() => onNuovoServizio("ritiro", detail)}>
                           <PackageOpen className="h-4 w-4" /> Ritiro telefono
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-vendita-button" onClick={() => onNuovoServizio("vendita", detail)}>
+                          <ShoppingBag className="h-4 w-4" /> Vendita
                         </Button>
                       </>
                     )}
