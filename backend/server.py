@@ -5313,7 +5313,7 @@ api_router.include_router(vendite_module.router)
 
 import report_ritiri as report_ritiri_module
 report_ritiri_module.setup(db=db, get_current_user=get_current_user, ritiri_scope=ritiri_scope, get_object=get_object,
-                           put_object=put_object, send_email=send_email, app_name=APP_NAME)
+                           put_object=put_object, send_email=send_email, app_name=APP_NAME, build_bolla_pdf=_build_bolla_pdf)
 api_router.include_router(report_ritiri_module.router)
 
 app.include_router(api_router)

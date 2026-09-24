@@ -250,6 +250,104 @@ async def invia_report_tutti_negozi() -> list:
     return out
 
 
+class RitiriImportInput(BaseModel):
+    sheet_url: str
+    gids: dict  # {gid: nome_negozio}
+
+
+@router.post("/ritiri/import-sheet")
+async def import_ritiri_sheet(input: RitiriImportInput, user: dict = _user()):
+    """Importa il registro ritiri 2026 dai fogli Google: crea i ritiri (numero del foglio → M01/2026), stato e bolla PDF."""
+    _solo_ufficio(user)
+    import csv
+    import httpx
+    db = _d["db"]
+    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9\-_]+)", input.sheet_url)
+    if not m:
+        raise HTTPException(status_code=400, detail="Link Google Sheet non valido")
+    sheet_id = m.group(1)
+    stores = {s["nome"].lower(): s for s in await db.stores.find({}, {"_id": 0}).to_list(100)}
+    stato_map = {"SI": "venduto", "IN VENDITA": "in_vendita", "PEZZI RICAMBIO": "pezzi_ricambio", "PER USO INTERNO": "uso_interno", "": "ritirato"}
+    esito = {"importati": 0, "saltati": 0, "errori": []}
+    now = datetime.now(timezone.utc).isoformat()
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as http:
+        for gid, store_nome in input.gids.items():
+            store = stores.get(store_nome.lower())
+            if not store:
+                esito["errori"].append(f"Negozio {store_nome} non trovato")
+                continue
+            r = await http.get(f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}")
+            rows = list(csv.reader(io.StringIO(r.text)))
+            header = rows[0] if rows else []
+            off = 1 if len(header) >= 10 and header[5] == "" else 0  # Gravedona ha una colonna vuota in più
+            max_seq = 0
+            for idx, row in enumerate(rows[1:], start=2):
+                row = [c.strip() for c in row] + [""] * 10
+                n_raw, data_raw, modello = row[0].replace(".pdf", ""), row[1], row[2]
+                if not n_raw or not modello:
+                    continue
+                mm = re.match(r"([A-Za-z]+)(\d+)", n_raw)
+                if not mm:
+                    continue
+                prefix, seq = mm.group(1).upper(), int(mm.group(2))
+                dt = None
+                for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+                    try:
+                        dt = datetime.strptime(data_raw, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                anno = dt.year if dt else 2026
+                numero = f"{prefix}{seq:02d}/{anno}"
+                key = f"{sheet_id}:{gid}:{idx}"
+                if await db.ritiri.find_one({"import_key": key}):
+                    esito["saltati"] += 1
+                    max_seq = max(max_seq, seq)
+                    continue
+                # Stesso numero per più dispositivi dello stesso cliente (es. SO10 x5) → SO10/2026-2, -3 ...
+                k = 1
+                base = numero
+                while await db.ritiri.find_one({"numero": numero, "store_id": store["id"]}):
+                    k += 1
+                    numero = f"{base}-{k}"
+                parti = row[4].title().split()
+                cognome, nome = (parti[-1], " ".join(parti[:-1])) if len(parti) > 1 else (row[4].title(), "")
+                venduto = row[5 + off].upper()
+                stato = stato_map.get(venduto, "ritirato")
+
+                def _euro(v):
+                    s = v.replace("€", "").replace(".", "").replace(",", ".").strip()
+                    try:
+                        return float(s) if s and s.upper() != "X" else None
+                    except ValueError:
+                        return None
+                rit = {"id": str(uuid.uuid4()), "store_id": store["id"], "client_id": "", "nome": nome, "cognome": cognome, "codice_fiscale": "",
+                       "articolo": modello, "marca": "", "modello": modello, "imei": "", "prezzo_ritiro": _euro(row[3]), "numero_documento": "",
+                       "n_allegati": 0, "data_ritiro": (dt or date.today()).isoformat(), "servizio_id": "", "costo_ricambi": None,
+                       "crea_rigenerato": stato == "in_vendita", "numero": numero, "stato": stato,
+                       "numero_fattura": row[7 + off] if stato == "venduto" else "", "valore_vendita": _euro(row[6 + off]) if stato == "venduto" else None,
+                       "note": f"Import registro foglio ({row[8 + off]})".strip(), "import_key": key, "documenti": [],
+                       "created_by": user["id"], "created_by_name": "Import foglio", "created_at": now, "updated_at": now}
+                try:
+                    pdf_bytes = _d["build_bolla_pdf"](dict(rit))
+                    res = _d["put_object"](f"{_d['app_name']}/ritiri/{numero.replace('/', '-')}.pdf", pdf_bytes, "application/pdf")
+                    rit["storage_path"] = res["path"]
+                except Exception as e:
+                    esito["errori"].append(f"{numero}: bolla non generata ({e})")
+                    rit["storage_path"] = ""
+                await db.ritiri.insert_one(dict(rit))
+                await db.magazzino.update_one({"import_key": key}, {"$set": {"ritiro_id": rit["id"], "ritiro_numero": numero}})
+                await db.vendite.update_one({"import_key": key}, {"$set": {"ritiro_id": rit["id"], "ritiro_numero": numero}})
+                esito["importati"] += 1
+                max_seq = max(max_seq, seq)
+            if max_seq:
+                ykey = f"ritiro:{store['id']}:2026"
+                cur = await db.counters.find_one({"_id": ykey})
+                if not cur or cur.get("seq", 0) <= max_seq:
+                    await db.counters.update_one({"_id": ykey}, {"$set": {"prefix": prefix, "seq": max_seq + 1}}, upsert=True)
+    return esito
+
+
 class ReportInput(BaseModel):
     store_id: str
     anno: int

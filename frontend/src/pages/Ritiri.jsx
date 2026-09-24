@@ -168,6 +168,19 @@ export default function Ritiri() {
         </div>
         <div className="flex gap-2">
           {(user.role === "admin" || user.can_view_all) && <ReportCommercialistaDialog stores={meta.stores} />}
+          {(user.role === "admin" || user.can_view_all) && (
+            <Button variant="outline" className="gap-2" data-testid="ritiri-import-button" onClick={async () => {
+              if (!window.confirm("Importare il registro ritiri 2026 dai fogli Google (Morbegno, Sondrio, Gravedona)? I ritiri già importati vengono saltati.")) return;
+              try {
+                const r = await api.post("/ritiri/import-sheet", { sheet_url: "https://docs.google.com/spreadsheets/d/1_j80xlW3jfMPwoULx50u0EfDMBlJiOVj0G3pjD_EMBw/edit",
+                  gids: { "1195285320": "Morbegno", "1042530783": "Sondrio", "1560914735": "Gravedona" } });
+                toast.success(`Import: ${r.data.importati} ritiri importati, ${r.data.saltati} già presenti`);
+                load();
+              } catch (e) { toast.error(apiError(e, "Import fallito")); }
+            }}>
+              <FileDown className="h-4 w-4" /> Importa registro 2026
+            </Button>
+          )}
           <Button variant="outline" onClick={() => downloadBlob("/ritiri/export", `ritiri_usato_${new Date().toISOString().slice(0, 10)}.xlsx`)} data-testid="ritiri-export-button" className="gap-2">
             <FileDown className="h-4 w-4" /> Excel
           </Button>
