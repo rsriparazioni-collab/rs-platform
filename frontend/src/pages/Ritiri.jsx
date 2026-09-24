@@ -6,6 +6,16 @@ import api, { apiError, downloadBlob } from "../lib/api";
 import { uploadRitiroDocumenti } from "../components/RitiroDaRiparazione";
 import { useAuth } from "../context/AuthContext";
 import { fmtDate } from "../lib/constants";
+import ReportCommercialistaDialog from "../components/ReportCommercialistaDialog";
+
+const RITIRO_STATI = [
+  { id: "ritirato", label: "Ritirato" },
+  { id: "in_vendita", label: "In vendita" },
+  { id: "venduto", label: "Venduto (fattura)" },
+  { id: "pezzi_ricambio", label: "Pezzi di ricambio" },
+  { id: "uso_interno", label: "Uso interno" },
+];
+const STATO_CLS = { ritirato: "bg-slate-50", in_vendita: "bg-sky-50 text-sky-800", venduto: "bg-emerald-50 text-emerald-800", pezzi_ricambio: "bg-orange-50 text-orange-800", uso_interno: "bg-violet-50 text-violet-800" };
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -62,6 +72,21 @@ export default function Ritiri() {
     setSearch("");
     setResults([]);
     setFormOpen(true);
+  };
+
+  const cambiaStato = async (r, stato) => {
+    let numero_fattura = r.numero_fattura || "";
+    if (stato === "venduto") {
+      numero_fattura = window.prompt("Numero fattura di vendita:", numero_fattura || "");
+      if (numero_fattura === null) return;
+    }
+    try {
+      await api.patch(`/ritiri/${r.id}/stato`, { stato, numero_fattura });
+      toast.success("Stato ritiro aggiornato");
+      load();
+    } catch (e) {
+      toast.error(apiError(e, "Aggiornamento stato fallito"));
+    }
   };
 
   const clienteParam = new URLSearchParams(window.location.search).get("cliente");
@@ -142,6 +167,7 @@ export default function Ritiri() {
           <p className="mt-1 text-sm text-slate-500">{ritiri.length} bolle di ritiro generate</p>
         </div>
         <div className="flex gap-2">
+          {(user.role === "admin" || user.can_view_all) && <ReportCommercialistaDialog stores={meta.stores} />}
           <Button variant="outline" onClick={() => downloadBlob("/ritiri/export", `ritiri_usato_${new Date().toISOString().slice(0, 10)}.xlsx`)} data-testid="ritiri-export-button" className="gap-2">
             <FileDown className="h-4 w-4" /> Excel
           </Button>
@@ -179,6 +205,7 @@ export default function Ritiri() {
                 <th className="px-4 py-3">Articolo</th>
                 <th className="px-4 py-3">Riparazione</th>
                 <th className="px-4 py-3">Prezzo ritiro</th>
+                <th className="px-4 py-3">Stato</th>
                 {canSeeAll && <th className="px-4 py-3">Negozio</th>}
                 <th className="px-4 py-3"></th>
               </tr>
@@ -209,6 +236,15 @@ export default function Ritiri() {
                   </td>
                   <td className="px-4 py-3 font-semibold text-slate-800">
                     {r.prezzo_ritiro != null ? `€ ${Number(r.prezzo_ritiro).toFixed(2)}` : "-"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Select value={r.stato || (r.magazzino_id ? "in_vendita" : "ritirato")} onValueChange={(v) => cambiaStato(r, v)}>
+                      <SelectTrigger className={`h-7 w-[150px] text-xs ${STATO_CLS[r.stato || "in_vendita"] || ""}`} data-testid={`ritiro-stato-${i}`}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {RITIRO_STATI.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    {r.stato === "venduto" && r.numero_fattura && <p className="mt-0.5 text-[10px] text-slate-500">Fatt. {r.numero_fattura}</p>}
                   </td>
                   {canSeeAll && <td className="px-4 py-3 text-slate-600">{r.store_name || "-"}</td>}
                   <td className="px-4 py-3">

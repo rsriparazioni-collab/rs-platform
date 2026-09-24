@@ -171,6 +171,10 @@ async def create_vendita(input: VenditaInput, user: dict = _user()):
                                 "venduto_da": user["name"], "margine": data["prezzo"] - float(item.get("prezzo_acquisto") or 0)})
         await db.magazzino.update_one({"id": item["id"]}, upd)
         data["magazzino_nome"] = item.get("nome")
+        if item.get("ritiro_id"):
+            import report_ritiri as _rr
+            await _rr.aggiorna_stato_ritiro(item["ritiro_id"], "venduto", data.get("numero_fattura") or "", user["name"])
+            data["ritiro_id"] = item["ritiro_id"]
     await _arricchisci(data)
     await db.vendite.insert_one(dict(data))
     data.pop("_id", None)

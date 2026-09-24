@@ -20,3 +20,10 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/whatsapp-due"
     method: POST
     enabled: true
+  - name: report-ritiri-mensile
+    description: "Il 1° di ogni mese alle 6:00 invia alla commercialista di ogni negozio il registro ritiri usato del mese precedente (PDF + ZIP bolle/documenti)"
+    cron: "0 6 1 * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/report-ritiri-mensile"
+    method: POST

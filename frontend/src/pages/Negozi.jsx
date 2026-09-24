@@ -18,7 +18,7 @@ export default function Negozi() {
   const { user } = useAuth();
   const [stores, setStores] = useState([]);
   const [open, setOpen] = useState(false);
-  const EMPTY_FORM = { nome: "", referente: "", tipo: "negozio", note: "", review_link: "", telefono_avvisi: "", msg_privacy: "", msg_pronto: "", msg_recensione: "", msg_promemoria: "", msg_vincolo: "", msg_offerta_annuale: "", msg_rinnovo_energia: "", msg_truffe: "" };
+  const EMPTY_FORM = { nome: "", referente: "", tipo: "negozio", note: "", review_link: "", telefono_avvisi: "", email_commercialista: "", msg_privacy: "", msg_pronto: "", msg_recensione: "", msg_promemoria: "", msg_vincolo: "", msg_offerta_annuale: "", msg_rinnovo_energia: "", msg_truffe: "" };
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
   const isAdmin = user.role === "admin";
@@ -132,7 +132,7 @@ export default function Negozi() {
                 : <span className="text-xs font-medium text-slate-400" data-testid={`store-avvisi-missing-${s.id}`}>Avvisi WA non attivi</span>}
               {isAdmin && (
                 <Button variant="ghost" size="sm" data-testid={`store-edit-${s.id}`}
-                        onClick={() => { setEditing(s); setForm({ nome: s.nome, referente: s.referente || "", tipo: s.tipo, note: s.note || "", review_link: s.review_link || "", telefono_avvisi: s.telefono_avvisi || "", ...Object.fromEntries(MSG_KEYS.map((k) => [k, s[k] || ""])) }); setOpen(true); }}>
+                        onClick={() => { setEditing(s); setForm({ nome: s.nome, referente: s.referente || "", tipo: s.tipo, note: s.note || "", review_link: s.review_link || "", telefono_avvisi: s.telefono_avvisi || "", email_commercialista: s.email_commercialista || "", ...Object.fromEntries(MSG_KEYS.map((k) => [k, s[k] || ""])) }); setOpen(true); }}>
                   Modifica
                 </Button>
               )}
@@ -181,6 +181,12 @@ export default function Negozi() {
               <Input value={form.telefono_avvisi} onChange={(e) => setForm({ ...form, telefono_avvisi: e.target.value })}
                      placeholder="es. 3471234567" data-testid="store-input-telefono-avvisi" />
               <p className="text-xs text-slate-500">Ogni mattina alle 8:30 riceve l'elenco delle riparazioni ferme da oltre 7 giorni. Lascia vuoto per non ricevere avvisi.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email commercialista (report ritiri mensile)</Label>
+              <Input value={form.email_commercialista || ""} onChange={(e) => setForm({ ...form, email_commercialista: e.target.value })}
+                     placeholder="es. info@paghesas.it, altra@email.it" data-testid="store-input-email-commercialista" />
+              <p className="text-xs text-slate-500">Il 1° di ogni mese riceve il registro ritiri usato del mese precedente (PDF + bolle e documenti). Più email separate da virgola.</p>
             </div>
             <StoreMessaggiEditor form={form} setForm={setForm} />
             <div className="flex justify-end gap-3 pt-2">

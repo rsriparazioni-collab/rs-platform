@@ -582,6 +582,7 @@ class StoreCreate(BaseModel):
     note: str = ""
     review_link: str = ""
     telefono_avvisi: str = ""
+    email_commercialista: str = ""
     msg_privacy: str = ""
     msg_pronto: str = ""
     msg_recensione: str = ""
@@ -598,6 +599,7 @@ class StoreUpdate(BaseModel):
     note: Optional[str] = None
     review_link: Optional[str] = None
     telefono_avvisi: Optional[str] = None
+    email_commercialista: Optional[str] = None
     msg_privacy: Optional[str] = None
     msg_pronto: Optional[str] = None
     msg_recensione: Optional[str] = None
@@ -681,7 +683,7 @@ async def list_stores(user: dict = Depends(get_current_user)):
 async def create_store(input: StoreCreate, admin: dict = Depends(require_admin)):
     store = {"id": str(uuid.uuid4()), "nome": input.nome, "referente": input.referente,
              "tipo": input.tipo, "note": input.note, "review_link": input.review_link,
-             "telefono_avvisi": input.telefono_avvisi, "msg_privacy": input.msg_privacy, "msg_pronto": input.msg_pronto,
+             "telefono_avvisi": input.telefono_avvisi, "email_commercialista": input.email_commercialista, "msg_privacy": input.msg_privacy, "msg_pronto": input.msg_pronto,
              "msg_recensione": input.msg_recensione, "msg_promemoria": input.msg_promemoria, "pagato": False, "last_payment_date": None,
              "created_at": datetime.now(timezone.utc).isoformat()}
     await db.stores.insert_one(store)
@@ -2519,6 +2521,18 @@ async def next_numero(kind: str, store_id: str, default_prefix: str = "RIP") -> 
                 prefix, start = p, s
                 break
     ckey = f"{kind}:{store_id}"
+    if kind == "ritiro":
+        # Numerazione annuale per negozio: M01/2026 ... riparte da 01 ogni anno (il 2026 continua dal contatore esistente)
+        year = date.today().year
+        ykey = f"{ckey}:{year}"
+        yc = await db.counters.find_one({"_id": ykey})
+        if not yc:
+            legacy = await db.counters.find_one({"_id": ckey})
+            seq0 = (legacy or {}).get("seq", start) if year == 2026 else 1
+            await db.counters.insert_one({"_id": ykey, "prefix": (legacy or {}).get("prefix", prefix), "seq": seq0})
+            yc = {"prefix": (legacy or {}).get("prefix", prefix), "seq": seq0}
+        await db.counters.update_one({"_id": ykey}, {"$inc": {"seq": 1}})
+        return f"{yc['prefix']}{yc['seq']:02d}/{year}"
     existing = await db.counters.find_one({"_id": ckey})
     if not existing:
         await db.counters.insert_one({"_id": ckey, "prefix": prefix, "seq": start})
@@ -2658,6 +2672,9 @@ async def vendi_rigenerato(item_id: str, input: VenditaRigeneratoInput, user: di
                "prezzo_vendita": round(input.prezzo_vendita, 2), "margine": round(input.prezzo_vendita / 1.22 - costo, 2),
                "note": input.note, "venduto_da": user["id"], "venduto_da_nome": user["name"], "venduto_at": now}
     await db.vendite_rigenerati.insert_one(vendita)
+    if item.get("ritiro_id"):
+        import report_ritiri as _rr
+        await _rr.aggiorna_stato_ritiro(item["ritiro_id"], "venduto", input.note if "fatt" in (input.note or "").lower() else "", user["name"])
     await db.magazzino.update_one({"id": item_id}, {"$inc": {"quantita": -1},
                                                    "$set": {"venduto_at": now, "prezzo_venduto": vendita["prezzo_vendita"], "updated_at": now}})
     vendita.pop("_id", None)
@@ -2955,6 +2972,8 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
     if not data["nome"].strip() or not data["cognome"].strip() or not data["articolo"].strip():
         raise HTTPException(status_code=400, detail="Nome, cognome e articolo sono obbligatori")
     data["numero"] = await next_numero("ritiro", data["store_id"])
+    data["stato"] = "in_vendita" if data.get("crea_rigenerato", True) else "ritirato"
+    data["numero_fattura"] = ""
     if not data.get("data_ritiro"):
         data["data_ritiro"] = date.today().isoformat()
     now = datetime.now(timezone.utc).isoformat()
@@ -5291,6 +5310,11 @@ async def audit_log_list(admin: dict = Depends(require_admin), q: str = "", user
 import vendite as vendite_module
 vendite_module.setup(db, get_current_user, magazzino_scope)
 api_router.include_router(vendite_module.router)
+
+import report_ritiri as report_ritiri_module
+report_ritiri_module.setup(db=db, get_current_user=get_current_user, ritiri_scope=ritiri_scope, get_object=get_object,
+                           put_object=put_object, send_email=send_email, app_name=APP_NAME)
+api_router.include_router(report_ritiri_module.router)
 
 app.include_router(api_router)
 
