@@ -92,7 +92,7 @@ def set_session_cookie(resp, token: str) -> None:
 def serialize_user(u: dict) -> dict:
     return {"id": u["id"], "name": u["name"], "email": u["email"], "role": u["role"],
             "store_ids": u.get("store_ids", []), "can_view_all": u.get("can_view_all", False),
-            "active": u.get("active", True), "totp_enabled": bool(u.get("totp_enabled")),
+            "active": u.get("active", True), "totp_enabled": bool(u.get("totp_enabled")), "telefono": u.get("telefono", ""),
             "sections": u.get("sections") or ["energia", "riparazioni", "telefonia"]}
 
 # ---------------- 2FA (TOTP, Google/Microsoft Authenticator) ----------------
@@ -516,6 +516,7 @@ class UserCreate(BaseModel):
     store_ids: List[str] = []
     can_view_all: bool = False
     sections: List[str] = []
+    telefono: str = ""
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
@@ -525,6 +526,7 @@ class UserUpdate(BaseModel):
     active: Optional[bool] = None
     password: Optional[str] = None
     sections: Optional[List[str]] = None
+    telefono: Optional[str] = None
 
 @api_router.get("/users")
 async def list_users(admin: dict = Depends(require_admin)):
@@ -550,7 +552,7 @@ async def create_user(input: UserCreate, user: dict = Depends(get_current_user))
     user = {"id": str(uuid.uuid4()), "name": input.name, "email": email,
             "password_hash": hash_password(input.password), "role": input.role,
             "store_ids": input.store_ids, "can_view_all": input.can_view_all,
-            "sections": input.sections or ["energia", "riparazioni", "telefonia"],
+            "sections": input.sections or ["energia", "riparazioni", "telefonia"], "telefono": input.telefono.strip(),
             "active": True, "created_at": datetime.now(timezone.utc).isoformat()}
     await db.users.insert_one(user)
     return serialize_user(user)
@@ -5365,8 +5367,18 @@ api_router.include_router(magazzino_ricambi_module.router)
 
 import google_drive as google_drive_module
 import kpi as kpi_module
-kpi_module.setup(db=db, get_current_user=get_current_user)
+kpi_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send)
 api_router.include_router(kpi_module.router)
+
+@api_router.post("/cron/promemoria-registro")
+async def cron_promemoria_registro(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(kpi_module.promemoria_registro)
+    return {"status": "accepted"}
 google_drive_module.setup(db=db, get_current_user=get_current_user, get_object=get_object, fernet=_fernet)
 api_router.include_router(google_drive_module.router)
 report_ritiri_module.setup(carica_report_su_drive=google_drive_module.carica_report_su_drive)

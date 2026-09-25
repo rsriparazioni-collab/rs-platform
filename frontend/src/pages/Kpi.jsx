@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { BarChart3, FileDown } from "lucide-react";
+import { BarChart3, FileDown, ArrowUpRight, ArrowDownRight, Minus, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -47,19 +47,31 @@ export default function Kpi() {
               <SelectContent><SelectItem value="none">Scegli operatore…</SelectItem>{utenti.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select>
           )}
           <Button variant="outline" className="gap-2" onClick={() => downloadBlob(`/kpi/export?anno=${anno}&mese=${mese}${userId ? `&user_id=${userId}` : ""}`, `kpi_${anno}_${String(mese).padStart(2, "0")}.xlsx`)} data-testid="kpi-export"><FileDown className="h-4 w-4" /> Excel</Button>
+          {user.role === "admin" && (
+            <Button variant="outline" className="gap-2 border-amber-300 text-amber-800" onClick={async () => { try { const r = await api.post("/kpi/promemoria/invia-ora"); const inv = r.data.report.filter((x) => x.esito === "inviato").length; toast.success(`Promemoria inviati: ${inv} · ${r.data.report.filter((x) => x.esito !== "inviato").map((x) => `${x.user}: ${x.esito}`).join(", ") || "tutti ok"}`); } catch (e) { toast.error(apiError(e)); } }} data-testid="kpi-promemoria-ora" title="Invia adesso il promemoria WhatsApp a chi oggi non ha segnato nulla (automatico alle 18:30)">
+              <BellRing className="h-4 w-4" /> Promemoria ora
+            </Button>
+          )}
         </div>
       </div>
 
       {vedeTutti && riepilogo.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="kpi-riepilogo">
-          {riepilogo.map((r) => (
+          {riepilogo.map((r) => {
+            const Delta = ({ cur, prev, testid }) => {
+              const diff = cur - prev;
+              if (!prev && !cur) return null;
+              const cls = diff > 0 ? "text-emerald-700 bg-emerald-50" : diff < 0 ? "text-rose-700 bg-rose-50" : "text-slate-500 bg-slate-100";
+              return <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-semibold ${cls}`} title={`Mese precedente (${r.prev_label}): ${prev}`} data-testid={testid}>{diff > 0 ? <ArrowUpRight className="h-3 w-3" /> : diff < 0 ? <ArrowDownRight className="h-3 w-3" /> : <Minus className="h-3 w-3" />}{diff > 0 ? "+" : ""}{diff}{prev ? ` (${Math.round((diff / prev) * 100)}%)` : ""}</span>;
+            };
+            return (
             <button key={r.user_id} type="button" onClick={() => setUserId(r.user_id)} className={`rounded-xl border bg-white p-4 text-left shadow-sm transition-colors ${userId === r.user_id ? "border-slate-900" : "border-slate-200 hover:border-slate-400"}`} data-testid={`kpi-card-${r.user_id}`}>
               <div className="flex items-center justify-between"><p className="font-semibold text-slate-900">{r.name}</p><BarChart3 className="h-4 w-4 text-slate-400" /></div>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{r.totale_mese}</p>
-              <p className="text-xs text-slate-500">attività · {r.clienti_serviti} clienti serviti</p>
-              <ul className="mt-2 space-y-0.5 text-[11px] text-slate-600">{r.top.map((t) => <li key={t.label} className="flex justify-between"><span>{t.label}</span><b>{t.totale}</b></li>)}</ul>
+              <div className="mt-1 flex items-center gap-2"><p className="text-2xl font-bold text-slate-900">{r.totale_mese}</p><Delta cur={r.totale_mese} prev={r.prev_totale_mese} testid={`kpi-delta-${r.user_id}`} /></div>
+              <p className="flex items-center gap-1.5 text-xs text-slate-500">attività · {r.clienti_serviti} clienti serviti <Delta cur={r.clienti_serviti} prev={r.prev_clienti_serviti} /></p>
+              <ul className="mt-2 space-y-0.5 text-[11px] text-slate-600">{r.top.map((t) => <li key={t.label} className="flex justify-between"><span>{t.label}</span><span><b>{t.totale}</b> <span className={t.totale - t.prev > 0 ? "text-emerald-600" : t.totale - t.prev < 0 ? "text-rose-600" : "text-slate-400"}>{t.totale - t.prev > 0 ? "↑" : t.totale - t.prev < 0 ? "↓" : "="}</span></span></li>)}</ul>
             </button>
-          ))}
+          ); })}
         </div>
       )}
 

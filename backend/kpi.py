@@ -248,14 +248,50 @@ async def kpi(anno: int, mese: int, user_id: str = "", user: dict = Depends(_cur
 
 @router.get("/kpi/riepilogo")
 async def kpi_riepilogo(anno: int, mese: int, user: dict = Depends(_current_user)):
+    prev_anno, prev_mese = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
     out = []
     for u in await _utenti_kpi(user):
         r = await calcola_kpi(u["id"], anno, mese)
+        p = await calcola_kpi(u["id"], prev_anno, prev_mese)
         top = sorted((v for v in r["voci"] if v["totale"] and v["id"] != "clienti_serviti"), key=lambda v: -v["totale"])[:4]
         serviti = next((v["totale"] for v in r["voci"] if v["id"] == "clienti_serviti"), 0)
+        serviti_prev = next((v["totale"] for v in p["voci"] if v["id"] == "clienti_serviti"), 0)
+        prev_tot = {v["id"]: v["totale"] for v in p["voci"]}
         out.append({"user_id": u["id"], "name": u["name"], "role": u["role"], "totale_mese": r["totale_mese"], "clienti_serviti": serviti,
-                    "top": [{"label": v["label"], "totale": v["totale"]} for v in top]})
+                    "prev_totale_mese": p["totale_mese"], "prev_clienti_serviti": serviti_prev, "prev_label": f"{prev_mese:02d}/{prev_anno}",
+                    "top": [{"label": v["label"], "totale": v["totale"], "prev": prev_tot.get(v["id"], 0)} for v in top]})
     return out
+
+
+async def promemoria_registro() -> dict:
+    """18:30: WhatsApp a chi oggi non ha segnato nulla nel registro rapido (numero utente o telefono avvisi del negozio)."""
+    db = _d["db"]
+    oggi = _oggi()
+    report = []
+    async for u in db.users.find({"active": {"$ne": False}, "role": {"$in": ["negozio", "operatore", "tecnico"]}}, {"_id": 0, "id": 1, "name": 1, "telefono": 1, "store_ids": 1}):
+        if await db.attivita.count_documents({"user_id": u["id"], "data": oggi}):
+            continue
+        store = await db.stores.find_one({"id": (u.get("store_ids") or [""])[0]}, {"_id": 0, "telefono_avvisi": 1, "nome": 1}) or {}
+        phone = u.get("telefono") or store.get("telefono_avvisi")
+        if not phone:
+            report.append({"user": u["name"], "esito": "nessun numero"})
+            continue
+        msg = (f"Ciao {u['name']}! ⏰ Promemoria KPI: oggi non hai ancora segnato nulla nel Registro rapido del gestionale. "
+               f"Prima di chiudere, segna al volo accessori, pellicole, proposte Eolo/telefoni e chiamate fatte: ci vogliono 2 minuti. Grazie!")
+        try:
+            await _d["wa_send"](phone, msg, session=(u.get("store_ids") or ["default"])[0], tipo="promemoria_kpi")
+            report.append({"user": u["name"], "esito": "inviato", "phone": phone})
+        except Exception as e:
+            report.append({"user": u["name"], "esito": f"errore: {e}"[:120]})
+    await db.cron_log.insert_one({"job": "promemoria-registro", "at": datetime.now(timezone.utc).isoformat(), "report": report})
+    return {"report": report}
+
+
+@router.post("/kpi/promemoria/invia-ora")
+async def promemoria_ora(user: dict = Depends(_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo admin")
+    return await promemoria_registro()
 
 
 @router.get("/kpi/export")

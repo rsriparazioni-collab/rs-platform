@@ -130,7 +130,10 @@ export default function Utenti() {
               {users.map((u, i) => (
                 <tr key={u.id} data-testid={`user-row-${i}`}>
                   <td className="px-4 py-3 font-medium text-slate-900">{u.name}</td>
-                  <td className="px-4 py-3 text-slate-600">{u.email}</td>
+                  <td className="px-4 py-3 text-slate-600">{u.email}
+                    <input defaultValue={u.telefono || ""} placeholder="Cell. WhatsApp per avvisi" className="mt-1 block w-44 rounded border border-slate-200 px-1.5 py-0.5 text-xs" data-testid={`user-telefono-${i}`}
+                           onBlur={async (e) => { const v = e.target.value.trim(); if (v === (u.telefono || "")) return; try { await api.patch(`/users/${u.id}`, { telefono: v }); toast.success("Numero salvato"); load(); } catch (err) { toast.error(apiError(err)); } }} />
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`status-badge ${u.role === "admin" ? "bg-amber-500/15 text-amber-700 border-amber-300" : u.role === "operatore" ? "bg-sky-500/15 text-sky-700 border-sky-300" : "bg-slate-500/15 text-slate-700 border-slate-300"}`}>
                       {u.role === "negozio" ? <Store className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
