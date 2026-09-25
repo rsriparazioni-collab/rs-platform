@@ -361,3 +361,7 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-09-25 — Data inizio KPI
 - `settings.key=kpi_start` (default 2026-10-01): tutti i conteggi (auto, manuali, clienti serviti) prima di quella data = 0; mesi precedenti mostrano banner kpi-prima-inizio. `GET/PUT /kpi/inizio` (admin). Settembre ora a 0 per tutti (Bruno 93→0 come richiesto).
+
+## 2026-09-25 — Obiettivi mensili KPI
+- `kpi_obiettivi` {user_id, voce (anche "fisso:WIND3"/"sim_mnp:ILIAD"), target, anno/mese (null = ogni mese)}. Endpoint GET /kpi/obiettivi?anno&mese&user_id (attuale+pct), POST (admin, upsert), DELETE. /kpi/riepilogo include obiettivi[] per card.
+- Frontend: `ObiettiviDialog.jsx` (bottone "Obiettivi" admin in KPI: scegli dipendente, voce per area, operatore telefonico opzionale, target, ogni mese/solo questo mese), `BarraObiettivo` (verde ≥100%, giallo ≥60%, rosso) nelle card riepilogo e box dettaglio operatore. Esempio in preview: Silvio → Fisso WIND3 5, Eolo proposto 10.

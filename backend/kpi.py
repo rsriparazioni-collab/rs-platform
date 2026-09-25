@@ -309,6 +309,73 @@ async def kpi(anno: int, mese: int, user_id: str = "", user: dict = Depends(_cur
     return res
 
 
+class ObiettivoInput(BaseModel):
+    user_id: str
+    voce: str
+    target: int
+    operatore: str = ""
+    anno: Optional[int] = None
+    mese: Optional[int] = None
+
+
+def _voce_label(voce: str) -> str:
+    base, _, op = voce.partition(":")
+    lab = next((l for i, l, _, _ in KPI_VOCI if i == base), base)
+    if op:
+        lab = {"sim_nuova": "SIM numero nuovo", "sim_mnp": "SIM MNP", "fisso": "Fisso/Internet"}.get(base, lab) + f" — {op}"
+    return lab
+
+
+async def _obiettivi_utente(user_id: str, anno: int, mese: int, kpi: dict | None = None) -> list:
+    db = _d["db"]
+    q = {"user_id": user_id, "$or": [{"mese": None}, {"anno": anno, "mese": mese}]}
+    obs = await db.kpi_obiettivi.find(q, {"_id": 0}).sort("created_at", 1).to_list(100)
+    if not obs:
+        return []
+    kpi = kpi or await calcola_kpi(user_id, anno, mese)
+    tot = {v["id"]: v["totale"] for v in kpi["voci"]}
+    out = []
+    for o in obs:
+        att = tot.get(o["voce"], 0)
+        out.append({**o, "label": _voce_label(o["voce"]), "attuale": att, "pct": min(100, round(att * 100 / o["target"])) if o["target"] else 0})
+    return out
+
+
+@router.get("/kpi/obiettivi")
+async def lista_obiettivi(anno: int, mese: int, user_id: str = "", user: dict = Depends(_current_user)):
+    if not _vede_tutti(user):
+        user_id = user["id"]
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Seleziona un operatore")
+    return await _obiettivi_utente(user_id, anno, mese)
+
+
+@router.post("/kpi/obiettivi")
+async def crea_obiettivo(input: ObiettivoInput, user: dict = Depends(_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo admin")
+    base = input.voce.split(":")[0]
+    if base not in VOCI_IDS:
+        raise HTTPException(status_code=400, detail="Voce non valida")
+    if input.target < 1:
+        raise HTTPException(status_code=400, detail="Obiettivo deve essere almeno 1")
+    voce = f"{base}:{input.operatore.strip().upper()}" if input.operatore.strip() and base in ("sim_nuova", "sim_mnp", "fisso") else base
+    doc = {"id": str(uuid.uuid4()), "user_id": input.user_id, "voce": voce, "target": input.target, "anno": input.anno, "mese": input.mese,
+           "created_by": user["name"], "created_at": datetime.now(timezone.utc).isoformat()}
+    await _d["db"].kpi_obiettivi.update_one({"user_id": input.user_id, "voce": voce, "anno": input.anno, "mese": input.mese}, {"$set": doc}, upsert=True)
+    return {**doc, "label": _voce_label(voce)}
+
+
+@router.delete("/kpi/obiettivi/{obiettivo_id}")
+async def elimina_obiettivo(obiettivo_id: str, user: dict = Depends(_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo admin")
+    res = await _d["db"].kpi_obiettivi.delete_one({"id": obiettivo_id})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Obiettivo non trovato")
+    return {"status": "ok"}
+
+
 @router.get("/kpi/riepilogo")
 async def kpi_riepilogo(anno: int, mese: int, user: dict = Depends(_current_user)):
     prev_anno, prev_mese = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
@@ -316,12 +383,14 @@ async def kpi_riepilogo(anno: int, mese: int, user: dict = Depends(_current_user
     for u in await _utenti_kpi(user):
         r = await calcola_kpi(u["id"], anno, mese)
         p = await calcola_kpi(u["id"], prev_anno, prev_mese)
+        obiettivi = await _obiettivi_utente(u["id"], anno, mese, r)
         top = sorted((v for v in r["voci"] if v["totale"] and v["id"] != "clienti_serviti" and not v.get("dettaglio")), key=lambda v: -v["totale"])[:4]
         serviti = next((v["totale"] for v in r["voci"] if v["id"] == "clienti_serviti"), 0)
         serviti_prev = next((v["totale"] for v in p["voci"] if v["id"] == "clienti_serviti"), 0)
         prev_tot = {v["id"]: v["totale"] for v in p["voci"]}
         out.append({"user_id": u["id"], "name": u["name"], "role": u["role"], "totale_mese": r["totale_mese"], "clienti_serviti": serviti,
                     "prev_totale_mese": p["totale_mese"], "prev_clienti_serviti": serviti_prev, "prev_label": f"{prev_mese:02d}/{prev_anno}",
+                    "obiettivi": obiettivi,
                     "top": [{"label": v["label"], "totale": v["totale"], "prev": prev_tot.get(v["id"], 0)} for v in top]})
     return out
 

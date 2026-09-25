@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { BarChart3, FileDown, ArrowUpRight, ArrowDownRight, Minus, BellRing } from "lucide-react";
+import { BarChart3, FileDown, ArrowUpRight, ArrowDownRight, Minus, BellRing, Target } from "lucide-react";
+import ObiettiviDialog, { BarraObiettivo } from "../components/ObiettiviDialog";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -18,12 +19,20 @@ export default function Kpi() {
   const [userId, setUserId] = useState("");
   const [data, setData] = useState(null);
   const [riepilogo, setRiepilogo] = useState([]);
+  const [voci, setVoci] = useState([]);
+  const [obOpen, setObOpen] = useState(false);
+  const [obiettivi, setObiettivi] = useState([]);
   const vedeTutti = user.role === "admin" || user.can_view_all;
+
+  useEffect(() => { api.get("/kpi/voci").then((r) => setVoci(r.data.voci)).catch(() => {}); }, []);
 
   useEffect(() => { api.get("/kpi/utenti").then((r) => { setUtenti(r.data); if (!vedeTutti && r.data[0]) setUserId(r.data[0].id); }).catch(() => {}); }, [vedeTutti]);
   const load = useCallback(() => {
     if (vedeTutti) api.get("/kpi/riepilogo", { params: { anno, mese } }).then((r) => setRiepilogo(r.data)).catch(() => {});
-    if (userId) api.get("/kpi", { params: { anno, mese, user_id: userId } }).then((r) => setData(r.data)).catch((e) => toast.error(apiError(e)));
+    if (userId) {
+      api.get("/kpi", { params: { anno, mese, user_id: userId } }).then((r) => setData(r.data)).catch((e) => toast.error(apiError(e)));
+      api.get("/kpi/obiettivi", { params: { anno, mese, user_id: userId } }).then((r) => setObiettivi(r.data)).catch(() => setObiettivi([]));
+    }
   }, [anno, mese, userId, vedeTutti]);
   useEffect(() => { load(); }, [load]);
 
@@ -47,6 +56,7 @@ export default function Kpi() {
               <SelectContent><SelectItem value="none">Scegli operatore…</SelectItem>{utenti.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select>
           )}
           <Button variant="outline" className="gap-2" onClick={() => downloadBlob(`/kpi/export?anno=${anno}&mese=${mese}${userId ? `&user_id=${userId}` : ""}`, `kpi_${anno}_${String(mese).padStart(2, "0")}.xlsx`)} data-testid="kpi-export"><FileDown className="h-4 w-4" /> Excel</Button>
+          {user.role === "admin" && <Button variant="outline" className="gap-2" onClick={() => setObOpen(true)} data-testid="kpi-obiettivi-btn"><Target className="h-4 w-4" /> Obiettivi</Button>}
           {user.role === "admin" && (
             <Button variant="outline" className="gap-2 border-amber-300 text-amber-800" onClick={async () => { try { const r = await api.post("/kpi/promemoria/invia-ora"); const inv = r.data.report.filter((x) => x.esito === "inviato").length; toast.success(`Promemoria inviati: ${inv} · ${r.data.report.filter((x) => x.esito !== "inviato").map((x) => `${x.user}: ${x.esito}`).join(", ") || "tutti ok"}`); } catch (e) { toast.error(apiError(e)); } }} data-testid="kpi-promemoria-ora" title="Invia adesso il promemoria WhatsApp a chi oggi non ha segnato nulla (automatico alle 18:30)">
               <BellRing className="h-4 w-4" /> Promemoria ora
@@ -75,8 +85,21 @@ export default function Kpi() {
               <div className="mt-1 flex items-center gap-2"><p className="text-2xl font-bold text-slate-900">{r.totale_mese}</p><Delta cur={r.totale_mese} prev={r.prev_totale_mese} testid={`kpi-delta-${r.user_id}`} /></div>
               <p className="flex items-center gap-1.5 text-xs text-slate-500">attività · {r.clienti_serviti} clienti serviti <Delta cur={r.clienti_serviti} prev={r.prev_clienti_serviti} /></p>
               <ul className="mt-2 space-y-0.5 text-[11px] text-slate-600">{r.top.map((t) => <li key={t.label} className="flex justify-between"><span>{t.label}</span><span><b>{t.totale}</b> <span className={t.totale - t.prev > 0 ? "text-emerald-600" : t.totale - t.prev < 0 ? "text-rose-600" : "text-slate-400"}>{t.totale - t.prev > 0 ? "↑" : t.totale - t.prev < 0 ? "↓" : "="}</span></span></li>)}</ul>
+              {r.obiettivi?.length > 0 && (
+                <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-2" data-testid={`kpi-obiettivi-${r.user_id}`}>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Obiettivi · {r.obiettivi.filter((o) => o.pct >= 100).length}/{r.obiettivi.length} raggiunti</p>
+                  {r.obiettivi.slice(0, 4).map((o) => <BarraObiettivo key={o.id} o={o} compact />)}
+                </div>
+              )}
             </button>
           ); })}
+        </div>
+      )}
+
+      {data && obiettivi.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="kpi-obiettivi-dettaglio">
+          <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900"><Target className="h-4 w-4 text-slate-500" /> Obiettivi di {data.user_name} · {MESI[mese - 1]} {anno}</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{obiettivi.map((o) => <BarraObiettivo key={o.id} o={o} />)}</div>
         </div>
       )}
 
@@ -110,6 +133,7 @@ export default function Kpi() {
         </div>
       )}
       {!data && vedeTutti && <p className="text-sm text-slate-500" data-testid="kpi-scegli">Scegli un operatore dalle card o dal menu per vedere la griglia giornaliera.</p>}
+      <ObiettiviDialog open={obOpen} onOpenChange={setObOpen} utenti={utenti} voci={voci} anno={anno} mese={mese} userId={userId} onChanged={load} />
     </div>
   );
 }
