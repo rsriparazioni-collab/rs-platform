@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="10" failures="0" skipped="0" tests="10" time="0.715" timestamp="2026-09-25T09:34:51.928341+00:00" hostname="agent-env-b47de3c2-90b0-420f-a80f-51979a931245"><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_tipologie" time="0.585"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_create_magazzino_nome_auto" time="0.000"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_list_magazzino_search" time="0.000"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_list_magazzino_filter_tipologia_marca" time="0.000"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_disponibilita_group" time="0.000"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_ordina_ricambio" time="0.000"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_movimento_giacenza_zero_non_in_ordine" time="0.000"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_movimento_plus_su_in_ordine_equivalente_arrivo" time="0.000"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_delete_ricambio_ripristina" time="0.000"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase><testcase classname="tests.test_iter21_magazzino_ricambi" name="test_cross_store_ricambio" time="0.000"><error message="failed on setup with &quot;IndexError: list index out of range&quot;">backend/tests/test_iter21_magazzino_ricambi.py:29: in token
+    return _get_token()
+           ^^^^^^^^^^^^
+backend/tests/test_iter21_magazzino_ricambi.py:22: in _get_token
+    tok = (r.stdout or "").strip().splitlines()[-1]
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   IndexError: list index out of range</error></testcase></testsuite></testsuites>
