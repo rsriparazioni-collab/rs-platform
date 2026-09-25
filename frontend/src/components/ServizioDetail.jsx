@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import PortaleBox from "./PortaleBox";
 import OrdinaRicambio from "./OrdinaRicambio";
-import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI, magazzinoCategoriaLabel } from "../lib/constants";
+import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI, magazzinoCategoriaLabel, RIP_ESITI, ripEsitoLabel } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -392,6 +392,11 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                       <SelectContent className="max-h-64">
                         {RIP_STATI.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
                       </SelectContent>
+                    </Select>
+                    <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-widest text-slate-500">Tipo riparazione (KPI)</p>
+                    <Select value={detail.esito_riparazione || ""} onValueChange={async (v) => { try { await api.patch(`/servizi/${detail.id}`, { client_id: detail.client_id, tipo: detail.tipo, esito_riparazione: v }); toast.success(`Segnata come: ${ripEsitoLabel(v)}`); refresh(); } catch (e) { toast.error(apiError(e)); } }}>
+                      <SelectTrigger data-testid="servizio-esito-riparazione" className={!detail.esito_riparazione ? "border-amber-300 bg-amber-50/50" : ""}><SelectValue placeholder="Da indicare: normale, garanzia, ricambio usato…" /></SelectTrigger>
+                      <SelectContent>{RIP_ESITI.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <PrezzoBreakdown s={detail} />

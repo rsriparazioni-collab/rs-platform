@@ -3990,6 +3990,8 @@ class ServizioInput(BaseModel):
     data_lavorazione: Optional[str] = None
     data_uscita: Optional[str] = None
     prezzo_finale: Optional[float] = None
+    tipo_attivazione: str = ""  # sim: nuovo | mnp | cambio_offerta
+    esito_riparazione: str = ""  # normale | garanzia | ricambio_usato | scheda_madre | non_riparabile | preventivo_rifiutato
 
 SECRET_FIELDS = ("codice_sblocco", "account_password")
 
@@ -4110,6 +4112,8 @@ async def update_servizio(servizio_id: str, input: ServizioInput, background_tas
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     if data.get("pagato") and not old.get("pagato"):
         data["last_payment_date"] = date.today().isoformat()
+    if data.get("stato") == "non_riparabile" and not (data.get("esito_riparazione") or old.get("esito_riparazione")):
+        data["esito_riparazione"] = "non_riparabile"
     await db.servizi.update_one({"id": servizio_id}, {"$set": data})
     if data.get("stato") in ("consegnato", "non_riparabile") and old.get("stato") not in ("consegnato", "non_riparabile"):
         await db.servizi.update_one({"id": servizio_id}, cancella_segreti_update())

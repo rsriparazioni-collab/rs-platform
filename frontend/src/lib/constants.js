@@ -64,6 +64,21 @@ export const SERVIZIO_TIPI = [
 
 export const servizioTipoLabel = (id) => SERVIZIO_TIPI.find((t) => t.id === id)?.label || id || "-";
 
+export const SIM_ATTIVAZIONI = [
+  { id: "nuovo", label: "Numero nuovo" },
+  { id: "mnp", label: "Portabilità (MNP)" },
+  { id: "cambio_offerta", label: "Cambio offerta / ricarica" },
+];
+export const RIP_ESITI = [
+  { id: "normale", label: "Riparazione normale" },
+  { id: "garanzia", label: "In garanzia" },
+  { id: "ricambio_usato", label: "Con ricambio usato" },
+  { id: "scheda_madre", label: "Scheda madre" },
+  { id: "non_riparabile", label: "Non riparabile" },
+  { id: "preventivo_rifiutato", label: "Preventivo non accettato" },
+];
+export const ripEsitoLabel = (id) => RIP_ESITI.find((s) => s.id === id)?.label || "";
+
 export const TEL_OPERATORS = {
   sim: ["WINDTRE", "VERY", "TIM", "KENA", "FASTWEB", "HO", "ILIAD", "LYCA", "DIGI", "ENEL"],
   internet: ["EOLO", "WINDTRE", "FASTWEB", "ILIAD", "ENEL"],

@@ -8,16 +8,14 @@ const AREE = [["energia", "Energia"], ["telefonia", "Telefonia"], ["internet", "
 
 export default function RegistroRapido() {
   const [voci, setVoci] = useState([]);
-  const [operatori, setOperatori] = useState([]);
   const [area, setArea] = useState(localStorage.getItem("rr_area") || "telefonia");
   const [oggi, setOggi] = useState([]);
   const [cliQ, setCliQ] = useState("");
   const [cliRes, setCliRes] = useState([]);
   const [cliente, setCliente] = useState(null);
-  const [mnp, setMnp] = useState(null);
 
   const load = useCallback(() => api.get("/attivita").then((r) => setOggi(r.data)).catch(() => {}), []);
-  useEffect(() => { api.get("/kpi/voci").then((r) => { setVoci(r.data.voci); setOperatori(r.data.mnp_operatori); }).catch(() => {}); load(); }, [load]);
+  useEffect(() => { api.get("/kpi/voci").then((r) => setVoci(r.data.voci)).catch(() => {}); load(); }, [load]);
   useEffect(() => { localStorage.setItem("rr_area", area); }, [area]);
   useEffect(() => {
     if (cliQ.trim().length < 2) { setCliRes([]); return; }
@@ -29,7 +27,7 @@ export default function RegistroRapido() {
     try {
       await api.post("/attivita", { voce: voce.id, quantita: 1, client_id: cliente?.id || "", dettaglio });
       toast.success(`+1 ${voce.label}${dettaglio ? ` (${dettaglio})` : ""}${cliente ? ` · ${cliente.cognome} ${cliente.nome}` : ""}`);
-      setMnp(null); load();
+      load();
     } catch (e) { toast.error(apiError(e)); }
   };
   const elimina = async (a) => { try { await api.delete(`/attivita/${a.id}`); load(); } catch (e) { toast.error(apiError(e)); } };
@@ -41,7 +39,7 @@ export default function RegistroRapido() {
     <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="registro-rapido">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Zap className="h-4 w-4 text-amber-500" /> Registro rapido di oggi</p>
-        <span className="text-xs text-slate-500">Segna al volo ogni movimento non registrato con la privacy: un tap = +1</span>
+        <span className="text-xs text-slate-500">Solo ciò che non passa dal gestionale (SIM, fissi, riparazioni e vendite si contano da soli): un tap = +1</span>
         <div className="ml-auto flex flex-wrap gap-1">
           {AREE.map(([id, l]) => <button key={id} type="button" onClick={() => setArea(id)} className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${area === id ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-100"}`} data-testid={`rr-area-${id}`}>{l}</button>)}
         </div>
@@ -64,15 +62,10 @@ export default function RegistroRapido() {
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" data-testid="rr-voci">
         {manuali.map((v) => (
           <div key={v.id} className="relative">
-            <button type="button" onClick={() => v.id === "sim_mnp" ? setMnp(mnp ? null : v) : registra(v)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-slate-800 shadow-sm transition-transform hover:-translate-y-0.5 hover:border-amber-400 active:scale-95" data-testid={`rr-voce-${v.id}`}>
+            <button type="button" onClick={() => registra(v)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-slate-800 shadow-sm transition-transform hover:-translate-y-0.5 hover:border-amber-400 active:scale-95" data-testid={`rr-voce-${v.id}`}>
               <span>{v.label}</span>
               <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-bold ${conteggi[v.id] ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-400"}`} data-testid={`rr-count-${v.id}`}>{conteggi[v.id] || 0}</span>
             </button>
-            {mnp?.id === v.id && (
-              <div className="absolute z-10 mt-1 flex flex-wrap gap-1 rounded-md border border-slate-200 bg-white p-2 shadow-lg" data-testid="rr-mnp-operatori">
-                {operatori.map((o) => <button key={o} type="button" onClick={() => registra(v, o)} className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold capitalize hover:bg-amber-100" data-testid={`rr-mnp-${o}`}>{o}</button>)}
-              </div>
-            )}
           </div>
         ))}
       </div>

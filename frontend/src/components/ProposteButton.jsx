@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { Button } from "./ui/button";
 
-const PROPOSTE = [["eolo_proposto", "Eolo proposto"], ["telefono_proposto", "Telefono proposto"], ["passato_a_deborah", "Passato a Deborah (utenze)"], ["passato_a_silvio", "Passato a Silvio (telefonia)"]];
+const PROPOSTE = [["eolo_proposto", "Eolo proposto"], ["telefono_proposto", "Telefono proposto"], ["chiamata_eolo", "Chiamata Eolo fatta"], ["chiamata_enel_eco", "Chiamata ENEL eco fatta"], ["passato_a_deborah", "Passato a Deborah (utenze)"], ["passato_a_silvio", "Passato a Silvio (telefonia)"]];
 
 export default function ProposteButton({ clientId }) {
   const [open, setOpen] = useState(false);

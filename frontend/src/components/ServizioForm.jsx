@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { apriPortaleDopoSalvataggio } from "./PortaleBox";
-import { SERVIZIO_TIPI, RIP_STATI, TEL_OPERATORS, SBLOCCO_TIPI } from "../lib/constants";
+import { SERVIZIO_TIPI, RIP_STATI, TEL_OPERATORS, SBLOCCO_TIPI, SIM_ATTIVAZIONI } from "../lib/constants";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -390,6 +390,15 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Numero</Label>
                 <Input value={form.numero || ""} onChange={(e) => set("numero", e.target.value)} data-testid="servizio-numero" />
               </div>
+              {tipo === "sim" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo attivazione *</Label>
+                  <Select value={form.tipo_attivazione || ""} onValueChange={(v) => set("tipo_attivazione", v)}>
+                    <SelectTrigger data-testid="servizio-tipo-attivazione"><SelectValue placeholder="Numero nuovo o MNP?" /></SelectTrigger>
+                    <SelectContent>{SIM_ATTIVAZIONI.map((o) => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
               {tipo === "sim" && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">ICCID</Label>

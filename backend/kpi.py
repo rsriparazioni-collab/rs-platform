@@ -28,27 +28,34 @@ KPI_VOCI = [
     ("mr_servizi_enel", "M&R servizi ENEL", "energia", "manuale"),
     ("investitore_pro", "Clienti Investitore PRO", "energia", "manuale"),
     ("passato_a_silvio", "Clienti passati a Silvio (telefonia)", "energia", "manuale"),
-    ("sim_nuova", "SIM nuove", "telefonia", "mista"),
-    ("sim_mnp", "SIM portabilità (MNP)", "telefonia", "mista"),
-    ("fisso", "Contratti fisso", "telefonia", "mista"),
+    ("sim_nuova", "SIM numero nuovo — totale", "telefonia", "auto"),
+    ("sim_mnp", "SIM portabilità (MNP) — totale", "telefonia", "auto"),
+    ("sim_cambio_offerta", "SIM cambio offerta / ricarica", "telefonia", "auto"),
+    ("fisso", "Contratti fisso/internet — totale", "telefonia", "auto"),
     ("telefono_proposto", "Telefoni proposti in acquisto", "telefonia", "manuale"),
     ("ricondizionato_venduto", "Ricondizionati venduti", "telefonia", "mista"),
     ("nuovo_venduto", "Telefoni nuovi venduti", "telefonia", "mista"),
     ("accessorio", "Accessori venduti", "telefonia", "mista"),
     ("pellicola", "Pellicole", "telefonia", "manuale"),
     ("eolo_proposto", "Eolo proposto", "internet", "manuale"),
-    ("eolo_venduto", "Eolo venduto", "internet", "mista"),
-    ("internet_altro", "Altro internet (Fastweb, Wind3, ENEL fibra…)", "internet", "mista"),
     ("chiamata_eolo", "Chiamate Eolo", "internet", "manuale"),
     ("chiamata_positiva", "Chiamate chiuse positive", "chiamate", "mista"),
     ("chiamata_negativa", "Chiamate chiuse negative", "chiamate", "mista"),
     ("chiamata_non_risposto", "Chiamate non risposto", "chiamate", "mista"),
     ("passato_a_deborah", "Clienti passati a Deborah (utenze)", "chiamate", "manuale"),
-    ("rip_ritirata", "Riparazioni ritirate", "riparazioni", "auto"),
-    ("rip_completata", "Riparazioni completate", "riparazioni", "auto"),
-    ("garanzia", "Riparazioni in garanzia", "riparazioni", "manuale"),
+    ("rip_ritirata", "Riparazioni ritirate (ingressi)", "riparazioni", "auto"),
+    ("rip_normale", "Riparazioni normali", "riparazioni", "auto"),
+    ("rip_garanzia", "Riparazioni in garanzia", "riparazioni", "auto"),
+    ("rip_ricambio_usato", "Riparazioni con ricambio usato", "riparazioni", "auto"),
+    ("rip_scheda_madre", "Riparazioni scheda madre", "riparazioni", "auto"),
+    ("rip_non_riparabile", "Non riparabili", "riparazioni", "auto"),
+    ("rip_preventivo_rifiutato", "Preventivi non accettati", "riparazioni", "auto"),
+    ("rip_senza_tipo", "Riparazioni chiuse senza tipo indicato", "riparazioni", "auto"),
 ]
 VOCI_IDS = {v[0] for v in KPI_VOCI}
+RIP_ESITI = {"normale": "rip_normale", "garanzia": "rip_garanzia", "ricambio_usato": "rip_ricambio_usato", "scheda_madre": "rip_scheda_madre",
+             "non_riparabile": "rip_non_riparabile", "preventivo_rifiutato": "rip_preventivo_rifiutato"}
+RIP_CHIUSI = ("pronto", "pronto_ritiro", "consegnato", "non_riparabile")
 MNP_OPERATORI = ["fastweb", "ho", "kena", "iliad", "very", "wind3", "tim", "vodafone", "altro"]
 ENEL_MAP = {"swa": "swa", "voltura_swa": "swa", "voltura": "voltura", "subentro": "subentro", "allaccio": "allaccio", "prima_attivazione": "prima_attivazione"}
 
@@ -141,6 +148,7 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
     grid = defaultdict(lambda: defaultdict(int))
     serviti = defaultdict(set)
     fonti = defaultdict(set)
+    dinamiche: dict = {}
     target = await db.users.find_one({"id": user_id}, {"_id": 0, "role": 1, "store_ids": 1})
 
     def add(voce, iso, n=1, client_id=None, fonte="auto"):
@@ -161,14 +169,20 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
         g = _giorno(l["created_at"])
         if g and l.get("client_id"):
             serviti[g].add(l["client_id"])
-    async for s in db.servizi.find({"created_by": user_id, "created_at": rng, "tipo": {"$in": ["sim", "fisso", "internet"]}}, {"_id": 0, "client_id": 1, "created_at": 1, "tipo": 1, "prodotto": 1, "operatore_tel": 1, "note": 1}):
-        testo = f"{s.get('prodotto', '')} {s.get('note', '')}".lower()
+    async for s in db.servizi.find({"created_by": user_id, "created_at": rng, "tipo": {"$in": ["sim", "fisso", "internet"]}}, {"_id": 0, "client_id": 1, "created_at": 1, "tipo": 1, "prodotto": 1, "operatore_tel": 1, "note": 1, "tipo_attivazione": 1}):
+        op = (s.get("operatore_tel") or "altro").strip().upper() or "ALTRO"
         if s["tipo"] == "sim":
-            add("sim_mnp" if any(k in testo for k in ("portabilit", "mnp")) else "sim_nuova", s["created_at"], client_id=s.get("client_id"))
-        elif s["tipo"] == "fisso":
-            add("fisso", s["created_at"], client_id=s.get("client_id"))
+            testo = f"{s.get('prodotto', '')} {s.get('note', '')}".lower()
+            ta = s.get("tipo_attivazione") or ("mnp" if any(k in testo for k in ("portabilit", "mnp")) else "nuovo")
+            base = {"nuovo": "sim_nuova", "mnp": "sim_mnp", "cambio_offerta": "sim_cambio_offerta"}.get(ta, "sim_nuova")
+            add(base, s["created_at"], client_id=s.get("client_id"))
+            if base != "sim_cambio_offerta":
+                add(f"{base}:{op}", s["created_at"])
+                dinamiche[f"{base}:{op}"] = (f"{'SIM numero nuovo' if base == 'sim_nuova' else 'SIM MNP'} — {op}", "telefonia")
         else:
-            add("eolo_venduto" if "eolo" in f"{testo} {s.get('operatore_tel', '')}".lower() else "internet_altro", s["created_at"], client_id=s.get("client_id"))
+            add("fisso", s["created_at"], client_id=s.get("client_id"))
+            add(f"fisso:{op}", s["created_at"])
+            dinamiche[f"fisso:{op}"] = (f"Fisso/Internet — {op}", "internet")
     rip_q = {"tipo": "riparazione"}
     if target and target.get("role") == "tecnico":
         pass
@@ -176,12 +190,15 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
         rip_q["venditore_id"] = {"$in": target["store_ids"]}
     else:
         rip_q["created_by"] = user_id
-    async for r in db.servizi.find({**rip_q, "$or": [{"created_at": rng}, {"updated_at": rng}]}, {"_id": 0, "client_id": 1, "created_at": 1, "updated_at": 1, "stato": 1, "data_uscita": 1}):
+    async for r in db.servizi.find({**rip_q, "$or": [{"created_at": rng}, {"updated_at": rng}, {"data_uscita": rng}]}, {"_id": 0, "client_id": 1, "created_at": 1, "updated_at": 1, "stato": 1, "data_uscita": 1, "esito_riparazione": 1, "ricambi_usati": 1}):
         if start <= (r.get("created_at") or "")[:10] < end:
             add("rip_ritirata", r["created_at"], client_id=r.get("client_id"))
         fine = r.get("data_uscita") or r.get("updated_at") or ""
-        if r.get("stato") in ("pronto", "pronto_ritiro", "consegnato") and start <= fine[:10] < end:
-            add("rip_completata", fine, client_id=r.get("client_id"))
+        if r.get("stato") in RIP_CHIUSI and start <= fine[:10] < end:
+            esito = r.get("esito_riparazione") or ("non_riparabile" if r.get("stato") == "non_riparabile" else "")
+            if not esito and any((u.get("nome") or "").lower().startswith(("usato", "rigenerat")) for u in r.get("ricambi_usati") or []):
+                esito = "ricambio_usato"
+            add(RIP_ESITI.get(esito, "rip_senza_tipo"), fine, client_id=r.get("client_id"))
     vend_map = {"accessori": "accessorio", "telefono_rigenerato": "ricondizionato_venduto", "telefono_usato": "ricondizionato_venduto", "telefono_nuovo": "nuovo_venduto"}
     async for v in db.vendite.find({"created_by": user_id, "data_vendita": rng}, {"_id": 0, "client_id": 1, "data_vendita": 1, "categoria": 1, "quantita": 1}):
         voce = vend_map.get(v.get("categoria") or "")
@@ -219,7 +236,12 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
         giorni = {str(g): n for g, n in grid.get(vid, {}).items()}
         out.append({"id": vid, "label": label, "area": area, "fonte": fonte, "giorni": giorni, "totale": sum(giorni.values()),
                     "fonti_usate": sorted(fonti.get(vid, []))})
-    return {"anno": anno, "mese": mese, "giorni": ndays, "voci": out, "totale_mese": sum(v["totale"] for v in out if v["id"] != "clienti_serviti")}
+        for did in sorted(k for k in dinamiche if k.startswith(vid + ":")):
+            dg = {str(g): n for g, n in grid.get(did, {}).items()}
+            out.append({"id": did, "label": "   ↳ " + dinamiche[did][0], "area": dinamiche[did][1] if vid == "fisso" else area, "fonte": "auto",
+                        "giorni": dg, "totale": sum(dg.values()), "fonti_usate": ["auto"], "dettaglio": True})
+    tot = sum(v["totale"] for v in out if v["id"] != "clienti_serviti" and not v.get("dettaglio"))
+    return {"anno": anno, "mese": mese, "giorni": ndays, "voci": out, "totale_mese": tot}
 
 
 async def _utenti_kpi(user: dict) -> list:
@@ -253,7 +275,7 @@ async def kpi_riepilogo(anno: int, mese: int, user: dict = Depends(_current_user
     for u in await _utenti_kpi(user):
         r = await calcola_kpi(u["id"], anno, mese)
         p = await calcola_kpi(u["id"], prev_anno, prev_mese)
-        top = sorted((v for v in r["voci"] if v["totale"] and v["id"] != "clienti_serviti"), key=lambda v: -v["totale"])[:4]
+        top = sorted((v for v in r["voci"] if v["totale"] and v["id"] != "clienti_serviti" and not v.get("dettaglio")), key=lambda v: -v["totale"])[:4]
         serviti = next((v["totale"] for v in r["voci"] if v["id"] == "clienti_serviti"), 0)
         serviti_prev = next((v["totale"] for v in p["voci"] if v["id"] == "clienti_serviti"), 0)
         prev_tot = {v["id"]: v["totale"] for v in p["voci"]}

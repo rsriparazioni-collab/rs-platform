@@ -92,7 +92,7 @@ export default function Kpi() {
                     <tr className="bg-slate-100/80"><td colSpan={giorni.length + 2} className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-700">{AREA_LABEL[a] || a}</td></tr>
                     {data.voci.filter((v) => v.area === a).map((v) => (
                       <tr key={v.id} className="border-t border-slate-100 hover:bg-amber-50/40" data-testid={`kpi-riga-${v.id}`}>
-                        <td className="sticky left-0 bg-white px-3 py-1.5 font-medium text-slate-800">{v.label}<span className={`ml-1.5 rounded px-1 text-[9px] uppercase ${v.fonte === "auto" ? "bg-emerald-100 text-emerald-700" : v.fonte === "manuale" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700"}`}>{v.fonte}</span></td>
+                        <td className="sticky left-0 bg-white px-3 py-1.5 font-medium text-slate-800">{v.dettaglio ? <span className="pl-4 text-slate-500">{v.label.trim()}</span> : v.label}{!v.dettaglio && <span className={`ml-1.5 rounded px-1 text-[9px] uppercase ${v.fonte === "auto" ? "bg-emerald-100 text-emerald-700" : v.fonte === "manuale" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700"}`}>{v.fonte}</span>}</td>
                         {giorni.map((g) => <td key={g} className={`px-1 py-1.5 text-center ${v.giorni[g] ? "font-semibold text-slate-900" : "text-slate-300"}`}>{v.giorni[g] || ""}</td>)}
                         <td className="px-3 py-1.5 text-right font-bold text-slate-900" data-testid={`kpi-tot-${v.id}`}>{v.totale}</td>
                       </tr>
