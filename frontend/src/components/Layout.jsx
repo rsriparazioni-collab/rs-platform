@@ -4,6 +4,7 @@ import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, M
 import { useAuth } from "../context/AuthContext";
 import { RUOLI } from "../lib/constants";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
+import NotificheBell from "./NotificheBell";
 import { Button } from "./ui/button";
 
 const ALL_SECTIONS_DEFAULT = ["energia", "riparazioni", "telefonia"];
@@ -111,11 +112,15 @@ export default function Layout() {
               <SidebarContent mobile onNavigate={() => setOpen(false)} />
             </SheetContent>
           </Sheet>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-1 items-center gap-2">
             <Zap className="h-4 w-4 text-amber-500" />
             <span className="font-heading text-sm font-bold">Gestionale RS & CambiaOra</span>
           </div>
+          <NotificheBell />
         </header>
+        <div className="fixed right-6 top-4 z-20 hidden lg:block" data-testid="notifiche-desktop">
+          <NotificheBell />
+        </div>
         <main className="p-6 sm:p-8">
           <Outlet />
         </main>

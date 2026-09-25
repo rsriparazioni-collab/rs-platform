@@ -56,10 +56,11 @@ class ArrivoInput(BaseModel):
     quantita: int = 1
 
 
-async def _notifica_store(store_id: str, testo: str, session: str = "") -> None:
+async def _notifica_store(store_id: str, testo: str, session: str = "", **extra) -> None:
     db = _d["db"]
     store = await db.stores.find_one({"id": store_id}, {"_id": 0, "telefono_avvisi": 1, "nome": 1})
-    await db.notifiche.insert_one({"id": str(uuid.uuid4()), "store_id": store_id, "testo": testo, "letta": False, "at": _now()})
+    await db.notifiche.insert_one({"id": str(uuid.uuid4()), "store_id": store_id, "testo": testo, "letta": False, "at": _now(),
+                                   "tipo": extra.pop("tipo", "ricambio_richiesto"), **extra})
     if store and store.get("telefono_avvisi"):
         try:
             await _d["wa_send"](store["telefono_avvisi"], testo, session=session or store_id, tipo="avviso_negozio")
@@ -157,3 +158,39 @@ async def da_ordinare(user: dict = Depends(_current_user)):
 @router.get("/magazzino/tipologie")
 async def tipologie():
     return [{"id": k, "label": v} for k, v in RICAMBIO_TIPOLOGIE.items()]
+
+
+def _notifiche_scope(user: dict) -> dict:
+    if user["role"] in ("admin", "tecnico") or user.get("can_view_all"):
+        return {}
+    return {"store_id": {"$in": user.get("store_ids", [])}}
+
+
+@router.get("/notifiche")
+async def lista_notifiche(user: dict = Depends(_current_user), solo_non_lette: bool = False):
+    db = _d["db"]
+    scope = _notifiche_scope(user)
+    non_lette = await db.notifiche.count_documents({**scope, "letta": False})
+    if solo_non_lette:
+        scope["letta"] = False
+    items = await db.notifiche.find(scope, {"_id": 0}).sort("at", -1).to_list(50)
+    smap = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    for n in items:
+        n["store_name"] = smap.get(n.get("store_id", ""), "-")
+    return {"non_lette": non_lette, "items": items}
+
+
+@router.post("/notifiche/{notifica_id}/letta")
+async def segna_letta(notifica_id: str, user: dict = Depends(_current_user)):
+    res = await _d["db"].notifiche.update_one({**_notifiche_scope(user), "id": notifica_id},
+                                               {"$set": {"letta": True, "letta_at": _now(), "letta_da": user["name"]}})
+    if not res.matched_count:
+        raise HTTPException(status_code=404, detail="Avviso non trovato")
+    return {"status": "ok"}
+
+
+@router.post("/notifiche/leggi-tutte")
+async def segna_tutte_lette(user: dict = Depends(_current_user)):
+    res = await _d["db"].notifiche.update_many({**_notifiche_scope(user), "letta": False},
+                                                {"$set": {"letta": True, "letta_at": _now(), "letta_da": user["name"]}})
+    return {"status": "ok", "aggiornate": res.modified_count}

@@ -2805,7 +2805,9 @@ async def usa_ricambio(servizio_id: str, input: RicambioUsoInput, user: dict = D
         testo = (f"📦 Richiesta ricambio da {mio.get('nome', 'altro negozio')}: ci serve {input.quantita} x {item['nome']} "
                  f"per la riparazione {svc.get('numero_riparazione') or ''} ({cli.get('cognome', '')} {cli.get('nome', '')}). "
                  f"È stato scalato dal vostro magazzino: preparatelo per il trasferimento.")
-        asyncio.create_task(magazzino_ricambi_module._notifica_store(item["store_id"], testo, session=svc.get("venditore_id") or ""))
+        asyncio.create_task(magazzino_ricambi_module._notifica_store(item["store_id"], testo, session=svc.get("venditore_id") or "",
+                                                                     servizio_id=servizio_id, item_id=item["id"], da_store_id=svc.get("venditore_id"),
+                                                                     titolo=f"Richiesta ricambio: {item['nome']}"))
     await db.servizi.update_one({"id": servizio_id},
                                 {"$push": {"ricambi_usati": uso}, "$set": {"updated_at": now}})
     return {"status": "ok", "giacenza": (item.get("quantita") or 0) - input.quantita, "altro_negozio": altro_negozio}
