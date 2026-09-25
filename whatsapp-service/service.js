@@ -4,6 +4,7 @@ const cors = require('cors');
 const pino = require('pino');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -63,6 +64,18 @@ async function initSession(sessionId) {
     }
   });
   sock.ev.on('creds.update', saveCreds);
+  // WhatsApp (da fine luglio 2026) ritira il segreto ADV dopo la scansione: va ruotato e il QR ridisegnato (Baileys PR #2765)
+  sock.ws.on('CB:notification,type:companion_reg_refresh', () => {
+    if (state.creds.me || state.creds.registered) return;
+    const nuovo = crypto.randomBytes(32).toString('base64');
+    state.creds.advSecretKey = nuovo;
+    saveCreds();
+    if (sess.qr) {
+      const parti = sess.qr.split(',');
+      if (parti.length === 4) { parti[3] = nuovo; sess.qr = parti.join(','); }
+    }
+    console.log(`[${sessionId}] companion_reg_refresh: segreto ADV ruotato, QR aggiornato`);
+  });
   return sess;
 }
 

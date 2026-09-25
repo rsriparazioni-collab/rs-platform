@@ -331,3 +331,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-09-25 — Campanella avvisi (self-test screenshot OK)
 - `GET /notifiche` (scope: admin/tecnico/can_view_all tutti, negozio solo propri store), `POST /notifiche/{id}/letta`, `POST /notifiche/leggi-tutte`. Notifiche ricambio arricchite (titolo, servizio_id, item_id, da_store_id, tipo=ricambio_richiesto).
 - `NotificheBell.jsx` in Layout (desktop fisso in alto a destra + header mobile), polling 60s, badge non lette, segna letto singolo/tutti, click apre /riparazioni?apri=<servizio_id>.
+
+## 2026-09-25 — WhatsApp pairing: patch companion_reg_refresh
+- Da fine luglio 2026 WhatsApp invia `companion_reg_refresh` dopo la scansione QR: Baileys rc14 non lo gestisce → "Impossibile collegare il dispositivo" (issue #2737, PR #2765 non ancora rilasciata). Patch applicata in `whatsapp-service/service.js`: su `sock.ws` listener `CB:notification,type:companion_reg_refresh` → ruota `creds.advSecretKey`, saveCreds, aggiorna 4° campo del QR. Richiede Save to GitHub → redeploy Railway. Morbegno 3286363327 collegato (sessione prod id c2bf06a7 ≠ id preview). Gravedona 3288995568: codici G46VG8KQ/ANPNPFZB falliti col messaggio "impossibile collegare".
