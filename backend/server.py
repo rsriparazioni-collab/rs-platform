@@ -127,14 +127,16 @@ async def verify_totp_or_recovery(user: dict, supplied: str) -> bool:
     if TOTP_CODE_RE.fullmatch(supplied):
         totp = pyotp.TOTP(totp_decrypt(user["totp_secret_enc"]), interval=30)
         now = datetime.now(timezone.utc)
-        if not totp.verify(supplied, for_time=now, valid_window=1):
-            return False
         current = totp.timecode(now)
-        previous = user.get("totp_last_timecode", -1)
-        if current <= previous:
+        matched = next((tc for tc in (current, current - 1, current + 1) if hmac.compare_digest(totp.generate_otp(tc), supplied)), None)
+        if matched is None:
             return False
-        res = await db.users.update_one({"id": user["id"], "totp_last_timecode": user.get("totp_last_timecode")},
-                                        {"$set": {"totp_last_timecode": current}})
+        usati = [int(x) for x in user.get("totp_used_timecodes", [])]
+        if matched in usati or matched <= user.get("totp_last_timecode", -1) - 2:
+            return False
+        usati = [tc for tc in usati if tc >= current - 3] + [matched]
+        res = await db.users.update_one({"id": user["id"], "totp_used_timecodes": user.get("totp_used_timecodes")},
+                                        {"$set": {"totp_used_timecodes": usati, "totp_last_timecode": max(matched, user.get("totp_last_timecode", -1))}})
         return res.modified_count == 1
     for item in user.get("recovery_codes", []):
         if item.get("used_at") is None and verify_password(supplied, item["hash"]):
@@ -487,7 +489,8 @@ async def totp_status(user: dict = Depends(get_current_user)):
 @api_router.post("/users/{user_id}/2fa/reset")
 async def admin_reset_2fa(user_id: str, admin: dict = Depends(require_admin)):
     res = await db.users.update_one({"id": user_id}, {"$set": {"totp_enabled": False},
-                                                      "$unset": {"totp_secret_enc": "", "recovery_codes": "", "totp_last_timecode": "", "totp_pending_secret_enc": ""}})
+                                                      "$unset": {"totp_secret_enc": "", "recovery_codes": "", "totp_last_timecode": "", "totp_used_timecodes": "", "totp_pending_secret_enc": ""}})
+    await db.login_attempts.delete_one({"identifier": f"mfa:{user_id}"})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Utente non trovato")
     return {"status": "ok"}
