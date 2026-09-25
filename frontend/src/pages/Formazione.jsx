@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Presentation, Briefcase, Plus, Pencil, Trash2, Download, Link2, Copy, RotateCcw, ExternalLink } from "lucide-react";
+import { BookOpen, Presentation, Briefcase, Plus, Pencil, Trash2, Download, Link2, Copy, RotateCcw, ExternalLink, Lightbulb, FolderPlus, RefreshCw, Layers } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -15,9 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 const TABS = [
   { key: "slide", label: "Presentazione", icon: Presentation },
   { key: "manuale", label: "Manuale operativo", icon: BookOpen },
+  { key: "knowhow", label: "Know-how aziendale", icon: Lightbulb },
   { key: "servizi", label: "Servizi & Operatori", icon: Briefcase },
 ];
-const CATEGORIE = { generale: "Generale", clienti: "Clienti", energia: "Energia", riparazioni: "Riparazioni", telefonia: "Telefonia", magazzino: "Magazzino", whatsapp: "WhatsApp", sicurezza: "Sicurezza & GDPR", admin: "Amministrazione" };
+const CATEGORIE = { generale: "Generale", clienti: "Clienti", energia: "Energia", riparazioni: "Riparazioni", telefonia: "Telefonia", vendite: "Vendite", magazzino: "Magazzino", kpi: "KPI & Registro rapido", vendita: "Tecniche di vendita", whatsapp: "WhatsApp", sicurezza: "Sicurezza & GDPR", admin: "Amministrazione" };
 const EMPTY = { sezione: "manuale", titolo: "", sottotitolo: "", contenuto: "", categoria: "", link: "", immagine: "", ordine: 0 };
 const IMMAGINI = ["dashboard", "login", "clienti", "riparazioni", "telefonia", "magazzino", "ritiri", "negozi", "whatsapp", "portali", "password", "sicurezza", "registro-accessi", "utenti", "formazione"];
 
@@ -101,11 +102,32 @@ export default function Formazione() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
+  const [moduli, setModuli] = useState([]);
+  const [modOpen, setModOpen] = useState(false);
+  const [modForm, setModForm] = useState({ nome: "", descrizione: "", id: null });
 
-  const load = useCallback(() => api.get("/formazione").then((r) => setRows(r.data)).catch((e) => toast.error(apiError(e))), []);
+  const load = useCallback(() => Promise.all([api.get("/formazione"), api.get("/formazione/moduli")]).then(([r, m]) => { setRows(r.data); setModuli(m.data); }).catch((e) => toast.error(apiError(e))), []);
   useEffect(() => { load(); }, [load]);
   const cur = rows.filter((r) => r.sezione === tab);
   const publicUrl = `${window.location.origin}/formazione/presentazione`;
+  const allTabs = [...TABS, ...moduli.map((m) => ({ key: m.id, label: m.nome, icon: Layers, custom: m }))];
+  const curModulo = moduli.find((m) => m.id === tab);
+
+  const saveModulo = async (e) => {
+    e.preventDefault();
+    try {
+      if (modForm.id) await api.patch(`/formazione/moduli/${modForm.id}`, { nome: modForm.nome, descrizione: modForm.descrizione, ordine: curModulo?.ordine || 0 });
+      else { const r = await api.post("/formazione/moduli", { nome: modForm.nome, descrizione: modForm.descrizione }); setTab(r.data.id); }
+      toast.success("Modulo salvato"); setModOpen(false); load();
+    } catch (err) { toast.error(apiError(err)); }
+  };
+  const removeModulo = async (m) => {
+    if (!window.confirm(`Eliminare il modulo "${m.nome}" e tutte le sue voci?`)) return;
+    try { await api.delete(`/formazione/moduli/${m.id}`); setTab("manuale"); load(); } catch (e) { toast.error(apiError(e)); }
+  };
+  const aggiorna = async () => {
+    try { const r = await api.post("/formazione/aggiorna-default"); toast.success(`Contenuti aggiornati: ${r.data.nuove} nuove voci, ${r.data.aggiornate} aggiornate (le tue modifiche sono salve)`); load(); } catch (e) { toast.error(apiError(e)); }
+  };
 
   const openNew = () => { setEditing(null); setForm({ ...EMPTY, sezione: tab }); setOpen(true); };
   const openEdit = (r) => { setEditing(r); setForm({ sezione: r.sezione, titolo: r.titolo, sottotitolo: r.sottotitolo || "", contenuto: r.contenuto || "", categoria: r.categoria || "", link: r.link || "", immagine: r.immagine || "", ordine: r.ordine || 0 }); setOpen(true); };
@@ -134,18 +156,20 @@ export default function Formazione() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">Formazione</h1>
-          <p className="mt-1 text-sm text-slate-500">Presentazione, manuale operativo e schede dei servizi: tutto quello che serve a un nuovo negozio per partire.</p>
+          <p className="mt-1 text-sm text-slate-500">Presentazione, manuale operativo, know-how aziendale e schede dei servizi: tutto quello che serve a un nuovo collega per partire.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="gap-2" onClick={() => navigator.clipboard.writeText(publicUrl).then(() => toast.success("Link copiato"))} data-testid="formazione-copy-link"><Copy className="h-4 w-4" /> Copia link presentazione</Button>
           <Button variant="outline" className="gap-2" onClick={pdf} data-testid="formazione-pdf"><Download className="h-4 w-4" /> Scarica PDF</Button>
+          {isAdmin && <Button variant="outline" className="gap-2" onClick={aggiorna} title="Aggiunge le voci predefinite nuove senza toccare quelle modificate" data-testid="formazione-aggiorna"><RefreshCw className="h-4 w-4" /> Aggiorna contenuti</Button>}
+          {isAdmin && <Button variant="outline" className="gap-2" onClick={() => { setModForm({ nome: "", descrizione: "", id: null }); setModOpen(true); }} data-testid="formazione-add-modulo"><FolderPlus className="h-4 w-4" /> Nuovo modulo</Button>}
           {isAdmin && <Button variant="ghost" className="gap-2 text-slate-500" onClick={reset} data-testid="formazione-reset"><RotateCcw className="h-4 w-4" /> Ripristina</Button>}
           {isAdmin && <Button className="gap-2 bg-slate-900 hover:bg-slate-800" onClick={openNew} data-testid="formazione-add"><Plus className="h-4 w-4" /> Nuova voce</Button>}
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-slate-200" data-testid="formazione-tabs">
-        {TABS.map((t) => (
+        {allTabs.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)} className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${tab === t.key ? "border-slate-900 text-slate-900" : "border-transparent text-slate-500 hover:text-slate-900"}`} data-testid={`formazione-tab-${t.key}`}>
             <t.icon className="h-4 w-4" /> {t.label} <span className="text-xs text-slate-400">{rows.filter((r) => r.sezione === t.key).length}</span>
           </button>
@@ -171,6 +195,16 @@ export default function Formazione() {
         </div>
       )}
       {tab === "manuale" && <Manuale rows={cur} isAdmin={isAdmin} onEdit={openEdit} onDelete={remove} />}
+      {tab === "knowhow" && <Manuale rows={cur} isAdmin={isAdmin} onEdit={openEdit} onDelete={remove} />}
+      {curModulo && (
+        <div className="space-y-4" data-testid="modulo-custom">
+          <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg bg-slate-50 px-4 py-3">
+            <div><p className="font-semibold text-slate-900">{curModulo.nome}</p>{curModulo.descrizione && <p className="text-sm text-slate-500">{curModulo.descrizione}</p>}</div>
+            {isAdmin && <div className="flex gap-1"><Button variant="ghost" size="icon" onClick={() => { setModForm({ nome: curModulo.nome, descrizione: curModulo.descrizione || "", id: curModulo.id }); setModOpen(true); }} data-testid="modulo-edit"><Pencil className="h-4 w-4 text-slate-500" /></Button><Button variant="ghost" size="icon" onClick={() => removeModulo(curModulo)} data-testid="modulo-delete"><Trash2 className="h-4 w-4 text-rose-500" /></Button></div>}
+          </div>
+          {cur.length === 0 ? <p className="text-sm text-slate-500" data-testid="modulo-empty">Nessuna voce ancora: usa <b>Nuova voce</b> per aggiungere capitoli a questo modulo.</p> : <Manuale rows={cur} isAdmin={isAdmin} onEdit={openEdit} onDelete={remove} />}
+        </div>
+      )}
       {tab === "servizi" && <Servizi rows={cur} isAdmin={isAdmin} onEdit={openEdit} onDelete={remove} />}
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -181,7 +215,7 @@ export default function Formazione() {
               <div className="space-y-1.5"><Label>Sezione</Label>
                 <Select value={form.sezione} onValueChange={(v) => setForm({ ...form, sezione: v })}>
                   <SelectTrigger data-testid="formazione-form-sezione"><SelectValue /></SelectTrigger>
-                  <SelectContent>{TABS.map((t) => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}</SelectContent>
+                  <SelectContent>{allTabs.map((t) => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5"><Label>Categoria</Label>
@@ -219,6 +253,20 @@ export default function Formazione() {
             <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Annulla</Button>
               <Button type="submit" className="bg-slate-900 hover:bg-slate-800" data-testid="formazione-form-submit">Salva</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={modOpen} onOpenChange={setModOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="modulo-form-dialog">
+          <DialogHeader><DialogTitle className="font-heading">{modForm.id ? "Modifica modulo" : "Nuovo modulo di formazione"}</DialogTitle></DialogHeader>
+          <form onSubmit={saveModulo} className="space-y-4">
+            <div className="space-y-1.5"><Label>Nome del modulo *</Label><Input required value={modForm.nome} onChange={(e) => setModForm({ ...modForm, nome: e.target.value })} placeholder="es. Procedure ENEL, Onboarding nuovo negozio…" data-testid="modulo-form-nome" /></div>
+            <div className="space-y-1.5"><Label>Descrizione</Label><Textarea rows={3} value={modForm.descrizione} onChange={(e) => setModForm({ ...modForm, descrizione: e.target.value })} data-testid="modulo-form-descrizione" /></div>
+            <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
+              <Button type="button" variant="outline" onClick={() => setModOpen(false)}>Annulla</Button>
+              <Button type="submit" className="bg-slate-900 hover:bg-slate-800" data-testid="modulo-form-submit">Salva</Button>
             </div>
           </form>
         </DialogContent>

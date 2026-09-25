@@ -2172,7 +2172,7 @@ async def sync_fogli(input: SyncFogliInput, admin: dict = Depends(require_admin)
 from formazione_seed import build_seed as _formazione_seed
 
 class FormazioneInput(BaseModel):
-    sezione: str  # slide | manuale | servizi
+    sezione: str  # slide | manuale | knowhow | servizi | modulo custom
     titolo: str
     sottotitolo: str = ""
     contenuto: str = ""
@@ -2181,7 +2181,64 @@ class FormazioneInput(BaseModel):
     immagine: str = ""
     ordine: int = 0
 
-FORMAZIONE_SEZIONI = {"slide", "manuale", "servizi"}
+class ModuloInput(BaseModel):
+    nome: str
+    descrizione: str = ""
+    ordine: int = 0
+
+FORMAZIONE_SEZIONI = {"slide", "manuale", "knowhow", "servizi"}
+
+async def _sezioni_valide() -> set:
+    custom = {m["id"] async for m in db.formazione_moduli.find({}, {"_id": 0, "id": 1})}
+    return FORMAZIONE_SEZIONI | custom
+
+@api_router.get("/formazione/moduli")
+async def list_moduli(user: dict = Depends(get_current_user)):
+    return await db.formazione_moduli.find({}, {"_id": 0}).sort("ordine", 1).to_list(100)
+
+@api_router.post("/formazione/moduli")
+async def create_modulo(input: ModuloInput, admin: dict = Depends(require_admin)):
+    if not input.nome.strip():
+        raise HTTPException(status_code=400, detail="Nome obbligatorio")
+    n = await db.formazione_moduli.count_documents({})
+    doc = {"id": f"mod_{uuid.uuid4().hex[:8]}", "nome": input.nome.strip(), "descrizione": input.descrizione.strip(),
+           "ordine": input.ordine or n + 1, "created_by": admin["name"], "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.formazione_moduli.insert_one(dict(doc))
+    return doc
+
+@api_router.patch("/formazione/moduli/{modulo_id}")
+async def update_modulo(modulo_id: str, input: ModuloInput, admin: dict = Depends(require_admin)):
+    res = await db.formazione_moduli.update_one({"id": modulo_id}, {"$set": {"nome": input.nome.strip(), "descrizione": input.descrizione.strip(), "ordine": input.ordine}})
+    if not res.matched_count:
+        raise HTTPException(status_code=404, detail="Modulo non trovato")
+    return await db.formazione_moduli.find_one({"id": modulo_id}, {"_id": 0})
+
+@api_router.delete("/formazione/moduli/{modulo_id}")
+async def delete_modulo(modulo_id: str, admin: dict = Depends(require_admin)):
+    res = await db.formazione_moduli.delete_one({"id": modulo_id})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Modulo non trovato")
+    await db.formazione.delete_many({"sezione": modulo_id})
+    return {"status": "ok"}
+
+async def aggiorna_formazione_default() -> dict:
+    """Aggiunge le voci predefinite nuove e aggiorna quelle mai modificate dall'admin, senza toccare le personalizzate."""
+    portali = await db.portali.find({}, {"_id": 0}).to_list(200)
+    now = datetime.now(timezone.utc).isoformat()
+    nuove, aggiornate = 0, 0
+    for d in _formazione_seed(portali):
+        ex = await db.formazione.find_one({"sezione": d["sezione"], "titolo": d["titolo"]}, {"_id": 0, "id": 1, "updated_by": 1})
+        if not ex:
+            await db.formazione.insert_one({**d, "id": str(uuid.uuid4()), "link": d.get("link", ""), "immagine": d.get("immagine", ""), "created_at": now, "updated_at": now})
+            nuove += 1
+        elif not ex.get("updated_by"):
+            await db.formazione.update_one({"id": ex["id"]}, {"$set": {**{k: v for k, v in d.items() if k != "ordine"}, "updated_at": now}})
+            aggiornate += 1
+    return {"nuove": nuove, "aggiornate": aggiornate}
+
+@api_router.post("/formazione/aggiorna-default")
+async def aggiorna_formazione(admin: dict = Depends(require_admin)):
+    return await aggiorna_formazione_default()
 
 async def seed_formazione():
     if await db.formazione.count_documents({}) > 0:
@@ -2207,7 +2264,7 @@ async def list_formazione(user: dict = Depends(get_current_user), sezione: str =
 
 @api_router.post("/formazione")
 async def create_formazione(input: FormazioneInput, admin: dict = Depends(require_admin)):
-    if input.sezione not in FORMAZIONE_SEZIONI:
+    if input.sezione not in await _sezioni_valide():
         raise HTTPException(status_code=400, detail="Sezione non valida")
     now = datetime.now(timezone.utc).isoformat()
     doc = input.model_dump()
@@ -2220,7 +2277,7 @@ async def create_formazione(input: FormazioneInput, admin: dict = Depends(requir
 
 @api_router.patch("/formazione/{item_id}")
 async def update_formazione(item_id: str, input: FormazioneInput, admin: dict = Depends(require_admin)):
-    if input.sezione not in FORMAZIONE_SEZIONI:
+    if input.sezione not in await _sezioni_valide():
         raise HTTPException(status_code=400, detail="Sezione non valida")
     doc = input.model_dump()
     doc.update({"updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": admin["name"]})
@@ -2267,8 +2324,11 @@ def _pdf_markdown(pdf, text: str):
         else:
             pdf.multi_cell(0, 5.5, line, new_x="LMARGIN", new_y="NEXT")
 
-def _build_formazione_pdf(sezione: str, rows: list) -> bytes:
-    titles = {"slide": "Presentazione del Gestionale", "manuale": "Manuale operativo e gestionale", "servizi": "Servizi e Operatori"}
+async def _build_formazione_pdf(sezione: str, rows: list) -> bytes:
+    titles = {"slide": "Presentazione del Gestionale", "manuale": "Manuale operativo e gestionale", "knowhow": "Know-how aziendale", "servizi": "Servizi e Operatori"}
+    if sezione not in titles:
+        m = await db.formazione_moduli.find_one({"id": sezione}, {"_id": 0, "nome": 1})
+        titles[sezione] = (m or {}).get("nome", "Formazione")
     pdf = _new_pdf(titles.get(sezione, "Formazione"), f"RS Group - Cambia Ora - aggiornato al {date.today().strftime('%d/%m/%Y')}")
     pdf.set_font("helvetica", "", 10.5)
     for i, r in enumerate(rows):
@@ -2298,16 +2358,16 @@ def _build_formazione_pdf(sezione: str, rows: list) -> bytes:
 
 @api_router.get("/formazione/pdf")
 async def formazione_pdf(sezione: str = "manuale", user: dict = Depends(get_current_user)):
-    if sezione not in FORMAZIONE_SEZIONI:
+    if sezione not in await _sezioni_valide():
         raise HTTPException(status_code=400, detail="Sezione non valida")
     rows = await db.formazione.find({"sezione": sezione}, {"_id": 0}).sort("ordine", 1).to_list(1000)
-    return Response(content=_build_formazione_pdf(sezione, rows), media_type="application/pdf",
+    return Response(content=await _build_formazione_pdf(sezione, rows), media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="formazione_{sezione}.pdf"'})
 
 @api_router.get("/public/formazione/presentazione.pdf")
 async def public_presentazione_pdf():
     rows = await db.formazione.find({"sezione": "slide"}, {"_id": 0}).sort("ordine", 1).to_list(500)
-    return Response(content=_build_formazione_pdf("slide", rows), media_type="application/pdf",
+    return Response(content=await _build_formazione_pdf("slide", rows), media_type="application/pdf",
                     headers={"Content-Disposition": 'attachment; filename="presentazione_gestionale.pdf"'})
 
 # ---------------- Object Storage (allegati bollette/documenti) ----------------
