@@ -369,3 +369,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-09-25 — KPI tecnico (Bruno) solo riparazioni + bonus
 - Ruolo `tecnico` → calcola_kpi restituisce solo area riparazioni (`solo_riparazioni`), totale_mese = `rip_fatte` (nuova voce auto: riparazioni chiuse escluse non_riparabile/preventivo_rifiutato). Export/card/griglia coerenti. Registro rapido nascosto ai tecnici.
 - Obiettivi: campo `bonus` (€) → `bonus_maturato` quando attuale ≥ target; badge "Bonus maturato X €" nelle barre. Dialog filtra le voci per ruolo (tecnico = solo riparazioni). Esempio preview: Bruno → rip_fatte 80/mese, bonus 150 €.
+
+## 2026-09-25 — Avvisi obiettivi (complimenti + metà mese)
+- `kpi.controlla_obiettivi()`: per ogni obiettivo del mese → WA "complimenti" al raggiungimento (una volta, con bonus) e dal 15 promemoria se pct<40 (una volta); tracking in `kpi_obiettivi_notifiche` {user_id,voce,anno,mese,raggiunto_at,promemoria_at}; copia in campanella (`notifiche` tipo obiettivo_*). Cron `POST /cron/obiettivi` 19:00 Europe/Rome in crons.yml; admin `POST /kpi/obiettivi/controlla-ora?meta_mese=true` + bottone "Avvisi obiettivi ora". Testato dry-run: 3 promemoria + 1 raggiunto, seconda esecuzione 0 (idempotente).

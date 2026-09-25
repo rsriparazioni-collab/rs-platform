@@ -58,6 +58,11 @@ export default function Kpi() {
           <Button variant="outline" className="gap-2" onClick={() => downloadBlob(`/kpi/export?anno=${anno}&mese=${mese}${userId ? `&user_id=${userId}` : ""}`, `kpi_${anno}_${String(mese).padStart(2, "0")}.xlsx`)} data-testid="kpi-export"><FileDown className="h-4 w-4" /> Excel</Button>
           {user.role === "admin" && <Button variant="outline" className="gap-2" onClick={() => setObOpen(true)} data-testid="kpi-obiettivi-btn"><Target className="h-4 w-4" /> Obiettivi</Button>}
           {user.role === "admin" && (
+            <Button variant="ghost" className="gap-2 text-slate-600" title="Invia adesso complimenti per obiettivi raggiunti e promemoria metà mese (automatico ogni sera alle 19:00)" onClick={async () => { try { const r = await api.post("/kpi/obiettivi/controlla-ora?meta_mese=true"); toast.success(r.data.report.length ? r.data.report.map((x) => `${x.user}: ${x.tipo} (${x.esito})`).join(" · ") : "Nessun avviso da inviare"); } catch (e) { toast.error(apiError(e)); } }} data-testid="kpi-obiettivi-controlla">
+              <Target className="h-4 w-4" /> Avvisi obiettivi ora
+            </Button>
+          )}
+          {user.role === "admin" && (
             <Button variant="outline" className="gap-2 border-amber-300 text-amber-800" onClick={async () => { try { const r = await api.post("/kpi/promemoria/invia-ora"); const inv = r.data.report.filter((x) => x.esito === "inviato").length; toast.success(`Promemoria inviati: ${inv} · ${r.data.report.filter((x) => x.esito !== "inviato").map((x) => `${x.user}: ${x.esito}`).join(", ") || "tutti ok"}`); } catch (e) { toast.error(apiError(e)); } }} data-testid="kpi-promemoria-ora" title="Invia adesso il promemoria WhatsApp a chi oggi non ha segnato nulla (automatico alle 18:30)">
               <BellRing className="h-4 w-4" /> Promemoria ora
             </Button>

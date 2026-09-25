@@ -388,6 +388,62 @@ async def elimina_obiettivo(obiettivo_id: str, user: dict = Depends(_current_use
     return {"status": "ok"}
 
 
+async def _telefono_utente(u: dict) -> str:
+    if u.get("telefono"):
+        return u["telefono"]
+    store = await _d["db"].stores.find_one({"id": (u.get("store_ids") or [""])[0]}, {"_id": 0, "telefono_avvisi": 1}) or {}
+    return store.get("telefono_avvisi") or ""
+
+
+async def controlla_obiettivi(forza_meta_mese: bool = False) -> dict:
+    """Complimenti WhatsApp al raggiungimento di un obiettivo; dal 15 del mese promemoria (una volta) se sotto il 40%."""
+    db = _d["db"]
+    oggi = datetime.now(timezone.utc)
+    anno, mese = oggi.year, oggi.month
+    meta_mese = forza_meta_mese or oggi.day >= 15
+    report = []
+    user_ids = await db.kpi_obiettivi.distinct("user_id", {"$or": [{"mese": None}, {"anno": anno, "mese": mese}]})
+    for uid in user_ids:
+        u = await db.users.find_one({"id": uid, "active": {"$ne": False}}, {"_id": 0, "id": 1, "name": 1, "telefono": 1, "store_ids": 1})
+        if not u:
+            continue
+        phone = await _telefono_utente(u)
+        for o in await _obiettivi_utente(uid, anno, mese):
+            key = {"user_id": uid, "voce": o["voce"], "anno": anno, "mese": mese}
+            gia = await db.kpi_obiettivi_notifiche.find_one(key, {"_id": 0}) or {}
+            msg, tipo = None, None
+            if o["pct"] >= 100 and not gia.get("raggiunto_at"):
+                tipo = "raggiunto"
+                msg = (f"🎉 Complimenti {u['name']}! Hai raggiunto l'obiettivo del mese: {o['label']} {o['attuale']}/{o['target']}."
+                       + (f" Bonus maturato: {o['bonus']:.0f} €." if o.get("bonus") else "") + " Continua così!")
+            elif meta_mese and o["pct"] < 40 and not gia.get("promemoria_at") and not gia.get("raggiunto_at"):
+                tipo = "promemoria"
+                msg = (f"⏳ Ciao {u['name']}, siamo a metà mese e l'obiettivo \"{o['label']}\" è a {o['attuale']}/{o['target']} ({o['pct']}%). "
+                       f"Mancano {o['target'] - o['attuale']}: ci sono ancora {monthrange(anno, mese)[1] - oggi.day} giorni, dai che si recupera!")
+            if not msg:
+                continue
+            esito = "nessun numero"
+            if phone:
+                try:
+                    await _d["wa_send"](phone, msg, session=(u.get("store_ids") or ["default"])[0], tipo=f"obiettivo_{tipo}")
+                    esito = "inviato"
+                except Exception as e:
+                    esito = f"errore: {e}"[:120]
+            await db.kpi_obiettivi_notifiche.update_one(key, {"$set": {**key, f"{tipo}_at": oggi.isoformat(), f"{tipo}_esito": esito}}, upsert=True)
+            await db.notifiche.insert_one({"id": str(uuid.uuid4()), "store_id": (u.get("store_ids") or [""])[0], "user_id": uid, "tipo": f"obiettivo_{tipo}",
+                                           "titolo": "Obiettivo raggiunto" if tipo == "raggiunto" else "Obiettivo a metà mese", "testo": msg, "letta": False, "at": oggi.isoformat()})
+            report.append({"user": u["name"], "voce": o["label"], "tipo": tipo, "esito": esito})
+    await db.cron_log.insert_one({"job": "obiettivi", "at": oggi.isoformat(), "report": report})
+    return {"report": report}
+
+
+@router.post("/kpi/obiettivi/controlla-ora")
+async def controlla_obiettivi_ora(meta_mese: bool = False, user: dict = Depends(_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo admin")
+    return await controlla_obiettivi(forza_meta_mese=meta_mese)
+
+
 @router.get("/kpi/riepilogo")
 async def kpi_riepilogo(anno: int, mese: int, user: dict = Depends(_current_user)):
     prev_anno, prev_mese = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
@@ -416,7 +472,7 @@ async def promemoria_registro() -> dict:
         if await db.attivita.count_documents({"user_id": u["id"], "data": oggi}):
             continue
         store = await db.stores.find_one({"id": (u.get("store_ids") or [""])[0]}, {"_id": 0, "telefono_avvisi": 1, "nome": 1}) or {}
-        phone = u.get("telefono") or store.get("telefono_avvisi")
+        phone = await _telefono_utente(u)
         if not phone:
             report.append({"user": u["name"], "esito": "nessun numero"})
             continue

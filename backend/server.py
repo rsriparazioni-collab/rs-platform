@@ -5447,6 +5447,16 @@ async def cron_promemoria_registro(request: Request, background_tasks: Backgroun
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(kpi_module.promemoria_registro)
     return {"status": "accepted"}
+
+@api_router.post("/cron/obiettivi")
+async def cron_obiettivi(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(kpi_module.controlla_obiettivi)
+    return {"status": "accepted"}
 google_drive_module.setup(db=db, get_current_user=get_current_user, get_object=get_object, fernet=_fernet)
 api_router.include_router(google_drive_module.router)
 report_ritiri_module.setup(carica_report_su_drive=google_drive_module.carica_report_su_drive)

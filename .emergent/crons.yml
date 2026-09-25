@@ -35,3 +35,11 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/promemoria-registro"
     method: POST
     enabled: true
+  - name: obiettivi-kpi
+    description: "Alle 19:00 complimenti WhatsApp per obiettivi raggiunti; dal 15 promemoria se sotto il 40%"
+    cron: "0 19 * * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/obiettivi"
+    method: POST
+    enabled: true
