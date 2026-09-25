@@ -126,7 +126,7 @@ export default function Formazione() {
     try { await api.delete(`/formazione/moduli/${m.id}`); setTab("manuale"); load(); } catch (e) { toast.error(apiError(e)); }
   };
   const aggiorna = async () => {
-    try { const r = await api.post("/formazione/aggiorna-default"); toast.success(`Contenuti aggiornati: ${r.data.nuove} nuove voci, ${r.data.aggiornate} aggiornate (le tue modifiche sono salve)`); load(); } catch (e) { toast.error(apiError(e)); }
+    try { const r = await api.post("/formazione/aggiorna-default"); toast.success(`Contenuti aggiornati: ${r.data.nuove} nuove voci, ${r.data.aggiornate} aggiornate, ${r.data.rimosse || 0} slide obsolete rimosse (le tue modifiche sono salve)`); load(); } catch (e) { toast.error(apiError(e)); }
   };
 
   const openNew = () => { setEditing(null); setForm({ ...EMPTY, sezione: tab }); setOpen(true); };

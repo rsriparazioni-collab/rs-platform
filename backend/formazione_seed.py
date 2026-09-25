@@ -1,83 +1,86 @@
 """Contenuti iniziali della sezione Formazione (modificabili dall'admin in-app)."""
 
 SLIDES = [
-    ("Benvenuti nel Gestionale RS", "Un unico strumento per energia, telefonia, riparazioni e usato",
+    ("Benvenuti nel Gestionale RS", "Un unico strumento per energia, telefonia, riparazioni, vendite e usato",
      "Il gestionale raccoglie in un solo posto tutto il lavoro dei negozi Cambia Ora / RS Riparazioni.\n\n"
-     "- Clienti e utenze luce/gas con rinnovi automatici\n- Riparazioni con numerazione, stati e prezzi consigliati\n"
-     "- Telefonia mobile e fisso con scadenze vincoli\n- Magazzino ricambi e dispositivi rigenerati\n- Ritiro usato con bolla PDF\n"
-     "- WhatsApp automatico verso i clienti\n- Sicurezza GDPR: 2FA, registro accessi, dati cifrati"),
-    ("Accesso e sicurezza", "Login, 2FA e ruoli",
+     "- Clienti e utenze luce/gas (ENEL e CambiaOra) con rinnovi automatici\n- Riparazioni con numerazione, stati, ricambi e prezzi consigliati\n"
+     "- Telefonia mobile e fisso/internet per operatore\n- Vendite con IVA corretta, Magazzino ricambi, Ritiri usato con report alla commercialista\n"
+     "- WhatsApp automatico, **KPI Team** di ogni operatore, Formazione e know-how\n\nObiettivo: **zero fogli a parte**, tutto si registra una volta sola."),
+    ("Accesso e sicurezza", "Login, 2FA, ruoli e campanella",
      "Ogni persona ha un account personale (mai condiviso).\n\n"
      "1. Inserisci email e password\n2. Inserisci il codice a 6 cifre dell'app Authenticator (2FA obbligatoria)\n"
-     "3. Conserva i codici di recupero al sicuro\n\n"
-     "Ruoli: **Admin** vede e gestisce tutto · **Operatore** (sede) vede tutti i negozi · **Negozio** vede solo i propri clienti."),
-    ("Dashboard", "La giornata a colpo d'occhio",
+     "3. Conserva i codici di recupero al sicuro; se ti blocchi l'admin fa *Reset 2FA*\n\n"
+     "Ruoli: **Admin** vede e gestisce tutto · **Operatore** (sede) vede tutti i negozi · **Negozio** vede solo i propri clienti · **Tecnico** vede tutte le riparazioni.\n"
+     "In alto a destra la **campanella** con gli avvisi (richieste ricambi da altri negozi)."),
+    ("Dashboard e Registro rapido", "La giornata a colpo d'occhio",
+     "- In cima il **Registro rapido**: un tap = +1 per accessori, pellicole, proposte Eolo/telefoni, chiamate Eolo e ENEL eco, ricontratti, passaggi a Deborah/Silvio\n"
      "- Rinnovi energia in scadenza e clienti non pagati\n- Riparazioni aperte e tempi medi per negozio\n"
-     "- Contratti Fastweb da caricare su JOY (oltre 3 giorni)\n- Stato collegamento WhatsApp dei negozi\n"
-     "- Solo admin: margini mensili e grafico 12 mesi"),
+     "- Contratti Fastweb da caricare su JOY (oltre 3 giorni)\n- Stato collegamento WhatsApp dei negozi\n- Solo admin: margini mensili e grafico 12 mesi"),
     ("Clienti", "Anagrafica unica per tutti i servizi",
-     "Un cliente puo' avere piu' utenze e piu' servizi.\n\n"
-     "- Colonna **Tipo**: Luce / Gas / Rip / Mob / Fis in base a cio' che ha fatto davvero\n"
-     "- Filtri per lavorazione, tipo servizio, negozio, ricerca libera\n- Clienti **Premium**: chi usa piu' categorie di servizi\n"
-     "- Blacklist recensioni per chi non deve ricevere richieste\n- Esportazione Excel e scheda completa"),
-    ("Energia (luce e gas)", "Dal contratto al rinnovo",
-     "- Inserisci POD/PDR, fornitore attuale, costi attuali e nuovi\n- Le **13 lavorazioni** dicono a che punto e' la pratica\n"
-     "- Rinnovo automatico a 10 mesi dalla data contratto (utenza 12 mesi, attivazione dopo 2)\n"
-     "- Flag **pagato** = incasso della struttura; reset ogni 6 mesi\n- WhatsApp automatici: rinnovo e avviso anti-truffa"),
+     "Un cliente puo' avere piu' utenze e piu' servizi: **una sola scheda**.\n\n"
+     "- Privato o Business (CF / P.IVA obbligatori), indirizzo completo, bozza salvata in automatico\n"
+     "- Colonna **Tipo**: Luce / Gas / Rip / Mob / Fis in base a cio' che ha fatto davvero; tab CambiaOra, ENEL, Riparazioni, Vendite, Ritiri, **Premium**\n"
+     "- Tasti **Copia dati cliente** (da incollare nei portali) e **Proposta fatta** (Eolo, telefono, passaggio a Deborah/Silvio)\n"
+     "- Blacklist recensioni, esportazione Excel, scheda completa con registro WhatsApp"),
+    ("Energia (luce e gas)", "ENEL e CambiaOra, dal contratto al rinnovo",
+     "- Inserisci POD/PDR, fornitore attuale, costi attuali e nuovi; per ENEL la pratica (SWA/VSA, voltura, subentro, allaccio, prima attivazione)\n"
+     "- Le **13 lavorazioni** dicono a che punto e' la pratica; lo switch CambiaOra conta nei KPI\n"
+     "- Rinnovo automatico a 10 mesi dalla data contratto\n- Flag **pagato** = incasso della struttura; reset ogni 6 mesi\n"
+     "- WhatsApp automatici: rinnovo e anti-truffa (testo ENEL o CambiaOra dal numero giusto)"),
     ("Riparazioni", "Dall'ingresso alla consegna",
      "1. Nuova riparazione: dispositivo, problema, codice sblocco (cifrato)\n2. Numero progressivo per negozio (es. RSO12)\n"
-     "3. Stati: Ingresso → Preventivo → In lavorazione → Pronto\n4. Ricambi scalati dal magazzino, prezzo consigliato e margine reale\n"
-     "5. **Pronto**: WhatsApp automatico al cliente, promemoria se non ritira\n6. Consegna: cancellazione automatica dei codici"),
-    ("Ritirato → Rigenerati", "Quando il cliente lascia il telefono",
-     "- Tasto **Ritirato** nella scheda riparazione\n- Bolla PDF con solo il prezzo di ritiro; documenti del cliente uniti in coda\n"
-     "- Il dispositivo entra in Magazzino come **rigenerato** con costo = ritiro + ricambi\n"
-     "- Tasto **Venduto**: registra prezzo e margine, visibile in Dashboard"),
-    ("Telefonia", "Mobile e Fisso/Internet",
-     "- Due tab: **Mobile** (SIM) e **Fisso** (internet/telefono)\n- Operatore, offerta, vincolo e scadenza offerta annuale\n"
-     "- Flag portale (es. CARICATO SU JOY per Fastweb) con promemoria\n- WhatsApp automatici a fine vincolo e a scadenza offerta"),
-    ("Magazzino", "Ricambi e dispositivi",
-     "- Articoli per negozio con categoria, quantita', prezzo acquisto/vendita\n- Movimenti +/- e disponibilita' in fase di riparazione\n"
-     "- Categoria **rigenerati** per i telefoni ritirati\n- Esportazione Excel"),
-    ("WhatsApp automatico", "Il gestionale scrive al posto tuo",
-     "Messaggi inviati dal numero del negozio:\n\n"
-     "- Privacy e benvenuto → poi richiesta recensione\n- Telefono pronto e promemoria ritiro\n- Rinnovo energia e anti-truffa\n"
-     "- Fine vincolo / scadenza offerta telefonia\n- Al negozio (8:30): riparazioni ferme e contratti da caricare su JOY\n\n"
-     "I testi si modificano in Negozi → Messaggi WhatsApp. Ogni invio e' nel Registro Messaggi del cliente."),
-    ("Password e Portali", "Credenziali al sicuro",
-     "- **Portali Operatori**: link rapidi ai portali (Fastweb, Iliad, Kolme, fornitori ricambi...)\n"
-     "- **Password**: credenziali cifrate; l'admin decide quali negozi vedono cosa\n- Ogni visualizzazione viene registrata"),
-    ("GDPR e privacy", "Obblighi che il sistema rispetta per te",
-     "- 2FA obbligatoria e sessioni sicure\n- Registro accessi: chi ha visto o modificato cosa\n"
-     "- Dati sensibili cifrati (codici sblocco, password)\n- Esportazione dati cliente in PDF e anonimizzazione su richiesta\n"
-     "- Pulizia automatica dei clienti inattivi da oltre 5 anni"),
-    ("Primo giorno in negozio", "Checklist per iniziare",
-     "1. Ricevi l'account e attiva la 2FA\n2. Collega il numero WhatsApp del negozio (QR)\n3. Controlla i messaggi WhatsApp del negozio\n"
-     "4. Inserisci il primo cliente e la prima riparazione\n5. Leggi il manuale operativo nella sezione Formazione\n6. In dubbio: chiedi a Deborah o all'amministratore"),
-    ("Vendite", "Telefoni, accessori e usato con IVA giusta",
-     "- **Vendite → Nuova**: cliente, articolo dal magazzino (nuovo, ricondizionato, accessorio), prezzo\n"
-     "- Categorie IVA automatiche: **22%** (nuovo/accessori), **art. 36 margine** (usato/ricondizionati), **art. 17** (reverse charge)\n"
-     "- Vendite anche senza registrare il cliente: segna l'accessorio nel **Registro rapido** in Dashboard\n"
-     "- Import storico dai fogli Google e report per la commercialista"),
-    ("Ritiri usato e commercialista", "Bolle numerate e report automatico",
-     "- Ogni ritiro ha numero annuale per negozio (M01/2026, SO01/2026, SA01/2026…)\n- Bolla PDF + documenti del cliente uniti in un unico file\n"
-     "- Il **1° del mese** la commercialista di ogni negozio riceve via email il registro del mese (PDF + ZIP con bolle e documenti)\n"
-     "- Tasto **Report commercialista** in Ritiri: anteprima per negozio, download e invio immediato\n- Archivio automatico su **Google Drive** (Gestionale RS / Ritiri / Negozio / Anno)"),
+     "3. Stati: Ingresso → Preventivo → In lavorazione → Pronto → Consegnato\n4. **Tipo riparazione (KPI)**: normale, garanzia, ricambio usato, scheda madre, non riparabile, preventivo non accettato\n"
+     "5. Ricambi scalati dal magazzino (anche da altro negozio o **in ordine**), prezzo consigliato e margine reale\n"
+     "6. **Pronto**: WhatsApp automatico al cliente, promemoria se non ritira; alla consegna i codici si cancellano"),
     ("Magazzino ricambi", "Marca, modello, tipologia e ricambi in ordine",
      "- Articoli con **Tipologia** (Display, Batteria, Fotocamera, Connettore…), **Marca** e **Modello**: il nome si compone da solo\n"
-     "- Ricerca per parole: *iphone 12 display*\n- Nella riparazione: **Usa** scala il pezzo; se manca **Usa e metti in ordine** lo crea a −1 e la riparazione va in *Attesa ricambio*\n"
+     "- Ricerca per parole: *iphone 12 display*; regime IVA e categoria\n- Nella riparazione: **Usa** scala il pezzo; se manca **Usa e metti in ordine** lo crea a −1 e la riparazione va in *Attesa ricambio*\n"
      "- Card rossa **Ricambi da ordinare** → tasto **Arrivato** riporta a 0 e la riparazione ripassa in lavorazione\n"
-     "- Ricambio preso da un altro negozio: viene scalato lì e il negozio riceve un avviso (campanella + WhatsApp)"),
-    ("KPI Team e Registro rapido", "I risultati di ogni operatore, in automatico",
-     "- **Registro rapido** in cima alla Dashboard: un tap = +1 (accessori, pellicole, Eolo proposto, chiamate, SIM MNP con operatore…)\n"
-     "- Nella scheda cliente: **Proposta fatta** (Eolo, telefono, passaggio a Deborah/Silvio)\n"
-     "- **KPI Team**: griglia giorno × attività come i fogli mensili, totale mese, confronto col mese precedente, export Excel\n"
-     "- Dati automatici: utenze inserite, pratiche ENEL, switch CambiaOra, SIM/fisso/internet, riparazioni, vendite, esiti chiamate, clienti serviti\n"
-     "- Promemoria WhatsApp alle **18:30** a chi non ha segnato nulla"),
-    ("Avvisi e scorciatoie", "Campanella, copia dati, Drive",
-     "- **Campanella** in alto a destra: richieste ricambi da altri negozi e avvisi; segna come letto\n"
-     "- **Copia dati cliente** accanto ad *Apri portale*: nome, CF, telefono, indirizzo pronti da incollare nei portali\n"
-     "- **Collega Google Drive** (admin, in Ritiri): archivio automatico di bolle e report\n"
-     "- **WhatsApp**: collega il numero del negozio con il **codice a 8 caratteri** (Dispositivi collegati → Collega con numero di telefono)"),
+     "- Ricambio preso da un altro negozio: scalato li' + avviso al negozio (campanella e WhatsApp)"),
+    ("Ritirato → Rigenerati", "Quando il cliente lascia il telefono",
+     "- Tasto **Ritirato** nella scheda riparazione o *Nuovo ritiro*\n- Bolla PDF numerata per negozio (M01/2026) con documenti del cliente uniti in coda\n"
+     "- Il dispositivo entra in Magazzino come **rigenerato** con costo = ritiro + ricambi\n"
+     "- Stati: in vendita → venduto / uso interno; tasto **Venduto** registra prezzo e margine"),
+    ("Ritiri usato e commercialista", "Report automatico ogni mese",
+     "- Il **1° del mese** la commercialista di ogni negozio riceve via email il registro del mese (PDF + ZIP con bolle e documenti)\n"
+     "- Tasto **Report commercialista** in Ritiri: anteprima per negozio (ritiri, valore, bolle senza documenti), download e invio immediato\n"
+     "- Archivio automatico su **Google Drive** (Gestionale RS / Ritiri / Negozio / Anno)"),
+    ("Vendite", "Telefoni, accessori e usato con IVA giusta",
+     "- **Vendite → Nuova**: cliente, articolo dal magazzino (nuovo, ricondizionato, accessorio), prezzo, venditore\n"
+     "- Categorie IVA automatiche: **22%** (nuovo/accessori), **art. 36 margine** (usato/ricondizionati), **art. 17** (reverse charge)\n"
+     "- Accessori al banco senza privacy: segnali nel **Registro rapido**\n- Import storico dai fogli Google e margini in Dashboard"),
+    ("Telefonia", "Mobile e Fisso/Internet per operatore",
+     "- Due tab: **Mobile** (SIM) e **Fisso** (internet/telefono)\n- SIM: operatore e **Tipo attivazione** (numero nuovo / MNP / cambio offerta) → i KPI contano ogni operatore\n"
+     "- Fisso/Internet: Eolo, Fastweb, WindTre, TIM… con vincolo e scadenza offerta annuale\n"
+     "- Flag portale (es. CARICATO SU JOY per Fastweb) con promemoria\n- WhatsApp automatici a fine vincolo e a scadenza offerta"),
+    ("WhatsApp automatico", "Il gestionale scrive al posto tuo",
+     "Messaggi inviati dal numero del negozio (CambiaOra, ENEL o Laboratorio a seconda del servizio):\n\n"
+     "- Privacy e benvenuto → poi richiesta recensione\n- Telefono pronto e promemoria ritiro\n- Rinnovo energia e anti-truffa\n"
+     "- Fine vincolo / scadenza offerta telefonia\n- Al negozio (8:30): riparazioni ferme e contratti da caricare su JOY\n- Richiesta ricambio da altro negozio · Promemoria KPI alle 18:30\n\n"
+     "Collegamento con **codice a 8 caratteri** (Dispositivi collegati → Collega con numero di telefono). Testi in Gestione Negozi → Messaggi WhatsApp."),
+    ("KPI Team", "I risultati di ogni operatore, in automatico",
+     "- Sezione **KPI Team**: card per operatore con totale mese, clienti serviti e **confronto col mese precedente** (verde/rosso)\n"
+     "- Griglia giorno × attivita' come i fogli mensili, totale mese, **export Excel** (un foglio per operatore)\n"
+     "- Dati automatici: utenze inserite e pratiche ENEL, switch CambiaOra, SIM nuove/MNP e fissi **per operatore**, riparazioni per tipo, vendite, esiti chiamate, clienti serviti\n"
+     "- Ogni operatore vede i propri KPI; admin e ufficio vedono tutti\n- Regola: **registra ogni movimento subito sul cliente**, i KPI si compilano da soli"),
+    ("Registro rapido e Proposte", "Solo cio' che il gestionale non puo' sapere",
+     "- **Registro rapido** (Dashboard): accessori e pellicole al banco, Eolo/telefoni proposti, chiamate Eolo e ENEL eco, ricontratti, M&R, Investitore PRO, clienti passati a Deborah o Silvio\n"
+     "- **Proposta fatta** nella scheda cliente: resta legata al cliente e si vede se si chiude\n"
+     "- Cliente collegabile a ogni tap; lista di oggi con annulla\n- Alle **18:30** promemoria WhatsApp a chi non ha segnato nulla"),
+    ("Password e Portali", "Credenziali al sicuro",
+     "- **Portali Operatori**: link rapidi ai portali (Fastweb, Iliad, Kolme, ENEL, fornitori ricambi...)\n"
+     "- **Password**: credenziali cifrate; l'admin decide quali negozi vedono cosa\n- Ogni visualizzazione viene registrata"),
+    ("GDPR e privacy", "Obblighi che il sistema rispetta per te",
+     "- 2FA obbligatoria e sessioni sicure con scadenza per inattivita'\n- Registro accessi: chi ha visto o modificato cosa\n"
+     "- Dati sensibili cifrati (codici sblocco, password)\n- Esportazione dati cliente in PDF e anonimizzazione su richiesta\n"
+     "- Pulizia automatica dei clienti inattivi da oltre 5 anni"),
+    ("Formazione e know-how", "Tutto quello che serve per partire",
+     "- **Presentazione** (questa), **Manuale operativo** passo passo, **Know-how aziendale** (analisi bolletta, script telefonata, MNP, Eolo, preventivi, usato, reclami)\n"
+     "- **Servizi & Operatori**: schede di ogni servizio e portale\n- L'admin puo' aggiungere **moduli** personalizzati e modificare ogni voce\n- PDF scaricabile e link pubblico della presentazione"),
+    ("Primo giorno in negozio", "Checklist per iniziare",
+     "1. Ricevi l'account, attiva la 2FA e inserisci il tuo cellulare in Utenti (promemoria KPI)\n2. Collega il numero WhatsApp del negozio (codice a 8 caratteri)\n"
+     "3. Inserisci il primo cliente, la prima SIM (con tipo attivazione) e la prima riparazione\n4. Segna nel Registro rapido cio' che non passa dal gestionale\n"
+     "5. Controlla i tuoi **KPI** a fine giornata\n6. Leggi manuale e know-how nella sezione Formazione; in dubbio chiedi a Deborah o all'amministratore"),
 ]
 
 KNOWHOW = [
@@ -168,16 +171,12 @@ SERVIZI = [
 
 ]
 
-SLIDE_IMG = {0: "/formazione/dashboard.jpg", 1: "/formazione/login.jpg", 2: "/formazione/dashboard.jpg", 3: "/formazione/clienti.jpg",
-             4: "/formazione/clienti.jpg", 5: "/formazione/riparazioni.jpg", 6: "/formazione/ritiri.jpg", 7: "/formazione/telefonia.jpg",
-             8: "/formazione/magazzino.jpg", 9: "/formazione/whatsapp.jpg", 10: "/formazione/password.jpg", 11: "/formazione/registro-accessi.jpg",
-             12: "/formazione/formazione.jpg"}
 MANUALE_IMG = {0: "/formazione/sicurezza.jpg", 1: "/formazione/clienti.jpg", 2: "/formazione/clienti.jpg", 3: "/formazione/riparazioni.jpg",
                4: "/formazione/ritiri.jpg", 5: "/formazione/telefonia.jpg", 6: "/formazione/magazzino.jpg", 7: "/formazione/magazzino.jpg", 8: "/formazione/ritiri.jpg",
                9: "/formazione/dashboard.jpg", 10: "/formazione/dashboard.jpg", 11: "/formazione/whatsapp.jpg",
                12: "/formazione/password.jpg", 13: "/formazione/registro-accessi.jpg", 14: "/formazione/negozi.jpg", 15: "/formazione/utenti.jpg",
                16: "/formazione/dashboard.jpg"}
-SLIDE_IMG.update({13: "/formazione/magazzino.jpg", 14: "/formazione/ritiri.jpg", 15: "/formazione/magazzino.jpg", 16: "/formazione/dashboard.jpg", 17: "/formazione/clienti.jpg"})
+SLIDE_IMG = {0: "/formazione/dashboard.jpg", 1: "/formazione/sicurezza.jpg", 2: "/formazione/dashboard.jpg", 3: "/formazione/clienti.jpg", 4: "/formazione/clienti.jpg", 5: "/formazione/riparazioni.jpg", 6: "/formazione/magazzino.jpg", 7: "/formazione/ritiri.jpg", 8: "/formazione/ritiri.jpg", 9: "/formazione/magazzino.jpg", 10: "/formazione/telefonia.jpg", 11: "/formazione/whatsapp.jpg", 12: "/formazione/dashboard.jpg", 13: "/formazione/dashboard.jpg", 14: "/formazione/password.jpg", 15: "/formazione/registro-accessi.jpg", 16: "/formazione/dashboard.jpg", 17: "/formazione/negozi.jpg"}
 
 OPERATORI = [
     ("ENEL", "energia", "Fornitore energia. Portale agenti con accesso Microsoft.", ""),

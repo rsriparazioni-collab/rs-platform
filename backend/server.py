@@ -2225,16 +2225,20 @@ async def aggiorna_formazione_default() -> dict:
     """Aggiunge le voci predefinite nuove e aggiorna quelle mai modificate dall'admin, senza toccare le personalizzate."""
     portali = await db.portali.find({}, {"_id": 0}).to_list(200)
     now = datetime.now(timezone.utc).isoformat()
-    nuove, aggiornate = 0, 0
-    for d in _formazione_seed(portali):
+    nuove, aggiornate, rimosse = 0, 0, 0
+    seed = _formazione_seed(portali)
+    for d in seed:
         ex = await db.formazione.find_one({"sezione": d["sezione"], "titolo": d["titolo"]}, {"_id": 0, "id": 1, "updated_by": 1})
         if not ex:
             await db.formazione.insert_one({**d, "id": str(uuid.uuid4()), "link": d.get("link", ""), "immagine": d.get("immagine", ""), "created_at": now, "updated_at": now})
             nuove += 1
         elif not ex.get("updated_by"):
-            await db.formazione.update_one({"id": ex["id"]}, {"$set": {**{k: v for k, v in d.items() if k != "ordine"}, "updated_at": now}})
+            await db.formazione.update_one({"id": ex["id"]}, {"$set": {**d, "updated_at": now}})
             aggiornate += 1
-    return {"nuove": nuove, "aggiornate": aggiornate}
+    titoli_slide = {d["titolo"] for d in seed if d["sezione"] == "slide"}
+    res = await db.formazione.delete_many({"sezione": "slide", "titolo": {"$nin": list(titoli_slide)}, "updated_by": {"$exists": False}})
+    rimosse = res.deleted_count
+    return {"nuove": nuove, "aggiornate": aggiornate, "rimosse": rimosse}
 
 @api_router.post("/formazione/aggiorna-default")
 async def aggiorna_formazione(admin: dict = Depends(require_admin)):
