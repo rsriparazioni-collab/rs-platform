@@ -5364,6 +5364,9 @@ magazzino_ricambi_module.setup(db=db, get_current_user=get_current_user, get_sco
 api_router.include_router(magazzino_ricambi_module.router)
 
 import google_drive as google_drive_module
+import kpi as kpi_module
+kpi_module.setup(db=db, get_current_user=get_current_user)
+api_router.include_router(kpi_module.router)
 google_drive_module.setup(db=db, get_current_user=get_current_user, get_object=get_object, fernet=_fernet)
 api_router.include_router(google_drive_module.router)
 report_ritiri_module.setup(carica_report_su_drive=google_drive_module.carica_report_su_drive)

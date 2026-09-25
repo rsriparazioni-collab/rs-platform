@@ -8,6 +8,7 @@ import DaRichiamare from "../components/DaRichiamare";
 import CodaWhatsApp from "../components/CodaWhatsApp";
 import ContattoDialog, { ContattoBadge, ContattoButton } from "../components/ContattoDialog";
 import { useAuth } from "../context/AuthContext";
+import RegistroRapido from "../components/RegistroRapido";
 import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate } from "../lib/constants";
 import { Button } from "../components/ui/button";
 
@@ -96,6 +97,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
+      <RegistroRapido />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">Dashboard</h1>

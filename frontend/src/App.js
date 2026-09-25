@@ -21,6 +21,7 @@ import Ritiri from "./pages/Ritiri";
 import Vendite from "./pages/Vendite";
 import Formazione from "./pages/Formazione";
 import PrezziRiparazioni from "./pages/PrezziRiparazioni";
+import Kpi from "./pages/Kpi";
 import Presentazione from "./pages/Presentazione";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -65,6 +66,7 @@ function App() {
           <Route path="/formazione/presentazione" element={<Presentazione />} />
           <Route path="/" element={<Protected><Layout /></Protected>}>
             <Route index element={<Dashboard />} />
+            <Route path="kpi" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><Kpi /></RequireRole>} />
             <Route path="clienti" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="energia"><Clienti /></RequireRole>} />
             <Route path="riparazioni" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="riparazioni"><Riparazioni /></RequireRole>} />
             <Route path="telefonia" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="telefonia"><Telefonia /></RequireRole>} />

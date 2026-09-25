@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText, Link2, KeyRound, GraduationCap, Calculator, ShoppingBag } from "lucide-react";
+import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText, Link2, KeyRound, GraduationCap, Calculator, ShoppingBag, BarChart3 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { RUOLI } from "../lib/constants";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -11,6 +11,7 @@ const ALL_SECTIONS_DEFAULT = ["energia", "riparazioni", "telefonia"];
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-dashboard" },
+  { to: "/kpi", label: "KPI Team", icon: BarChart3, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-kpi" },
   { to: "/clienti", label: "Clienti", icon: Users, roles: ["admin", "operatore", "negozio", "tecnico"], section: "energia", testid: "nav-clienti" },
   { to: "/riparazioni", label: "Riparazioni", icon: Wrench, roles: ["admin", "operatore", "negozio", "tecnico"], section: "riparazioni", testid: "nav-riparazioni" },
   { to: "/telefonia", label: "Telefonia", icon: Smartphone, roles: ["admin", "operatore", "negozio", "tecnico"], section: "telefonia", testid: "nav-telefonia" },
