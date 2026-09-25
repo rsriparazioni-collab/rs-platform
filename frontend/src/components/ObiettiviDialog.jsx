@@ -17,7 +17,7 @@ export function BarraObiettivo({ o, compact = false }) {
     <div data-testid={`obiettivo-bar-${o.voce}`}>
       <div className="flex items-center justify-between text-[11px]">
         <span className={compact ? "truncate text-slate-600" : "text-slate-700"}>{o.label}</span>
-        <span className={`ml-2 shrink-0 font-semibold ${done ? "text-emerald-700" : "text-slate-700"}`}>{o.attuale} / {o.target}</span>
+        <span className={`ml-2 shrink-0 font-semibold ${done ? "text-emerald-700" : "text-slate-700"}`}>{o.attuale} / {o.target}{o.bonus ? <span className={`ml-1 rounded px-1 text-[10px] ${done ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"}`} data-testid={`obiettivo-bonus-${o.voce}`}>{done ? "Bonus maturato" : "Bonus"} {Number(o.bonus).toFixed(0)} €</span> : null}</span>
       </div>
       <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
         <div className={`h-full rounded-full transition-[width] duration-500 ${done ? "bg-emerald-500" : o.pct >= 60 ? "bg-amber-400" : "bg-rose-400"}`} style={{ width: `${o.pct}%` }} />
@@ -29,7 +29,9 @@ export function BarraObiettivo({ o, compact = false }) {
 export default function ObiettiviDialog({ open, onOpenChange, utenti, voci, anno, mese, userId: initialUser, onChanged }) {
   const [userId, setUserId] = useState(initialUser || "");
   const [list, setList] = useState([]);
-  const [form, setForm] = useState({ voce: "", operatore: "", target: 1, ricorrente: true });
+  const [form, setForm] = useState({ voce: "", operatore: "", target: 1, ricorrente: true, bonus: "" });
+  const utenteSel = utenti.find((u) => u.id === userId);
+  const vociUtente = utenteSel?.role === "tecnico" ? voci.filter((v) => v.area === "riparazioni") : voci;
 
   useEffect(() => { if (initialUser) setUserId(initialUser); }, [initialUser]);
   const load = useCallback(() => { if (userId) api.get("/kpi/obiettivi", { params: { anno, mese, user_id: userId } }).then((r) => setList(r.data)).catch(() => {}); }, [userId, anno, mese]);
@@ -38,13 +40,13 @@ export default function ObiettiviDialog({ open, onOpenChange, utenti, voci, anno
   const add = async (e) => {
     e.preventDefault();
     try {
-      await api.post("/kpi/obiettivi", { user_id: userId, voce: form.voce, operatore: form.operatore, target: parseInt(form.target) || 1, anno: form.ricorrente ? null : anno, mese: form.ricorrente ? null : mese });
-      toast.success("Obiettivo salvato"); setForm({ ...form, operatore: "", target: 1 }); load(); onChanged?.();
+      await api.post("/kpi/obiettivi", { user_id: userId, voce: form.voce, operatore: form.operatore, target: parseInt(form.target) || 1, bonus: parseFloat(form.bonus) || 0, anno: form.ricorrente ? null : anno, mese: form.ricorrente ? null : mese });
+      toast.success("Obiettivo salvato"); setForm({ ...form, operatore: "", target: 1, bonus: "" }); load(); onChanged?.();
     } catch (err) { toast.error(apiError(err)); }
   };
   const del = async (o) => { try { await api.delete(`/kpi/obiettivi/${o.id}`); load(); onChanged?.(); } catch (err) { toast.error(apiError(err)); } };
 
-  const aree = [...new Set(voci.map((v) => v.area))];
+  const aree = [...new Set(vociUtente.map((v) => v.area))];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto" data-testid="obiettivi-dialog">
@@ -59,11 +61,12 @@ export default function ObiettiviDialog({ open, onOpenChange, utenti, voci, anno
               <div className="space-y-1 sm:col-span-5"><Label className="text-xs">Su cosa</Label>
                 <Select value={form.voce || "none"} onValueChange={(v) => setForm({ ...form, voce: v === "none" ? "" : v })}><SelectTrigger data-testid="obiettivi-voce"><SelectValue placeholder="Voce KPI…" /></SelectTrigger>
                   <SelectContent className="max-h-72"><SelectItem value="none">Voce KPI…</SelectItem>
-                    {aree.map((a) => [<div key={`h-${a}`} className="px-2 py-1 text-[10px] font-bold uppercase text-slate-400">{AREA_LABEL[a] || a}</div>, ...voci.filter((v) => v.area === a).map((v) => <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>)])}
+                    {aree.map((a) => [<div key={`h-${a}`} className="px-2 py-1 text-[10px] font-bold uppercase text-slate-400">{AREA_LABEL[a] || a}</div>, ...vociUtente.filter((v) => v.area === a).map((v) => <SelectItem key={v.id} value={v.id}>{v.label}</SelectItem>)])}
                   </SelectContent></Select></div>
-              <div className="space-y-1 sm:col-span-3"><Label className="text-xs">Operatore tel. (opz.)</Label>
-                <Input disabled={!CON_OPERATORE.includes(form.voce)} placeholder={CON_OPERATORE.includes(form.voce) ? "es. WIND3, ILIAD, EOLO" : "—"} value={form.operatore} onChange={(e) => setForm({ ...form, operatore: e.target.value })} data-testid="obiettivi-operatore" /></div>
-              <div className="space-y-1 sm:col-span-2"><Label className="text-xs">Obiettivo</Label><Input type="number" min="1" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} data-testid="obiettivi-target" /></div>
+              <div className="space-y-1 sm:col-span-2"><Label className="text-xs">Operatore tel.</Label>
+                <Input disabled={!CON_OPERATORE.includes(form.voce)} placeholder={CON_OPERATORE.includes(form.voce) ? "WIND3, ILIAD…" : "—"} value={form.operatore} onChange={(e) => setForm({ ...form, operatore: e.target.value })} data-testid="obiettivi-operatore" /></div>
+              <div className="space-y-1 sm:col-span-1"><Label className="text-xs">Obiettivo</Label><Input type="number" min="1" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} data-testid="obiettivi-target" /></div>
+              <div className="space-y-1 sm:col-span-2"><Label className="text-xs">Bonus € (opz.)</Label><Input type="number" min="0" step="10" placeholder="es. 100" value={form.bonus} onChange={(e) => setForm({ ...form, bonus: e.target.value })} data-testid="obiettivi-bonus" /></div>
               <div className="flex flex-col justify-end gap-1 sm:col-span-2">
                 <label className="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" checked={form.ricorrente} onChange={(e) => setForm({ ...form, ricorrente: e.target.checked })} data-testid="obiettivi-ricorrente" /> Ogni mese</label>
                 <Button type="submit" size="sm" disabled={!form.voce} className="gap-1 bg-slate-900 hover:bg-slate-800" data-testid="obiettivi-submit"><Plus className="h-3.5 w-3.5" /> Aggiungi</Button>

@@ -44,6 +44,7 @@ KPI_VOCI = [
     ("chiamata_non_risposto", "Chiamate non risposto", "chiamate", "mista"),
     ("passato_a_deborah", "Clienti passati a Deborah (utenze)", "chiamate", "manuale"),
     ("rip_ritirata", "Riparazioni ritirate (ingressi)", "riparazioni", "auto"),
+    ("rip_fatte", "Riparazioni fatte — totale (per bonus)", "riparazioni", "auto"),
     ("rip_normale", "Riparazioni normali", "riparazioni", "auto"),
     ("rip_garanzia", "Riparazioni in garanzia", "riparazioni", "auto"),
     ("rip_ricambio_usato", "Riparazioni con ricambio usato", "riparazioni", "auto"),
@@ -146,9 +147,11 @@ async def _kpi_start() -> str:
     return (doc or {}).get("value") or KPI_START_DEFAULT
 
 
-def _griglia_vuota(anno: int, mese: int, ndays: int, kpi_start: str) -> dict:
+def _griglia_vuota(anno: int, mese: int, ndays: int, kpi_start: str, solo_rip: bool = False) -> dict:
     voci = [{"id": i, "label": l, "area": a, "fonte": f, "giorni": {}, "totale": 0, "fonti_usate": []} for i, l, a, f in KPI_VOCI]
-    return {"anno": anno, "mese": mese, "giorni": ndays, "voci": voci, "totale_mese": 0, "kpi_start": kpi_start, "prima_inizio": True}
+    if solo_rip:
+        voci = [v for v in voci if v["area"] == "riparazioni"]
+    return {"anno": anno, "mese": mese, "giorni": ndays, "voci": voci, "totale_mese": 0, "kpi_start": kpi_start, "prima_inizio": True, "solo_riparazioni": solo_rip}
 
 
 class KpiStartInput(BaseModel):
@@ -180,15 +183,15 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
     end = (datetime(anno, mese, ndays) + timedelta(days=1)).strftime("%Y-%m-%d")
     rng = {"$gte": start, "$lt": end}
     kpi_start = await _kpi_start()
+    target = await db.users.find_one({"id": user_id}, {"_id": 0, "role": 1, "store_ids": 1})
     if kpi_start >= end:
-        return _griglia_vuota(anno, mese, ndays, kpi_start)
+        return _griglia_vuota(anno, mese, ndays, kpi_start, bool(target and target.get("role") == "tecnico"))
     if kpi_start > start:
         rng["$gte"] = kpi_start
     grid = defaultdict(lambda: defaultdict(int))
     serviti = defaultdict(set)
     fonti = defaultdict(set)
     dinamiche: dict = {}
-    target = await db.users.find_one({"id": user_id}, {"_id": 0, "role": 1, "store_ids": 1})
 
     def add(voce, iso, n=1, client_id=None, fonte="auto"):
         g = _giorno(iso)
@@ -238,6 +241,8 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
             if not esito and any((u.get("nome") or "").lower().startswith(("usato", "rigenerat")) for u in r.get("ricambi_usati") or []):
                 esito = "ricambio_usato"
             add(RIP_ESITI.get(esito, "rip_senza_tipo"), fine, client_id=r.get("client_id"))
+            if esito not in ("non_riparabile", "preventivo_rifiutato"):
+                add("rip_fatte", fine)
     vend_map = {"accessori": "accessorio", "telefono_rigenerato": "ricondizionato_venduto", "telefono_usato": "ricondizionato_venduto", "telefono_nuovo": "nuovo_venduto"}
     async for v in db.vendite.find({"created_by": user_id, "data_vendita": rng}, {"_id": 0, "client_id": 1, "data_vendita": 1, "categoria": 1, "quantita": 1}):
         voce = vend_map.get(v.get("categoria") or "")
@@ -281,8 +286,13 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
             dg = {str(g): n for g, n in grid.get(did, {}).items()}
             out.append({"id": did, "label": "   ↳ " + dinamiche[did][0], "area": dinamiche[did][1] if vid == "fisso" else area, "fonte": "auto",
                         "giorni": dg, "totale": sum(dg.values()), "fonti_usate": ["auto"], "dettaglio": True})
-    tot = sum(v["totale"] for v in out if v["id"] != "clienti_serviti" and not v.get("dettaglio"))
-    return {"anno": anno, "mese": mese, "giorni": ndays, "voci": out, "totale_mese": tot, "kpi_start": kpi_start}
+    solo_rip = bool(target and target.get("role") == "tecnico")
+    if solo_rip:
+        out = [v for v in out if v["area"] == "riparazioni"]
+        tot = next((v["totale"] for v in out if v["id"] == "rip_fatte"), 0)
+    else:
+        tot = sum(v["totale"] for v in out if v["id"] not in ("clienti_serviti", "rip_fatte") and not v.get("dettaglio"))
+    return {"anno": anno, "mese": mese, "giorni": ndays, "voci": out, "totale_mese": tot, "kpi_start": kpi_start, "solo_riparazioni": solo_rip}
 
 
 async def _utenti_kpi(user: dict) -> list:
@@ -316,6 +326,7 @@ class ObiettivoInput(BaseModel):
     operatore: str = ""
     anno: Optional[int] = None
     mese: Optional[int] = None
+    bonus: float = 0
 
 
 def _voce_label(voce: str) -> str:
@@ -337,7 +348,8 @@ async def _obiettivi_utente(user_id: str, anno: int, mese: int, kpi: dict | None
     out = []
     for o in obs:
         att = tot.get(o["voce"], 0)
-        out.append({**o, "label": _voce_label(o["voce"]), "attuale": att, "pct": min(100, round(att * 100 / o["target"])) if o["target"] else 0})
+        out.append({**o, "label": _voce_label(o["voce"]), "attuale": att, "pct": min(100, round(att * 100 / o["target"])) if o["target"] else 0,
+                    "bonus_maturato": bool(o.get("bonus")) and att >= o["target"]})
     return out
 
 
@@ -360,7 +372,7 @@ async def crea_obiettivo(input: ObiettivoInput, user: dict = Depends(_current_us
     if input.target < 1:
         raise HTTPException(status_code=400, detail="Obiettivo deve essere almeno 1")
     voce = f"{base}:{input.operatore.strip().upper()}" if input.operatore.strip() and base in ("sim_nuova", "sim_mnp", "fisso") else base
-    doc = {"id": str(uuid.uuid4()), "user_id": input.user_id, "voce": voce, "target": input.target, "anno": input.anno, "mese": input.mese,
+    doc = {"id": str(uuid.uuid4()), "user_id": input.user_id, "voce": voce, "target": input.target, "anno": input.anno, "mese": input.mese, "bonus": input.bonus,
            "created_by": user["name"], "created_at": datetime.now(timezone.utc).isoformat()}
     await _d["db"].kpi_obiettivi.update_one({"user_id": input.user_id, "voce": voce, "anno": input.anno, "mese": input.mese}, {"$set": doc}, upsert=True)
     return {**doc, "label": _voce_label(voce)}

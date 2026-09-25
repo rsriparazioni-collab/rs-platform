@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Zap, Trash2, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { Button } from "./ui/button";
 
 const AREE = [["energia", "Energia"], ["telefonia", "Telefonia"], ["internet", "Internet"], ["chiamate", "Chiamate"], ["riparazioni", "Riparazioni"]];
 
 export default function RegistroRapido() {
+  const { user } = useAuth();
   const [voci, setVoci] = useState([]);
   const [area, setArea] = useState(localStorage.getItem("rr_area") || "telefonia");
   const [oggi, setOggi] = useState([]);
@@ -34,6 +36,7 @@ export default function RegistroRapido() {
 
   const manuali = voci.filter((v) => v.area === area && v.fonte !== "auto");
   const conteggi = oggi.reduce((m, a) => ({ ...m, [a.voce]: (m[a.voce] || 0) + a.quantita }), {});
+  if (user?.role === "tecnico") return null;
 
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="registro-rapido">

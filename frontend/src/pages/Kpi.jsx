@@ -83,7 +83,7 @@ export default function Kpi() {
             <button key={r.user_id} type="button" onClick={() => setUserId(r.user_id)} className={`rounded-xl border bg-white p-4 text-left shadow-sm transition-colors ${userId === r.user_id ? "border-slate-900" : "border-slate-200 hover:border-slate-400"}`} data-testid={`kpi-card-${r.user_id}`}>
               <div className="flex items-center justify-between"><p className="font-semibold text-slate-900">{r.name}</p><BarChart3 className="h-4 w-4 text-slate-400" /></div>
               <div className="mt-1 flex items-center gap-2"><p className="text-2xl font-bold text-slate-900">{r.totale_mese}</p><Delta cur={r.totale_mese} prev={r.prev_totale_mese} testid={`kpi-delta-${r.user_id}`} /></div>
-              <p className="flex items-center gap-1.5 text-xs text-slate-500">attività · {r.clienti_serviti} clienti serviti <Delta cur={r.clienti_serviti} prev={r.prev_clienti_serviti} /></p>
+              <p className="flex items-center gap-1.5 text-xs text-slate-500">{r.role === "tecnico" ? "riparazioni fatte" : <>attività · {r.clienti_serviti} clienti serviti <Delta cur={r.clienti_serviti} prev={r.prev_clienti_serviti} /></>}</p>
               <ul className="mt-2 space-y-0.5 text-[11px] text-slate-600">{r.top.map((t) => <li key={t.label} className="flex justify-between"><span>{t.label}</span><span><b>{t.totale}</b> <span className={t.totale - t.prev > 0 ? "text-emerald-600" : t.totale - t.prev < 0 ? "text-rose-600" : "text-slate-400"}>{t.totale - t.prev > 0 ? "↑" : t.totale - t.prev < 0 ? "↓" : "="}</span></span></li>)}</ul>
               {r.obiettivi?.length > 0 && (
                 <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-2" data-testid={`kpi-obiettivi-${r.user_id}`}>
@@ -107,7 +107,7 @@ export default function Kpi() {
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="kpi-griglia">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <p className="font-semibold text-slate-900">{data.user_name} · {MESI[mese - 1]} {anno}</p>
-            <p className="text-xs text-slate-500">Totale attività: <b>{data.totale_mese}</b></p>
+            <p className="text-xs text-slate-500">{data.solo_riparazioni ? "Riparazioni fatte" : "Totale attività"}: <b>{data.totale_mese}</b></p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">

@@ -365,3 +365,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-09-25 — Obiettivi mensili KPI
 - `kpi_obiettivi` {user_id, voce (anche "fisso:WIND3"/"sim_mnp:ILIAD"), target, anno/mese (null = ogni mese)}. Endpoint GET /kpi/obiettivi?anno&mese&user_id (attuale+pct), POST (admin, upsert), DELETE. /kpi/riepilogo include obiettivi[] per card.
 - Frontend: `ObiettiviDialog.jsx` (bottone "Obiettivi" admin in KPI: scegli dipendente, voce per area, operatore telefonico opzionale, target, ogni mese/solo questo mese), `BarraObiettivo` (verde ≥100%, giallo ≥60%, rosso) nelle card riepilogo e box dettaglio operatore. Esempio in preview: Silvio → Fisso WIND3 5, Eolo proposto 10.
+
+## 2026-09-25 — KPI tecnico (Bruno) solo riparazioni + bonus
+- Ruolo `tecnico` → calcola_kpi restituisce solo area riparazioni (`solo_riparazioni`), totale_mese = `rip_fatte` (nuova voce auto: riparazioni chiuse escluse non_riparabile/preventivo_rifiutato). Export/card/griglia coerenti. Registro rapido nascosto ai tecnici.
+- Obiettivi: campo `bonus` (€) → `bonus_maturato` quando attuale ≥ target; badge "Bonus maturato X €" nelle barre. Dialog filtra le voci per ruolo (tecnico = solo riparazioni). Esempio preview: Bruno → rip_fatte 80/mese, bonus 150 €.
