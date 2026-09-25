@@ -138,6 +138,40 @@ def _giorno(iso: str) -> Optional[int]:
         return None
 
 
+KPI_START_DEFAULT = "2026-10-01"
+
+
+async def _kpi_start() -> str:
+    doc = await _d["db"].settings.find_one({"key": "kpi_start"}, {"_id": 0, "value": 1})
+    return (doc or {}).get("value") or KPI_START_DEFAULT
+
+
+def _griglia_vuota(anno: int, mese: int, ndays: int, kpi_start: str) -> dict:
+    voci = [{"id": i, "label": l, "area": a, "fonte": f, "giorni": {}, "totale": 0, "fonti_usate": []} for i, l, a, f in KPI_VOCI]
+    return {"anno": anno, "mese": mese, "giorni": ndays, "voci": voci, "totale_mese": 0, "kpi_start": kpi_start, "prima_inizio": True}
+
+
+class KpiStartInput(BaseModel):
+    data: str
+
+
+@router.get("/kpi/inizio")
+async def kpi_inizio(user: dict = Depends(_current_user)):
+    return {"kpi_start": await _kpi_start()}
+
+
+@router.put("/kpi/inizio")
+async def set_kpi_inizio(input: KpiStartInput, user: dict = Depends(_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo admin")
+    try:
+        datetime.strptime(input.data, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data non valida (AAAA-MM-GG)")
+    await _d["db"].settings.update_one({"key": "kpi_start"}, {"$set": {"key": "kpi_start", "value": input.data}}, upsert=True)
+    return {"kpi_start": input.data}
+
+
 async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
     """Griglia voce -> {giorno: n} per un operatore, unendo dati automatici e registro rapido."""
     db = _d["db"]
@@ -145,6 +179,11 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
     start = f"{anno:04d}-{mese:02d}-01"
     end = (datetime(anno, mese, ndays) + timedelta(days=1)).strftime("%Y-%m-%d")
     rng = {"$gte": start, "$lt": end}
+    kpi_start = await _kpi_start()
+    if kpi_start >= end:
+        return _griglia_vuota(anno, mese, ndays, kpi_start)
+    if kpi_start > start:
+        rng["$gte"] = kpi_start
     grid = defaultdict(lambda: defaultdict(int))
     serviti = defaultdict(set)
     fonti = defaultdict(set)
@@ -153,7 +192,7 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
 
     def add(voce, iso, n=1, client_id=None, fonte="auto"):
         g = _giorno(iso)
-        if g and 1 <= g <= ndays:
+        if g and 1 <= g <= ndays and str(iso)[:10] >= kpi_start:
             grid[voce][g] += n
             fonti[voce].add(fonte)
             if client_id:
@@ -227,6 +266,8 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
         if g:
             serviti[g].add(a["entity_id"])
     for g, ids in serviti.items():
+        if f"{anno:04d}-{mese:02d}-{g:02d}" < kpi_start:
+            continue
         grid["clienti_serviti"][g] += len(ids)
         fonti["clienti_serviti"].add("auto")
     for g, n in grid.pop("clienti_serviti_extra", {}).items():
@@ -241,7 +282,7 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
             out.append({"id": did, "label": "   ↳ " + dinamiche[did][0], "area": dinamiche[did][1] if vid == "fisso" else area, "fonte": "auto",
                         "giorni": dg, "totale": sum(dg.values()), "fonti_usate": ["auto"], "dettaglio": True})
     tot = sum(v["totale"] for v in out if v["id"] != "clienti_serviti" and not v.get("dettaglio"))
-    return {"anno": anno, "mese": mese, "giorni": ndays, "voci": out, "totale_mese": tot}
+    return {"anno": anno, "mese": mese, "giorni": ndays, "voci": out, "totale_mese": tot, "kpi_start": kpi_start}
 
 
 async def _utenti_kpi(user: dict) -> list:

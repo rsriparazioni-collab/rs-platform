@@ -35,7 +35,7 @@ export default function Kpi() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">KPI Team</h1>
-          <p className="mt-1 text-sm text-slate-500">Attività per operatore, giorno per giorno: dati automatici dal gestionale + registro rapido</p>
+          <p className="mt-1 text-sm text-slate-500">Attività per operatore, giorno per giorno: dati automatici dal gestionale + registro rapido{data?.kpi_start ? ` · conteggi dal ${new Date(data.kpi_start).toLocaleDateString("it-IT")}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={String(mese)} onValueChange={(v) => setMese(parseInt(v))}><SelectTrigger className="w-[140px]" data-testid="kpi-mese"><SelectValue /></SelectTrigger>
@@ -55,6 +55,11 @@ export default function Kpi() {
         </div>
       </div>
 
+      {data?.prima_inizio && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="kpi-prima-inizio">
+          I conteggi KPI partono dal <b>{new Date(data.kpi_start).toLocaleDateString("it-IT")}</b>: i mesi precedenti sono a zero per avere un confronto reale mese su mese.
+        </div>
+      )}
       {vedeTutti && riepilogo.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="kpi-riepilogo">
           {riepilogo.map((r) => {

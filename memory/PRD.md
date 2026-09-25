@@ -358,3 +358,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-09-25 — Presentazione riscritta (18 slide complete)
 - SLIDES riordinate/aggiornate: Benvenuti, Accesso (campanella), Dashboard e Registro rapido, Clienti (copia dati/proposta), Energia ENEL+CambiaOra, Riparazioni (tipo KPI, ricambi in ordine), Magazzino ricambi, Ritirato→Rigenerati, Ritiri e commercialista, Vendite, Telefonia (tipo attivazione per operatore), WhatsApp (codice 8 caratteri), **KPI Team**, **Registro rapido e Proposte**, Password, GDPR, Formazione e know-how, Primo giorno. aggiorna-default ora aggiorna anche ordine e rimuove slide seed obsolete non modificate (eseguito: 4 nuove, 56 aggiornate, 4 rimosse). PDF pubblico OK.
+
+## 2026-09-25 — Data inizio KPI
+- `settings.key=kpi_start` (default 2026-10-01): tutti i conteggi (auto, manuali, clienti serviti) prima di quella data = 0; mesi precedenti mostrano banner kpi-prima-inizio. `GET/PUT /kpi/inizio` (admin). Settembre ora a 0 per tutti (Bruno 93→0 come richiesto).
