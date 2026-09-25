@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
 import RigeneratiVenduti from "../components/RigeneratiVenduti";
 import { useAuth } from "../context/AuthContext";
-import { MAGAZZINO_CATEGORIE, magazzinoCategoriaLabel, CONDIZIONI, REGIMI_IVA, regimeIvaLabel, regimeIvaBadge } from "../lib/constants";
+import { MAGAZZINO_CATEGORIE, magazzinoCategoriaLabel, CONDIZIONI, REGIMI_IVA, regimeIvaLabel, regimeIvaBadge, RICAMBIO_TIPOLOGIE, tipologiaLabel } from "../lib/constants";
+import DaOrdinare from "../components/DaOrdinare";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -12,13 +13,14 @@ import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
-const EMPTY = { nome: "", barcode: "", categoria: "altro", condizione: "", regime_iva: "", store_id: "", quantita: 0, prezzo_acquisto: "", prezzo_vendita: "", note: "" };
+const EMPTY = { nome: "", barcode: "", categoria: "altro", condizione: "", regime_iva: "", store_id: "", quantita: 0, prezzo_acquisto: "", prezzo_vendita: "", note: "", marca: "", modello: "", tipologia: "" };
 
 export default function Magazzino() {
   const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [meta, setMeta] = useState({ stores: [] });
-  const [filters, setFilters] = useState({ q: "", categoria: "all", venditore_id: "all" });
+  const [filters, setFilters] = useState({ q: "", categoria: "all", venditore_id: "all", tipologia: "all", marca: "", in_ordine: false });
+  const [daOrdinareKey, setDaOrdinareKey] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -31,6 +33,9 @@ export default function Magazzino() {
     if (filters.categoria !== "all") params.categoria = filters.categoria;
     if (filters.regime_iva && filters.regime_iva !== "all") params.regime_iva = filters.regime_iva;
     if (filters.venditore_id !== "all") params.venditore_id = filters.venditore_id;
+    if (filters.tipologia !== "all") params.tipologia = filters.tipologia;
+    if (filters.marca.trim()) params.marca = filters.marca.trim();
+    if (filters.in_ordine) params.in_ordine = true;
     api.get("/magazzino", { params }).then((r) => setItems(r.data))
       .catch((e) => toast.error(apiError(e, "Impossibile caricare il magazzino")));
   }, [filters]);
@@ -77,8 +82,9 @@ export default function Magazzino() {
 
   const movimento = async (m, delta) => {
     try {
-      await api.post(`/magazzino/${m.id}/movimento`, { delta, motivo: delta > 0 ? "carico" : "scarico manuale" });
-      load();
+      const r = await api.post(`/magazzino/${m.id}/movimento`, { delta, motivo: delta > 0 ? "carico" : "scarico manuale" });
+      if (r.data.riparazioni_sbloccate?.length) toast.success(`Arrivo registrato: riparazioni ${r.data.riparazioni_sbloccate.join(", ")} passate in lavorazione`);
+      load(); setDaOrdinareKey((k) => k + 1);
     } catch (e) {
       toast.error(apiError(e));
     }
@@ -131,12 +137,26 @@ export default function Magazzino() {
         </div>
       </div>
 
+      <DaOrdinare key={daOrdinareKey} onChanged={() => { load(); setDaOrdinareKey((k) => k + 1); }} />
+
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="magazzino-filters">
         <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input placeholder="Cerca articolo o barcode..." className="pl-9" value={filters.q}
+          <Input placeholder="Cerca per marca, modello, nome o barcode (es. iphone 12 display)..." className="pl-9" value={filters.q}
                  onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))} data-testid="magazzino-search" />
         </div>
+        <Select value={filters.tipologia} onValueChange={(v) => setFilters((f) => ({ ...f, tipologia: v }))}>
+          <SelectTrigger className="w-[180px]" data-testid="magazzino-tipologia-filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tutte le tipologie</SelectItem>
+            {RICAMBIO_TIPOLOGIE.map((t) => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Input placeholder="Marca (es. Apple)" className="w-[150px]" value={filters.marca}
+               onChange={(e) => setFilters((f) => ({ ...f, marca: e.target.value }))} data-testid="magazzino-marca-filter" />
+        <Button type="button" variant={filters.in_ordine ? "default" : "outline"} className={filters.in_ordine ? "bg-rose-700 hover:bg-rose-800" : "border-rose-300 text-rose-700"} onClick={() => setFilters((f) => ({ ...f, in_ordine: !f.in_ordine }))} data-testid="magazzino-in-ordine-filter">
+          Solo in ordine
+        </Button>
         <Select value={filters.categoria} onValueChange={(v) => setFilters((f) => ({ ...f, categoria: v }))}>
           <SelectTrigger className="w-[180px]" data-testid="magazzino-categoria-filter"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -181,8 +201,10 @@ export default function Magazzino() {
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5 font-medium text-slate-900">
                       <Package className="h-3.5 w-3.5 text-slate-400" /> {m.nome}
+                      {m.in_ordine && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-rose-700" data-testid={`magazzino-in-ordine-${i}`}>In ordine{m.ordine_servizio_numero ? ` · rip. ${m.ordine_servizio_numero}` : ""}</span>}
                       {m.barcode && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600" data-testid={`magazzino-barcode-${m.id}`}>{m.barcode}</span>}
                     </span>
+                    {(m.marca || m.modello || m.tipologia) && <p className="text-xs text-slate-500">{[tipologiaLabel(m.tipologia), m.marca, m.modello].filter(Boolean).join(" · ")}</p>}
                     {m.note && <p className="text-xs text-slate-400">{m.note}</p>}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{magazzinoCategoriaLabel(m.categoria)}
@@ -192,6 +214,9 @@ export default function Magazzino() {
                   {canSeeAll && <td className="px-4 py-3 text-slate-600">{m.store_name || "-"}</td>}
                   <td className="px-4 py-3">
                     <span className={`status-badge ${qtyBadge(m.quantita || 0)}`} data-testid={`magazzino-qty-${i}`}>{m.quantita || 0} pz</span>
+                    {m.in_ordine && (
+                      <Button variant="outline" size="sm" className="ml-2 h-6 border-emerald-300 px-2 text-[11px] text-emerald-700" onClick={() => movimento(m, -(m.quantita || 0) || 1)} data-testid={`magazzino-arrivo-${i}`}>Carica arrivo</Button>
+                    )}
                   </td>
                   <td className="px-4 py-3 font-semibold text-slate-800">
                     {m.prezzo_vendita != null ? `€ ${Number(m.prezzo_vendita).toFixed(2)}` : "-"}
@@ -262,9 +287,29 @@ export default function Magazzino() {
             <DialogTitle className="font-heading text-xl">{editing ? "Modifica articolo" : "Nuovo articolo"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={submit} className="space-y-4" data-testid="magazzino-form">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tipologia</Label>
+                <Select value={form.tipologia || "none"} onValueChange={(v) => setForm({ ...form, tipologia: v === "none" ? "" : v, categoria: v === "display" ? "display" : v === "accessorio" ? "accessori" : ["batteria", "fotocamera", "connettore_ricarica", "vetro_posteriore", "altoparlante", "microfono", "tasti_flex", "scocca"].includes(v) ? "ricambi" : form.categoria })}>
+                  <SelectTrigger data-testid="magazzino-form-tipologia"><SelectValue placeholder="-" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">-</SelectItem>
+                    {RICAMBIO_TIPOLOGIE.map((t) => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Marca</Label>
+                <Input placeholder="es. Apple" value={form.marca || ""} onChange={(e) => setForm({ ...form, marca: e.target.value })} data-testid="magazzino-form-marca" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Modello</Label>
+                <Input placeholder="es. iPhone 12" value={form.modello || ""} onChange={(e) => setForm({ ...form, modello: e.target.value })} data-testid="magazzino-form-modello" />
+              </div>
+            </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nome articolo *</Label>
-              <Input required placeholder="es. Display iPhone 13" value={form.nome}
+              <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nome articolo {form.tipologia || form.modello ? "(auto se vuoto)" : "*"}</Label>
+              <Input placeholder={[tipologiaLabel(form.tipologia), form.marca, form.modello].filter(Boolean).join(" ") || "es. Display iPhone 13"} value={form.nome}
                      onChange={(e) => setForm({ ...form, nome: e.target.value })} data-testid="magazzino-form-nome" />
             </div>
             <div className="space-y-1.5">
@@ -315,7 +360,7 @@ export default function Magazzino() {
               )}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Giacenza (pz)</Label>
-                <Input type="number" min="0" value={form.quantita}
+                <Input type="number" value={form.quantita}
                        onChange={(e) => setForm({ ...form, quantita: e.target.value })} data-testid="magazzino-form-quantita" />
               </div>
               <div className="space-y-1.5">
@@ -335,7 +380,7 @@ export default function Magazzino() {
             </div>
             <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
               <Button type="button" variant="outline" onClick={() => setFormOpen(false)} data-testid="magazzino-form-cancel">Annulla</Button>
-              <Button type="submit" disabled={saving || !form.nome.trim() || !form.store_id} className="bg-slate-900 hover:bg-slate-800" data-testid="magazzino-form-submit">
+              <Button type="submit" disabled={saving || (!form.nome.trim() && !form.modello?.trim()) || !form.store_id} className="bg-slate-900 hover:bg-slate-800" data-testid="magazzino-form-submit">
                 {saving ? "Salvataggio..." : editing ? "Salva modifiche" : "Inserisci articolo"}
               </Button>
             </div>

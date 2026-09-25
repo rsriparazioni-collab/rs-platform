@@ -87,6 +87,21 @@ export const MAGAZZINO_CATEGORIE = [
   { id: "altro", label: "Altro" },
 ];
 
+export const RICAMBIO_TIPOLOGIE = [
+  { id: "display", label: "Display" },
+  { id: "batteria", label: "Batteria" },
+  { id: "fotocamera", label: "Fotocamera" },
+  { id: "connettore_ricarica", label: "Connettore ricarica" },
+  { id: "vetro_posteriore", label: "Vetro posteriore" },
+  { id: "altoparlante", label: "Altoparlante" },
+  { id: "microfono", label: "Microfono" },
+  { id: "tasti_flex", label: "Tasti / Flex" },
+  { id: "scocca", label: "Scocca" },
+  { id: "accessorio", label: "Accessorio" },
+  { id: "altro", label: "Altro" },
+];
+export const tipologiaLabel = (id) => RICAMBIO_TIPOLOGIE.find((t) => t.id === id)?.label || id || "";
+
 export const magazzinoCategoriaLabel = (id) =>
   MAGAZZINO_CATEGORIE.find((c) => c.id === id)?.label || id || "-";
 export const VENDITE_CATEGORIE = [

@@ -5,6 +5,7 @@ import WhatsAppLog from "./WhatsAppLog";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import PortaleBox from "./PortaleBox";
+import OrdinaRicambio from "./OrdinaRicambio";
 import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI, magazzinoCategoriaLabel } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -46,6 +47,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
   const [compatibili, setCompatibili] = useState([]);
   const [ricQty, setRicQty] = useState(1);
   const [ricPrezzo, setRicPrezzo] = useState("");
+  const [ordinaPreset, setOrdinaPreset] = useState(null);
   const [ritiroOpen, setRitiroOpen] = useState(false);
   const [segreti, setSegreti] = useState(null);
 
@@ -142,7 +144,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
         payload.prezzo_manuale = parseFloat(ricPrezzo);
       }
       await api.post(`/servizi/${detail.id}/ricambi`, payload);
-      toast.success("Ricambio assegnato e scalato dal magazzino");
+      toast.success(storeEntry.store_id !== detail.venditore_id ? `Ricambio scalato da ${storeEntry.store_name}: avviso inviato al negozio` : "Ricambio assegnato e scalato dal magazzino");
       setRicQty(1);
       setRicPrezzo("");
       setRicercaRic("");
@@ -400,7 +402,10 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     <div className="space-y-1.5" data-testid="servizio-ricambi-list">
                       {(detail.ricambi_usati || []).map((u, idx) => (
                         <div key={`${u.item_id}-${u.at || idx}`} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                          <span>{u.nome} <span className="text-xs text-slate-500">x{u.quantita}</span></span>
+                          <span>{u.nome} <span className="text-xs text-slate-500">x{u.quantita}</span>
+                            {u.in_ordine && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700" data-testid={`servizio-ricambio-in-ordine-${idx}`}>In ordine</span>}
+                            {u.da_store_id && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">da altro negozio</span>}
+                          </span>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeRicambio(idx)} data-testid={`servizio-ricambio-del-${idx}`}>
                             <Trash2 className="h-3.5 w-3.5 text-rose-500" />
                           </Button>
@@ -455,14 +460,36 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                                   <Button type="button" size="sm" variant="outline" onClick={() => usaRicambio(own, g.categoria)} data-testid={`servizio-ricambio-usa-${gi}`}>Usa</Button>
                                 </div>
                               ) : others.length > 0 ? (
-                                <p className="mt-1.5 text-xs text-amber-600">Non in questo negozio — disponibile presso: {others.map((o) => `${o.store_name} (${o.quantita} pz)`).join(", ")}</p>
+                                <div className="mt-1.5 space-y-1">
+                                  <p className="text-xs text-amber-600">Non in questo negozio — prendilo da un altro negozio (riceverà un avviso):</p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {others.map((o) => (
+                                      <Button key={o.item_id} type="button" size="sm" variant="outline" className="h-7 border-amber-300 text-xs text-amber-800" onClick={() => usaRicambio(o, g.categoria)} data-testid={`servizio-ricambio-usa-altro-${gi}-${o.store_id}`}>
+                                        Usa da {o.store_name} ({o.quantita} pz)
+                                      </Button>
+                                    ))}
+                                    <Button type="button" size="sm" variant="ghost" className="h-7 text-xs text-rose-700" onClick={() => setOrdinaPreset({ item_id: own?.item_id || g.stores[0]?.item_id, marca: g.marca, modello: g.modello, tipologia: g.tipologia })} data-testid={`servizio-ricambio-ordina-${gi}`}>Metti in ordine</Button>
+                                  </div>
+                                </div>
                               ) : (
-                                <p className="mt-1.5 text-xs text-slate-400">Esaurito in tutti i negozi</p>
+                                <div className="mt-1.5 flex items-center gap-2">
+                                  <p className="text-xs text-slate-400">Esaurito in tutti i negozi{own?.in_ordine ? " · già in ordine" : ""}</p>
+                                  <Button type="button" size="sm" variant="outline" className="h-7 border-rose-300 text-xs text-rose-700" onClick={() => setOrdinaPreset({ item_id: own?.item_id || g.stores[0]?.item_id, marca: g.marca, modello: g.modello, tipologia: g.tipologia })} data-testid={`servizio-ricambio-ordina-${gi}`}>Usa e metti in ordine</Button>
+                                </div>
                               )}
                             </div>
                           );
                         })}
                       </div>
+                    )}
+                    {ricercaRic.trim().length >= 2 && risultatiRic.length === 0 && (
+                      <p className="mt-2 text-xs text-slate-500" data-testid="servizio-ricambi-nessuno">Nessun articolo trovato per "{ricercaRic}" in nessun magazzino.</p>
+                    )}
+                    {(ordinaPreset || (ricercaRic.trim().length >= 2 && risultatiRic.length === 0)) && (
+                      <OrdinaRicambio key={ordinaPreset?.item_id || "new"} servizio={detail} preset={ordinaPreset} onDone={() => { setOrdinaPreset(null); setRicercaRic(""); setRisultatiRic([]); refresh(); }} />
+                    )}
+                    {!ordinaPreset && !(ricercaRic.trim().length >= 2 && risultatiRic.length === 0) && (
+                      <button type="button" onClick={() => setOrdinaPreset({})} className="mt-2 text-xs font-medium text-rose-700 hover:underline" data-testid="servizio-ricambio-ordina-nuovo">+ Ricambio non in magazzino: metti in ordine</button>
                     )}
                   </div>
                 </>

@@ -5,6 +5,7 @@ import os
 import re
 import asyncio
 import hmac
+import magazzino_ricambi as magazzino_ricambi_module
 import io
 import uuid
 import hashlib
@@ -2554,6 +2555,9 @@ class MagazzinoInput(BaseModel):
     prezzo_acquisto: Optional[float] = None
     prezzo_vendita: Optional[float] = None
     note: str = ""
+    marca: str = ""
+    modello: str = ""
+    tipologia: str = ""
 
 def magazzino_scope(user: dict) -> dict:
     if user["role"] in ("admin", "tecnico") or user.get("can_view_all"):
@@ -2562,7 +2566,8 @@ def magazzino_scope(user: dict) -> dict:
 
 @api_router.get("/magazzino")
 async def list_magazzino(user: dict = Depends(get_current_user), categoria: str = "",
-                         venditore_id: str = "", q: str = "", regime_iva: str = "", condizione: str = ""):
+                         venditore_id: str = "", q: str = "", regime_iva: str = "", condizione: str = "",
+                         marca: str = "", modello: str = "", tipologia: str = "", in_ordine: bool = False):
     scope = magazzino_scope(user)
     if regime_iva:
         scope["regime_iva"] = regime_iva
@@ -2570,11 +2575,20 @@ async def list_magazzino(user: dict = Depends(get_current_user), categoria: str 
         scope["condizione"] = condizione
     if categoria:
         scope["categoria"] = categoria
+    if tipologia:
+        scope["tipologia"] = tipologia
+    if marca:
+        scope["marca"] = {"$regex": f"^{re.escape(marca.strip())}$", "$options": "i"}
+    if modello:
+        scope["modello"] = {"$regex": re.escape(modello.strip()), "$options": "i"}
+    if in_ordine:
+        scope["in_ordine"] = True
     if venditore_id and (user["role"] in ("admin", "tecnico") or user.get("can_view_all")):
         scope["store_id"] = venditore_id
     if q:
-        rx = {"$regex": re.escape(q), "$options": "i"}
-        scope["$or"] = [{"nome": rx}, {"barcode": rx}]
+        words = [w for w in q.split() if w]
+        scope["$and"] = [{"$or": [{"nome": rx}, {"barcode": rx}, {"marca": rx}, {"modello": rx}]}
+                         for rx in ({"$regex": re.escape(w), "$options": "i"} for w in words)]
     items = await db.magazzino.find(scope, {"_id": 0}).sort("nome", 1).to_list(5000)
     store_ids = list({i.get("store_id", "") for i in items if i.get("store_id")})
     stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)
@@ -2584,12 +2598,15 @@ async def list_magazzino(user: dict = Depends(get_current_user), categoria: str 
     return items
 
 @api_router.get("/magazzino/disponibilita")
-async def disponibilita_magazzino(user: dict = Depends(get_current_user), q: str = "", categoria: str = ""):
+async def disponibilita_magazzino(user: dict = Depends(get_current_user), q: str = "", categoria: str = "", tipologia: str = ""):
     scope = {}
     if q:
-        scope["nome"] = {"$regex": re.escape(q), "$options": "i"}
+        scope["$and"] = [{"$or": [{"nome": rx}, {"marca": rx}, {"modello": rx}, {"barcode": rx}]}
+                         for rx in ({"$regex": re.escape(w), "$options": "i"} for w in q.split() if w)]
     if categoria:
         scope["categoria"] = categoria
+    if tipologia:
+        scope["tipologia"] = tipologia
     items = await db.magazzino.find(scope, {"_id": 0}).to_list(5000)
     store_ids = list({i.get("store_id", "") for i in items if i.get("store_id")})
     stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)
@@ -2597,12 +2614,13 @@ async def disponibilita_magazzino(user: dict = Depends(get_current_user), q: str
     grouped = {}
     for i in items:
         key = (i.get("nome", "").strip().lower(), i.get("categoria", ""))
-        g = grouped.setdefault(key, {"nome": i.get("nome", ""), "categoria": i.get("categoria", ""), "stores": []})
+        g = grouped.setdefault(key, {"nome": i.get("nome", ""), "categoria": i.get("categoria", ""), "marca": i.get("marca", ""),
+                                     "modello": i.get("modello", ""), "tipologia": i.get("tipologia", ""), "stores": []})
         can_price = user["role"] in ("admin", "tecnico") or user.get("can_view_all") \
             or i.get("store_id") in user.get("store_ids", [])
         g["stores"].append({"item_id": i["id"], "store_id": i.get("store_id", ""),
                             "store_name": smap.get(i.get("store_id", ""), "-"),
-                            "quantita": i.get("quantita", 0),
+                            "quantita": i.get("quantita", 0), "in_ordine": bool(i.get("in_ordine")),
                             "prezzo_vendita": i.get("prezzo_vendita") if can_price else None})
     return sorted(grouped.values(), key=lambda x: x["nome"])
 
@@ -2611,6 +2629,9 @@ async def create_magazzino(input: MagazzinoInput, user: dict = Depends(get_curre
     data = input.model_dump()
     if data["categoria"] not in MAGAZZINO_CATEGORIE:
         raise HTTPException(status_code=400, detail="Categoria non valida")
+    data["nome"] = magazzino_ricambi_module.componi_nome(data)
+    if not data["nome"]:
+        raise HTTPException(status_code=400, detail="Indica il nome oppure marca/modello/tipologia")
     if user["role"] == "negozio" and user.get("store_ids"):
         data["store_id"] = user["store_ids"][0]
     if not data["store_id"]:
@@ -2631,6 +2652,8 @@ async def update_magazzino(item_id: str, input: MagazzinoInput, user: dict = Dep
     data = input.model_dump(exclude_unset=True)
     if user["role"] == "negozio":
         data.pop("store_id", None)
+    if "nome" in data and not data["nome"].strip():
+        data["nome"] = magazzino_ricambi_module.componi_nome({**old, **data, "nome": ""}) or old["nome"]
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.magazzino.update_one({"id": item_id}, {"$set": data})
     return await db.magazzino.find_one({"id": item_id}, {"_id": 0})
@@ -2700,8 +2723,10 @@ async def movimento_magazzino(item_id: str, input: MovimentoInput, user: dict = 
     if not item:
         raise HTTPException(status_code=404, detail="Articolo non trovato")
     new_q = (item.get("quantita") or 0) + input.delta
-    if new_q < 0:
+    if new_q < 0 and not item.get("in_ordine"):
         raise HTTPException(status_code=400, detail="Giacenza insufficiente")
+    if input.delta > 0 and item.get("in_ordine"):
+        return await magazzino_ricambi_module.arrivo_ricambio(item_id, magazzino_ricambi_module.ArrivoInput(quantita=input.delta), user)
     await db.magazzino.update_one({"id": item_id},
                                   {"$set": {"quantita": new_q, "updated_at": datetime.now(timezone.utc).isoformat()}})
     return {"status": "ok", "quantita": new_q}
@@ -2762,21 +2787,28 @@ async def usa_ricambio(servizio_id: str, input: RicambioUsoInput, user: dict = D
     item = await db.magazzino.find_one({"id": input.magazzino_id}, {"_id": 0})
     if not item:
         raise HTTPException(status_code=404, detail="Articolo non trovato in magazzino")
-    if item.get("store_id") != svc.get("venditore_id"):
-        raise HTTPException(status_code=400, detail="Ricambio di un altro negozio: fai prima uno spostamento di giacenza")
     if input.quantita < 1:
         raise HTTPException(status_code=400, detail="Quantità non valida")
     if (item.get("quantita") or 0) < input.quantita:
-        raise HTTPException(status_code=400, detail="Giacenza insufficiente")
+        raise HTTPException(status_code=400, detail="Giacenza insufficiente: usa 'Metti in ordine'")
     now = datetime.now(timezone.utc).isoformat()
     await db.magazzino.update_one({"id": item["id"]},
                                   {"$inc": {"quantita": -input.quantita}, "$set": {"updated_at": now}})
     prezzo = input.prezzo_manuale if input.prezzo_manuale is not None else item.get("prezzo_vendita")
     uso = {"item_id": item["id"], "nome": item["nome"], "quantita": input.quantita,
            "prezzo_vendita": prezzo, "at": now}
+    altro_negozio = item.get("store_id") != svc.get("venditore_id")
+    if altro_negozio:
+        uso["da_store_id"] = item.get("store_id")
+        mio = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0, "nome": 1}) or {}
+        cli = await db.clients.find_one({"id": svc.get("client_id")}, {"_id": 0, "nome": 1, "cognome": 1}) or {}
+        testo = (f"📦 Richiesta ricambio da {mio.get('nome', 'altro negozio')}: ci serve {input.quantita} x {item['nome']} "
+                 f"per la riparazione {svc.get('numero_riparazione') or ''} ({cli.get('cognome', '')} {cli.get('nome', '')}). "
+                 f"È stato scalato dal vostro magazzino: preparatelo per il trasferimento.")
+        asyncio.create_task(magazzino_ricambi_module._notifica_store(item["store_id"], testo, session=svc.get("venditore_id") or ""))
     await db.servizi.update_one({"id": servizio_id},
                                 {"$push": {"ricambi_usati": uso}, "$set": {"updated_at": now}})
-    return {"status": "ok", "giacenza": (item.get("quantita") or 0) - input.quantita}
+    return {"status": "ok", "giacenza": (item.get("quantita") or 0) - input.quantita, "altro_negozio": altro_negozio}
 
 @api_router.delete("/servizi/{servizio_id}/ricambi/{index}")
 async def annulla_ricambio(servizio_id: str, index: int, user: dict = Depends(get_current_user)):
@@ -2788,6 +2820,9 @@ async def annulla_ricambio(servizio_id: str, index: int, user: dict = Depends(ge
     await db.magazzino.update_one({"id": uso["item_id"]},
                                   {"$inc": {"quantita": uso["quantita"]},
                                    "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}})
+    it = await db.magazzino.find_one({"id": uso["item_id"]}, {"_id": 0, "quantita": 1, "in_ordine": 1})
+    if it and it.get("in_ordine") and (it.get("quantita") or 0) >= 0:
+        await db.magazzino.update_one({"id": uso["item_id"]}, {"$unset": {"in_ordine": "", "ordine_at": "", "ordine_servizio_id": "", "ordine_servizio_numero": ""}})
     usati.pop(index)
     await db.servizi.update_one({"id": servizio_id},
                                 {"$set": {"ricambi_usati": usati,
@@ -5318,6 +5353,10 @@ import report_ritiri as report_ritiri_module
 report_ritiri_module.setup(db=db, get_current_user=get_current_user, ritiri_scope=ritiri_scope, get_object=get_object,
                            put_object=put_object, send_email=send_email, app_name=APP_NAME, build_bolla_pdf=_build_bolla_pdf)
 api_router.include_router(report_ritiri_module.router)
+
+magazzino_ricambi_module.setup(db=db, get_current_user=get_current_user, get_scoped_servizio=get_scoped_servizio,
+                               magazzino_scope=magazzino_scope, wa_send=wa_send)
+api_router.include_router(magazzino_ricambi_module.router)
 
 import google_drive as google_drive_module
 google_drive_module.setup(db=db, get_current_user=get_current_user, get_object=get_object, fernet=_fernet)
