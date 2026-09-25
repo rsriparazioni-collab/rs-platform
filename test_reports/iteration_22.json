@@ -1,0 +1,38 @@
+{
+  "summary": "Iter 22 - Testing feature KPI Team (backend kpi.py + Registro Rapido + pagina /kpi + tasto 'Proposta fatta'). Backend 12/12 PASS (test_iter22_kpi_team.py): GET /api/kpi/voci ritorna esattamente 33 voci con {id,label,area,fonte} + mnp_operatori (contiene 'iliad'); POST /api/attivita con voce='pellicola' -> 200 data=oggi (2026-09-25); {voce:'sim_mnp',dettaglio:'iliad'} -> 200; {voce:'xxx'} -> 400 'Voce non valida'; {voce:'eolo_proposto', client_id:<enel-client>} -> client_nome compilato ('COGNOME NOME'); GET /api/attivita ritorna oggi dell'utente con tutti gli id creati; GET /api/kpi?anno=2026&mese=9&user_id=<admin> voce pellicola giorni['25']>=1 e fonti_usate contiene 'manuale'; GET /api/kpi/riepilogo (admin) contiene Bruno, Deborah, Kevin, Lorenzo, Michael, Seba, Silvio; GET /api/kpi/utenti (admin) = 7 utenti; GET /api/kpi/export xlsx 200 content-type spreadsheet; DELETE /api/attivita/{id} 200; DELETE su id inesistente -> 404. Frontend admin TOTP verificato: Dashboard mostra registro-rapido con rr-area-telefonia attivo, click rr-voce-pellicola -> rr-count-pellicola incrementa e compare chip in rr-oggi con rr-del-*; click rr-voce-sim_mnp apre rr-mnp-operatori, click rr-mnp-iliad genera toast '+1 SIM portabilità (MNP) iliad'; cambio area (energia) filtra voci; rr-cliente-search 'cro' -> rr-cliente-opt-* 1 opzione, selezione mostra rr-cliente-selezionato 'CARLA CROSTA' e successiva registrazione include client_nome. Pagina /kpi (nav-kpi): 7 kpi-card-*, click su card apre kpi-griglia con 33 kpi-riga-* e relativi kpi-tot-*; kpi-operatore select con 8 opzioni (7 utenti + 'Scegli operatore…'); kpi-export scarica xlsx (response /api/kpi/export = 200 spreadsheet). ProposteButton: BUG typo trovato e fixato in PortaleBox.jsx (kind==='client' invece di 'cliente'), rendendo la button non visibile su scheda cliente. Fix applicato: linea 62 -> kind === 'cliente'. Cleanup: tutte le attività di test cancellate via API (0 rimaste).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PortaleBox", "issue": "Typo 'kind === client' invece di 'cliente' impediva il rendering di ProposteButton nella scheda cliente (kind passato dal caller è 'cliente'). FIXATO nel testing.", "selector": "[data-testid='proposta-button']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter22_kpi_team.py", "/app/test_reports/pytest/iter22.xml"],
+  "action_items": [
+    "Verificare la correzione typo in /app/frontend/src/components/PortaleBox.jsx (kind === 'cliente'). Testato positivamente via API, non verificato visualmente in UI perché il cliente ENEL scelto non aveva portali energia matching (portale-box non renderizza senza principale)."
+  ],
+  "critical_code_review_comments": [
+    "kpi.py: modulo compatto e leggibile (289 righe, sotto 700). Uso corretto async/await su Motor. Nessun _id di Mongo esposto (tutti i find hanno {'_id': 0}).",
+    "kpi.py calcola_kpi: unisce dati da 7 collezioni (clients, lavorazioni_log, servizi, vendite, followup, attivita, audit_log) — buona astrazione con helper add(). Attenzione: complessità O(N) per utente, per kpi/riepilogo esegue N loop utenti in serie -> potrebbe scalare male con molti utenti. Considerare cache o asyncio.gather.",
+    "kpi.py.kpi endpoint (linea 238-246): logica 'if not _vede_tutti(user) or not user_id: user_id = user['id'] if not _vede_tutti(user) else user_id' è contorta ma corretta: forza il non-admin a vedere solo se stesso ignorando user_id parametro. Test verificato.",
+    "PortaleBox.jsx: bug typo 'kind === client' vs 'cliente' — fixato. Suggerimento: uniformare kind con costanti condivise per evitare ricadute (es. export const KIND_CLIENT='cliente').",
+    "RegistroRapido.jsx: gestione operatori MNP inline è pulita. Manca aria-live sul toast per accessibilità (sonner lo fa già). L'input rr-cliente-search non ha debounce >300ms configurabile.",
+    "kpi.py MNP_OPERATORI: hardcoded — spostare in config/DB se dovesse cambiare frequentemente.",
+    "kpi.py kpi_export: crea worksheet con nome utente troncato a 30 caratteri: OK per Excel (max 31). Non gestisce nomi duplicati (2 utenti stesso nome -> errore Excel).",
+    "Kpi.jsx downloadBlob: nessuna gestione errori (catch mancante). Se export fallisce, l'utente non vede feedback."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter22_kpi_team.py",
+    "/app/frontend/src/components/PortaleBox.jsx",
+    "/app/test_reports/iteration_22.json",
+    "/app/test_reports/pytest/iter22.xml"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "~95% (registro rapido + KPI + export tutti OK; ProposteButton fix applicato ma non visualmente ritestato per condizione dati)"},
+  "test_credentials": "Admin rsriparazioni@gmail.com/Devis2026! + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV. Attesa ~32s tra login per anti-replay.",
+  "seed_data_creation": "Nessuna. Attività create durante il test (pellicola, sim_mnp iliad, eolo_proposto con client_id) tutte cancellate. Verifica finale: GET /api/attivita = 0.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_iter22_kpi_team.py copre tutti gli endpoint KPI. Selettori chiave verificati: registro-rapido, rr-area-*, rr-voce-*, rr-count-*, rr-mnp-operatori, rr-mnp-*, rr-cliente-search, rr-cliente-opt-*, rr-cliente-selezionato, rr-oggi, rr-del-*, kpi-page, kpi-card-*, kpi-griglia, kpi-riga-*, kpi-tot-*, kpi-operatore, kpi-mese, kpi-anno, kpi-export, proposta-button, proposta-menu, proposta-*. Fix applicato in PortaleBox.jsx per rendering ProposteButton (kind==='cliente'). Nota: la pagina cliente ENEL testata (b9ed3b68-79f7-4c54-ae39-6e785a394ff2 CARLA CROSTA) NON mostra portale-box perché nuovo_fornitore probabilmente non matcha alcun portale in DB; usare un cliente con nuovo_fornitore compilato per verificare visualmente la proposta-button.",
+  "rca of the issue": "Bug ProposteButton non visibile: in PortaleBox.jsx la condizione confrontava 'kind === client' mentre ClientDetail.jsx passa kind='cliente'. Il valore singular 'client' non era mai passato; ServizioDetail passa kind='servizio'. Fix: rinominato 'client' -> 'cliente'. Reproduzione: aprire scheda cliente energia con fornitore matching portale -> proposta-button assente. Mitigazione: fix inline di 1 char (client->cliente). Suggerimento a lungo termine: centralizzare i valori kind in enum/const per evitare drift."
+}

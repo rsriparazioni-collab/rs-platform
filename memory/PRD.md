@@ -337,3 +337,8 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-09-25 — Fix 2FA login (Tirano/Kevin in produzione)
 - Causa probabile: anti-replay troppo rigido (`current <= totp_last_timecode`) → con account condiviso nel negozio o telefono con orologio sfasato il 2° accesso nella stessa finestra dava "Codice non valido"; 5 errori → blocco 15 min per utente. Fix in `verify_totp_or_recovery`: accetta finestra ±1, rifiuta solo lo STESSO codice già usato (`totp_used_timecodes`). Admin reset 2FA ora azzera anche il lockout mfa. Testato: corrente 200, replay 401, prev/next 200. Richiede redeploy produzione.
+
+## 2026-09-25 — KPI Team (backend kpi.py + Registro rapido + Proposte)
+- `kpi.py`: 33 voci (aree generale/energia/telefonia/internet/chiamate/riparazioni, fonte auto/manuale/mista). `attivita` (registro rapido: POST/GET/DELETE), `GET /kpi?anno&mese&user_id` griglia giorno×voce, `/kpi/riepilogo`, `/kpi/utenti`, `/kpi/export` xlsx (un foglio per operatore, formato come i fogli Google). Auto: clients created_by (utenze, ENEL op.), lavorazioni_log cambio_effettuato (switch), servizi sim/fisso/internet created_by, riparazioni (tecnico=tutte, negozio=proprio store), vendite created_by, followup esiti, clienti serviti = distinct client per giorno (audit_log+attivita+vendite+followup).
+- Frontend: `RegistroRapido.jsx` in cima alla Dashboard (tab area, tap +1, cliente opzionale, MNP con operatore, lista oggi con annulla), pagina `/kpi` (card riepilogo, griglia, export), `ProposteButton.jsx` (Eolo/telefono proposto, passato a Deborah/Silvio) nel PortaleBox cliente. Nav "KPI Team".
+- Utente Silvio creato (silvio@cambiaora.local / Silvio2026!, negozio Morbegno).
