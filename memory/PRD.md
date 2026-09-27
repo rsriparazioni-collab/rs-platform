@@ -384,3 +384,13 @@ Vedi /app/memory/test_credentials.md
 - `deploy-locale/`: docker-compose (mongo+backend+nginx frontend su :8080), Dockerfile, nginx.conf, .env.example, README in italiano. Nuovo env `COOKIE_SECURE=false` per uso su http LAN.
 - Limiti offline: WhatsApp/Drive/email non funzionano; allegati object-storage non inclusi nel backup; nessuna sincronizzazione automatica cloud<->locale.
 - Backlog P2: notifiche email compensi venditori; calcolo € compensi; sync bidirezionale fogli Google bolle ritiro; refactor server.py monolitico.
+
+## 2026-09-27 – Modulo Compensi (admin) + Per Ipro + avviso backup scaduto
+- `backend/compensi.py`: regole (`compensi_regole`: destinatario store/user, voce fisso_mensile|cambiaora|sim|internet|fisso|enel, per_unita/forfait, operatore_tel (lista con virgola), tipo_attivazione, provenienza_in/not_in, enel_voci, soglia + conteggio_globale, solo_incassato, mesi_pagamento, e_gara, valido_da/a). Calcolo GET /api/compensi/calcolo?anno&mese&per_pagamento. Trattenute per store (stores.trattenuta_pct/trattenuta_iva; seed Tirano/Sondalo 15 no IVA, Grosio 15+IVA). Gare: `compensi_gare_pagate` (POST /compensi/gare/pagata). Plafond: `plafond_movimenti` + ricariche SIM scalate (store senza carichi -> globale). Seed 13 regole con importi a 0 da compilare (WindTre/Very extra MNP +35 Iliad/CoopVoce/Poste, +15 altri, soglia 15 globale).
+- Per Ipro: flag `per_ipro` su clients/servizi (POST /clients|servizi/{id}/per-ipro), permesso users.can_assign_ipro (Deborah seed true, admin sempre), UI PerIproButton in dettaglio cliente/servizio, switch in Utenti.
+- Servizi SIM: nuovi campi provenienza_operatore, ricarica_iniziale, costo_sim (ServizioForm).
+- Backup: notifica campanella `backup_scaduto` (solo_admin) se ultimo backup >48h; scope notifiche non-admin esclude solo_admin.
+- Frontend: pagina /compensi (tabs Calcolo, Regole e gare, Trattenute, Plafond), nav admin.
+- Test: iteration_23 (12/12 pytest backend + frontend OK dopo fix doppio conteggio ricariche).
+- IN ATTESA UTENTE: Sync scrittura Fogli Google bolle ritiro (serve link foglio + colonne; richiede scope Sheets su OAuth Drive).
+- Regole compensi Kena/Iliad/Ho/Fastweb ancora da definire dall'utente (seed a 0 €).

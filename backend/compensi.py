@@ -338,17 +338,18 @@ async def calcola(mese: str, per_pagamento: bool = False) -> dict:
             righe.append({"regola_id": r["id"], "nome": r["nome"], "voce": r["voce"], "conteggio": len(propri), "conteggio_globale": base if r.get("conteggio_globale") else None,
                           "soglia": r.get("soglia") or 0, "soglia_raggiunta": raggiunta, "importo_unitario": r["importo"], "modalita": r["modalita"],
                           "totale": round(totale, 2), "competenza": competenza, "pagamento": _shift(competenza, int(r.get("mesi_pagamento") or 0)),
-                          "e_gara": bool(r.get("e_gara")), "gara_pagata": pagata, "ricariche": round(sum(e.get("ricarica", 0) for e in propri), 2),
-                          "costo_sim": round(sum(e.get("costo_sim", 0) for e in propri), 2)})
-        if not righe:
+                          "e_gara": bool(r.get("e_gara")), "gara_pagata": pagata})
+        ev_mese = await eventi(mese)
+        sim_propri = [e for e in ev_mese.get("sim", []) if _appartiene(e, tipo, dest_id)]
+        ricariche = round(sum(e.get("ricarica", 0) for e in sim_propri), 2)
+        costo_sim = round(sum(e.get("costo_sim", 0) for e in sim_propri), 2)
+        if not righe and not ricariche and not costo_sim:
             continue
         lordo = round(sum(x["totale"] for x in righe if x["gara_pagata"]), 2)
         in_attesa = round(sum(x["totale"] for x in righe if not x["gara_pagata"]), 2)
         pct = float(obj.get("trattenuta_pct") or 0) if tipo == "store" else 0.0
         trattenuta = round(lordo * pct / 100, 2)
         iva = round(trattenuta * 0.22, 2) if tipo == "store" and obj.get("trattenuta_iva") else 0.0
-        ricariche = round(sum(x.get("ricariche", 0) for x in righe), 2)
-        costo_sim = round(sum(x.get("costo_sim", 0) for x in righe), 2)
         out.append({"tipo": tipo, "id": dest_id, "nome": nome, "righe": righe, "lordo": lordo, "gare_in_attesa": in_attesa,
                     "trattenuta_pct": pct, "trattenuta": trattenuta, "iva_su_trattenuta": iva, "netto": round(lordo - trattenuta - iva, 2),
                     "ricariche_da_richiedere": ricariche, "costo_sim": costo_sim})

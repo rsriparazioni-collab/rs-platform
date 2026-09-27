@@ -1,0 +1,44 @@
+{
+  "summary": "Iter 23 - Test module Compensi (regole+calcolo+trattenute+plafond+gare), per-Ipro flag, SIM new fields, backup alert, can_assign_ipro. Backend: 11/12 pytest PASS (test_iter23_compensi.py). 1 FAIL: ricariche_da_richiedere = 40 invece di 20 -> BUG di doppio conteggio in compensi.py:calcola quando piu regole matchano gli stessi eventi SIM (extra MNP Iliad + WindTre/Very MNP compenso base entrambi matchano le 2 SIMs -> ogni riga somma ricariche=20 -> total store = 40). Stesso rischio per costo_sim. Tutti gli altri scenari verificati: meta stores/trattenute (Tirano 15/False, Sondalo 15/False, Grosio 15/True), 13 regole seed, CRUD regole con 400 su voce invalida, scenario cambiaora (importo 20 -> netto=lordo*0.85, competenza 2026-09, pagamento 2026-11, per_pagamento=true mostra riga in nov con competenza sett), soglia globale MNP (false a 0, poi soglia=1 -> totale 70, iva=trattenuta*0.22 su Grosio), gare Eolo (attesa 100 -> lordo 100 dopo POST /gare/pagata), per-Ipro admin sposta cliente da Tirano a Ipro, plafond CRUD, trattenute PATCH, notifiche backup=0 (backup recente OK), users can_assign_ipro (Deborah=true, PATCH michael). Frontend admin (login via cookie gu_token da login_tok.sh): pagina /compensi con 4 tabs OK, switch compensi-per-pagamento, netto testids, regola-nuova+dialog+salva+cleanup, trattenuta-pct x7, plafond form OK. Utenti: user-switch-ipro nel dialog Nuovo utente OK, 7 user-ipro-* nelle righe. Sicurezza: card Backup dei dati OK. Clienti: per-ipro-button toggle Per Ipro -> Per Ipro ✓ con toast 'Assegnazione a Ipro'. ServizioForm SIM Portabilita (MNP): servizio-provenienza/servizio-ricarica/servizio-costo-sim tutti presenti.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/compensi/calcolo", "issue": "ricariche_da_richiedere e costo_sim aggregati a livello destinatario sommano le stesse ricariche_iniziale/costo_sim di ogni SIM per OGNI riga di regola che matcha l'evento -> doppio conteggio. Riproduzione: 2 SIM WindTre MNP Iliad su Grosio, ricarica_iniziale=10 ciascuna. La regola 'extra MNP Iliad' e la regola 'MNP compenso base' matchano entrambe le stesse 2 SIM: ognuna riga.ricariche=20, poi lo store ricariche = 40 invece del reale 20. Aggregare a livello di evento (set dedup su id) invece che somma delle righe."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter23_compensi.py",
+    "/app/test_reports/pytest/iter23.xml"
+  ],
+  "action_items": [
+    "Fix doppio conteggio ricariche_da_richiedere/costo_sim in compensi.py:calcola: aggregarli dagli eventi unici (per id) o solo dalla prima riga sim del destinatario, non sommando riga per riga."
+  ],
+  "critical_code_review_comments": [
+    "compensi.py:calcola (linee 350-351): ricariche/costo_sim aggregati sommando x.get('ricariche') per ogni riga -> multi-count quando piu regole matchano lo stesso servizio. Suggerimento: raccogliere i propri eventi SIM unici (deduplicati per id) in un set/dict prima della somma finale, oppure calcolare ricariche_da_richiedere direttamente dal DB filtrando servizi tipo=sim del destinatario nel mese.",
+    "compensi.py: helper _admin/_current_user duplicano la logica di parsing Bearer auth: estrarre in un unico helper condiviso (DRY).",
+    "compensi.py:_eventi_mese linea 244: filtro anonimizzato_at usa $in:[None] invece di $ne o $exists:false; funziona ma e' fragile se il campo non esiste. Preferibile {'anonimizzato_at': {'$in': [None, '']}} o {'$or': [{'anonimizzato_at': None}, {'anonimizzato_at': {'$exists': False}}]}.",
+    "compensi.py:calcola linea 305: e_gara logica non considera gare pagate per mese di pagamento (per_pagamento=True) — usa 'competenza' che ora e' shift-back, OK. Test verificato.",
+    "compensi.py:_eventi_mese linea 255: filtro data attivita 'mese-01' <= data <= 'mese-31' lessicografico: OK per formato ISO ma include '2026-09-31' che non esiste (innocuo).",
+    "compensi.py:plafond linea 149-151: ricariche assegnate solo se sid in carichi altrimenti a globale (''): OK; ma se un negozio ha SIM ma nessun carico proprio, tutte le ricariche vanno al globale — comportamento voluto secondo commento nel plafond tab. OK.",
+    "compensi.py: nessun test unitario/CI per il modulo prima di questa iter; test_iter23 copre i flussi principali.",
+    "server.py PATCH /users can_assign_ipro non e' verificato a livello di autorizzazione: solo admin puo settarlo? Test ha fatto PATCH come admin, ma UserUpdate accetta il campo a linea 577 come Optional[bool]. Controllare che update_user rifiuti la modifica di can_assign_ipro se user non e' admin (analogo a UserCreate:606).",
+    "compensi.py: la logica 'trattenuta_iva' aggiunge 22% IVA sulla trattenuta (accordo IVA sui compensi ridotti). Convenzione contabile insolita ma coerente con requisiti."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter23_compensi.py",
+    "/app/test_reports/iteration_23.json",
+    "/app/test_reports/pytest/iter23.xml"
+  ],
+  "success_rate": {"backend": "92% (11/12)", "frontend": "100%"},
+  "test_credentials": "Admin: rsriparazioni@gmail.com / EnricoRS@26 + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV via /app/backend/tests/login_tok.sh (Bearer stamped su stdout).",
+  "seed_data_creation": "Nessuno persistente. Durante il test: cliente TEST_ITER23 CambioOra (con lavorazione cambio_effettuato + venditore Tirano + poi per_ipro), 2 SIM WindTre MNP Iliad su Grosio con ricarica 10 e costo 5, 1 servizio internet Eolo su Sondalo. Cleanup fatto: eliminati servizi + cliente + gara pagata rimossa + regole seed cambiaora/eolo importo ripristinato a 0 + regola extra MNP Iliad soglia ripristinata a 15 + regola trattenuta Tirano 15% ripristinata + regola UI TEST_UI_ITER23 eliminata via API. Verifica finale: 13 regole seed, count=13.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Ricontrollare compensi.py:calcola dopo il fix del doppio conteggio ricariche/costo_sim. Selettori chiave frontend: nav-compensi, compensi-page, compensi-tab-{calcolo|regole|trattenute|plafond}, compensi-per-pagamento, compensi-netto-{id}, regola-nuova, regola-dialog, regola-nome, regola-importo, regola-salva, regola-del-{id}, trattenuta-pct-{store_id}, plafond-store/importo/causale/salva, per-ipro-button, servizio-provenienza (solo su MNP), servizio-ricarica, servizio-costo-sim, user-switch-ipro (form Nuovo utente), user-ipro-{index}. Non riavviare seed_admin — 2FA gia' attivo. Anti-replay TOTP: attendere ~32s se si eseguono login ripetuti.",
+  "rca of the issue": "Bug ricariche_da_richiedere/costo_sim double-count. RCA: in compensi.py:calcola (linea 350-351), ricariche di destinatario = sum(x.get('ricariche')) su tutte le righe (regole). Quando due o piu regole matchano gli stessi eventi SIM (es. 'MNP compenso base' + 'extra MNP Iliad'), ogni riga somma le stesse ricariche_iniziale. Risultato: N regole matching -> N * ricariche_totali. Riproduzione: 2 SIM WindTre MNP Iliad su Grosio ricarica=10 -> atteso 20, ottenuto 40 (2 regole matchano). Mitigazione: raccogliere gli eventi SIM propri unici per id in un set e sommare solo una volta, oppure ricalcolare ricariche_da_richiedere direttamente dai servizi del destinatario nel mese, indipendentemente dalle regole."
+}
