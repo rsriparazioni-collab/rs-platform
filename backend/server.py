@@ -374,6 +374,55 @@ class LoginInput(BaseModel):
     email: str
     password: str
 
+class ForgotInput(BaseModel):
+    email: str
+
+class ResetInput(BaseModel):
+    token: str
+    password: str
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(input: ForgotInput, request: Request, background_tasks: BackgroundTasks):
+    email = input.email.strip().lower()
+    ident = f"forgot:{request.client.host if request.client else 'x'}"
+    att = await db.login_attempts.find_one({"identifier": ident}, {"_id": 0})
+    now = datetime.now(timezone.utc)
+    if att and att.get("count", 0) >= 5 and att.get("last_at") and (now - datetime.fromisoformat(att["last_at"])).total_seconds() < 900:
+        raise HTTPException(status_code=429, detail="Troppe richieste: riprova tra 15 minuti")
+    await db.login_attempts.update_one({"identifier": ident}, {"$inc": {"count": 1}, "$set": {"last_at": now.isoformat()}}, upsert=True)
+    user = await db.users.find_one({"email": email, "active": {"$ne": False}}, {"_id": 0, "id": 1, "name": 1, "email": 1})
+    if user:
+        token = pysecrets.token_urlsafe(32)
+        await db.password_reset_tokens.insert_one({"token_hash": hashlib.sha256(token.encode()).hexdigest(), "user_id": user["id"],
+                                                   "expires_at": now + timedelta(hours=1), "used": False, "created_at": now.isoformat()})
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        base = os.environ.get("FRONTEND_URL", "").rstrip("/") or f"https://{host}"
+        link = f"{base}/reset-password?token={token}"
+        html = (f"<p>Ciao {escape(user['name'])},</p><p>hai chiesto di reimpostare la password del Gestionale RS & CambiaOra.</p>"
+                f"<p><a href=\"{link}\" style=\"background:#0f172a;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none\">Reimposta la password</a></p>"
+                f"<p>Il link vale <b>1 ora</b> e si può usare una sola volta. Se non sei stato tu, ignora questa email: la password resta invariata.</p>")
+        background_tasks.add_task(send_email, to=user["email"], subject="Reimposta la password - Gestionale RS", html=html)
+        await db.audit_log.insert_one({"id": str(uuid.uuid4()), "at": now.isoformat(), "user_id": user["id"], "user_name": user["name"], "user_role": "",
+                                       "action": "password_reset_richiesto", "entity": "utente", "entity_id": user["id"], "label": user["name"], "method": "POST",
+                                       "path": "/api/auth/forgot-password", "ip": ident.split(":", 1)[1]})
+    return {"status": "ok", "message": "Se l'email è registrata riceverai un link per reimpostare la password (controlla anche lo spam)."}
+
+@api_router.post("/auth/reset-password")
+async def reset_password(input: ResetInput):
+    if len(input.password) < 8:
+        raise HTTPException(status_code=400, detail="La password deve avere almeno 8 caratteri")
+    th = hashlib.sha256(input.token.encode()).hexdigest()
+    rec = await db.password_reset_tokens.find_one({"token_hash": th})
+    if not rec or rec.get("used") or rec["expires_at"].replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Link non valido o scaduto: richiedi un nuovo reset")
+    await db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": hash_password(input.password), "updated_at": datetime.now(timezone.utc).isoformat()}})
+    await db.password_reset_tokens.update_one({"_id": rec["_id"]}, {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}})
+    await db.login_attempts.delete_many({"identifier": {"$regex": f":{rec['user_id']}$"}})
+    await db.audit_log.insert_one({"id": str(uuid.uuid4()), "at": datetime.now(timezone.utc).isoformat(), "user_id": rec["user_id"], "user_name": "", "user_role": "",
+                                   "action": "password_reset_completato", "entity": "utente", "entity_id": rec["user_id"], "label": "", "method": "POST",
+                                   "path": "/api/auth/reset-password", "ip": ""})
+    return {"status": "ok", "message": "Password aggiornata: ora puoi accedere"}
+
 @api_router.post("/auth/login")
 async def login(input: LoginInput):
     email = input.email.strip().lower()
@@ -5161,6 +5210,8 @@ SEED_CLIENT_SAMPLES = [
 async def _seed_indexes():
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
+    await db.password_reset_tokens.create_index("token_hash")
     await db.clients.create_index("venditore_id")
     await db.clients.create_index("lavorazione")
     await db.lavorazioni_log.create_index("operatore_id")
@@ -5174,7 +5225,7 @@ async def _seed_admin():
                                    "password_hash": hash_password(admin_password), "role": "admin",
                                    "store_ids": [], "can_view_all": True, "active": True,
                                    "created_at": datetime.now(timezone.utc).isoformat()})
-    elif not verify_password(admin_password, existing["password_hash"]):
+    elif not existing.get("password_hash"):
         await db.users.update_one({"email": admin_email},
                                   {"$set": {"password_hash": hash_password(admin_password)}})
 

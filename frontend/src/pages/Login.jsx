@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiError } from "../lib/api";
@@ -125,6 +125,9 @@ export default function Login() {
                     className="h-11 w-full bg-gradient-to-r from-fuchsia-600 to-blue-700 text-white hover:opacity-90">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Accedi"}
             </Button>
+            <div className="text-center">
+              <Link to="/reset-password" className="text-sm text-slate-500 hover:text-fuchsia-700 hover:underline" data-testid="login-forgot-link">Password dimenticata?</Link>
+            </div>
           </form>
           )}
         </div>

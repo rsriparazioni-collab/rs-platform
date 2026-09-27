@@ -372,3 +372,7 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-09-25 — Avvisi obiettivi (complimenti + metà mese)
 - `kpi.controlla_obiettivi()`: per ogni obiettivo del mese → WA "complimenti" al raggiungimento (una volta, con bonus) e dal 15 promemoria se pct<40 (una volta); tracking in `kpi_obiettivi_notifiche` {user_id,voce,anno,mese,raggiunto_at,promemoria_at}; copia in campanella (`notifiche` tipo obiettivo_*). Cron `POST /cron/obiettivi` 19:00 Europe/Rome in crons.yml; admin `POST /kpi/obiettivi/controlla-ora?meta_mese=true` + bottone "Avvisi obiettivi ora". Testato dry-run: 3 promemoria + 1 raggiunto, seconda esecuzione 0 (idempotente).
+
+## 2026-09-27 — Password admin + reset password via email
+- Password admin rsriparazioni@gmail.com → **EnricoRS@26** (PATCH users + ADMIN_PASSWORD in .env). Seed admin ora NON sovrascrive più la password ad ogni avvio (solo se manca hash). ⚠ In produzione aggiornare la variabile ADMIN_PASSWORD (o la password resta quella impostata via UI, non viene più riallineata).
+- `POST /auth/forgot-password` (rate limit 5/15min per IP, risposta neutra, token urlsafe 32 → sha256 in `password_reset_tokens` TTL 1h, email Resend con link {FRONTEND_URL}/reset-password?token=), `POST /auth/reset-password` (min 8 char, single-use, azzera lockout, audit). Frontend `ResetPassword.jsx` (/reset-password) + link "Password dimenticata?" in Login.
