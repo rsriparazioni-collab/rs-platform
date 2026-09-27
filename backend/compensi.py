@@ -319,6 +319,7 @@ async def calcola(mese: str, per_pagamento: bool = False) -> dict:
 
     destinatari = [("store", s["id"], s["nome"], s) for s in stores] + [("user", u["id"], u["name"], u) for u in users]
     ric_csv = await _d["ricariche_per_store"](mese)
+    gara_wt = await _d["gara_windtre"](mese)
     out = []
     for tipo, dest_id, nome, obj in destinatari:
         righe = []
@@ -348,6 +349,11 @@ async def calcola(mese: str, per_pagamento: bool = False) -> dict:
                           "totale": round(totale, 2), "competenza": competenza, "pagamento": _shift(competenza, int(r.get("mesi_pagamento") or 0)),
                           "e_gara": bool(r.get("e_gara")), "gara_pagata": pagata})
         ev_mese = await eventi(mese)
+        wt = round(gara_wt.get((tipo, dest_id), 0.0), 2)
+        if wt:
+            righe.append({"regola_id": "gara_windtre", "nome": "Gara WindTre/Very – compensi attivazioni riconosciute", "voce": "gara_windtre", "conteggio": None,
+                          "importo_unitario": None, "modalita": "regolamento", "totale": wt, "competenza": mese, "pagamento": mese, "e_gara": False, "gara_pagata": True,
+                          "soglia": 0, "soglia_raggiunta": True})
         sim_propri = [e for e in ev_mese.get("sim", []) if _appartiene(e, tipo, dest_id)]
         ricariche = round(ric_csv.get(dest_id, 0.0), 2) if (ric_csv and tipo == "store") else (0.0 if ric_csv else round(sum(e.get("ricarica", 0) for e in sim_propri), 2))
         costo_sim = round(sum(e.get("costo_sim", 0) for e in sim_propri), 2)
@@ -385,12 +391,12 @@ async def seed() -> None:
     regole = [
         {"nome": "CambiaOra – contratto incassato (pagato a 2 mesi)", "voce": "cambiaora", "importo": 0, "solo_incassato": True, "mesi_pagamento": 2,
          "note": "Inserisci l'importo per contratto. Es. luglio viene pagato a settembre."},
-        {"nome": "WindTre/Very – MNP compenso base", "voce": "sim", "operatore_tel": "WINDTRE,VERY", "tipo_attivazione": "mnp", "importo": 0, "note": "Compenso base X per MNP"},
+        {"nome": "WindTre/Very – MNP compenso base", "voce": "sim", "operatore_tel": "WINDTRE,VERY", "tipo_attivazione": "mnp", "importo": 0, "attiva": False, "note": "Gestita dal regolamento Gara WindTre"},
         {"nome": "WindTre/Very – extra MNP da Iliad/CoopVoce/Poste (≥15 MNP globali)", "voce": "sim", "operatore_tel": "WINDTRE,VERY", "tipo_attivazione": "mnp",
-         "provenienza_in": ["Iliad", "CoopVoce", "Poste"], "importo": 35, "soglia": 15, "conteggio_globale": True},
+         "provenienza_in": ["Iliad", "CoopVoce", "Poste"], "importo": 35, "soglia": 15, "conteggio_globale": True, "attiva": False},
         {"nome": "WindTre/Very – extra MNP da altri operatori (≥15 MNP globali)", "voce": "sim", "operatore_tel": "WINDTRE,VERY", "tipo_attivazione": "mnp",
-         "provenienza_not_in": ["Iliad", "CoopVoce", "Poste"], "importo": 15, "soglia": 15, "conteggio_globale": True},
-        {"nome": "WindTre/Very – numero nuovo", "voce": "sim", "operatore_tel": "WINDTRE,VERY", "tipo_attivazione": "nuovo", "importo": 0},
+         "provenienza_not_in": ["Iliad", "CoopVoce", "Poste"], "importo": 15, "soglia": 15, "conteggio_globale": True, "attiva": False},
+        {"nome": "WindTre/Very – numero nuovo", "voce": "sim", "operatore_tel": "WINDTRE,VERY", "tipo_attivazione": "nuovo", "importo": 0, "attiva": False},
         {"nome": "Lyca – SIM (solo Sondrio, 0 €: genera plafond)", "voce": "sim", "operatore_tel": "LYCA", "importo": 0, "destinatario_id": stores.get("sondrio", "")},
         {"nome": "Eolo – report inserito (pagato nel mese)", "voce": "internet", "operatore_tel": "EOLO", "importo": 0},
         {"nome": "Eolo – gara trimestrale (pagata a 3 mesi, a incasso avvenuto)", "voce": "internet", "operatore_tel": "EOLO", "modalita": "forfait", "importo": 0,

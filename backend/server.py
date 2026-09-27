@@ -4050,6 +4050,10 @@ class ServizioInput(BaseModel):
     provenienza_operatore: str = ""  # sim mnp: operatore di provenienza
     ricarica_iniziale: Optional[float] = None  # sim: prima ricarica dal plafond
     costo_sim: Optional[float] = None
+    categoria_prodotto: str = ""  # fisso WindTre: FWA Outdoor | FTTH | FWA Indoor 2P | Voce Casa | FTTC | Seconda Linea P.IVA
+    convergente: bool = False
+    tied: bool = False
+    esito_attivazione: str = "riconosciuta"  # riconosciuta | in_attesa | annullata | respinta | non_riconosciuta | stornata
     esito_riparazione: str = ""  # normale | garanzia | ricambio_usato | scheda_madre | non_riparabile | preventivo_rifiutato
 
 SECRET_FIELDS = ("codice_sblocco", "account_password")
@@ -5505,7 +5509,11 @@ api_router.include_router(compensi_module.router)
 import ricariche as ricariche_module
 ricariche_module.setup(db=db, get_current_user=get_current_user)
 api_router.include_router(ricariche_module.router)
-compensi_module.setup(ricariche_per_store=ricariche_module.ricariche_per_store, ricariche_mapping=ricariche_module._mapping)
+import gara_windtre as gara_windtre_module
+gara_windtre_module.setup(db=db, get_current_user=get_current_user)
+api_router.include_router(gara_windtre_module.router)
+compensi_module.setup(ricariche_per_store=ricariche_module.ricariche_per_store, ricariche_mapping=ricariche_module._mapping,
+                      gara_windtre=gara_windtre_module.generato_per_destinatario)
 
 @api_router.post("/cron/promemoria-registro")
 async def cron_promemoria_registro(request: Request, background_tasks: BackgroundTasks):

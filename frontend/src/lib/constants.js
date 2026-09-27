@@ -1,4 +1,14 @@
 export const SIM_PROVENIENZE = ["Iliad", "CoopVoce", "Poste", "WindTre", "Very", "TIM", "Kena", "Vodafone", "Ho", "Fastweb", "Lyca", "Digi", "Altro"];
+export const WT_CATEGORIE_FISSO = ["FWA Outdoor", "FTTH", "FWA Indoor 2P", "Voce Casa", "FTTC", "Seconda Linea P.IVA"];
+export const WT_ESITI = [
+  { id: "riconosciuta", label: "Riconosciuta" },
+  { id: "in_attesa", label: "In attesa di riconoscimento" },
+  { id: "annullata", label: "Annullata" },
+  { id: "respinta", label: "Respinta" },
+  { id: "non_riconosciuta", label: "Non riconosciuta" },
+  { id: "stornata", label: "Stornata" },
+];
+
 
 export const LAVORAZIONI = [
   { id: "cambiare", label: "Da Cambiare", badge: "bg-amber-500/15 text-amber-700 border-amber-300" },

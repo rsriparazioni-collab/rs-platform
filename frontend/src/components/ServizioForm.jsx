@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { apriPortaleDopoSalvataggio } from "./PortaleBox";
-import { SERVIZIO_TIPI, RIP_STATI, TEL_OPERATORS, SBLOCCO_TIPI, SIM_ATTIVAZIONI, SIM_PROVENIENZE } from "../lib/constants";
+import { SERVIZIO_TIPI, RIP_STATI, TEL_OPERATORS, SBLOCCO_TIPI, SIM_ATTIVAZIONI, SIM_PROVENIENZE, WT_CATEGORIE_FISSO, WT_ESITI } from "../lib/constants";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -89,6 +89,8 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isRip = tipo === "riparazione";
   const isTel = ["sim", "internet", "fisso"].includes(tipo);
+  const isSim = tipo === "sim";
+  const isWT = isTel && ["windtre", "very"].includes((form.operatore_tel || "").toLowerCase());
   const isShop = ["accessori", "vendita"].includes(tipo);
   const [regole, setRegole] = useState([]);
   const [listinoQ, setListinoQ] = useState("");
@@ -442,6 +444,36 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                 <div className="flex items-center gap-3 pt-5">
                   <Switch checked={Boolean(form.cliente_contattato)} onCheckedChange={(v) => set("cliente_contattato", v)} data-testid="servizio-contattato-switch" />
                   <Label className="text-sm">Cliente contattato</Label>
+                </div>
+              )}
+              {isWT && !isSim && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Categoria prodotto (gara WindTre)</Label>
+                  <Select value={form.categoria_prodotto || ""} onValueChange={(v) => set("categoria_prodotto", v)}>
+                    <SelectTrigger data-testid="servizio-categoria-prodotto"><SelectValue placeholder="Seleziona" /></SelectTrigger>
+                    <SelectContent>{WT_CATEGORIE_FISSO.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
+              {isWT && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Esito attivazione</Label>
+                  <Select value={form.esito_attivazione || "riconosciuta"} onValueChange={(v) => set("esito_attivazione", v)}>
+                    <SelectTrigger data-testid="servizio-esito-attivazione"><SelectValue /></SelectTrigger>
+                    <SelectContent>{WT_ESITI.map((o) => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
+              {isWT && !isSim && (
+                <div className="flex items-center gap-3 pt-5">
+                  <Switch checked={Boolean(form.convergente)} onCheckedChange={(v) => set("convergente", v)} data-testid="servizio-convergente" />
+                  <Label className="text-sm">Convergente (+30 €)</Label>
+                </div>
+              )}
+              {isWT && isSim && (
+                <div className="flex items-center gap-3 pt-5">
+                  <Switch checked={Boolean(form.tied)} onCheckedChange={(v) => set("tied", v)} data-testid="servizio-tied" />
+                  <Label className="text-sm">Tied (vincolata)</Label>
                 </div>
               )}
             </div>

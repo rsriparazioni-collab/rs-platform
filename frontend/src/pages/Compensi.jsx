@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Euro, Settings2, Wallet, Percent, FileSpreadsheet } from "lucide-react";
+import { Euro, Settings2, Wallet, Percent, FileSpreadsheet, Trophy } from "lucide-react";
 import api from "../lib/api";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { CompensiCalcolo } from "../components/compensi/CompensiCalcolo";
@@ -7,6 +7,7 @@ import { CompensiRegole } from "../components/compensi/CompensiRegole";
 import { CompensiTrattenute } from "../components/compensi/CompensiTrattenute";
 import { CompensiPlafond } from "../components/compensi/CompensiPlafond";
 import { CompensiRicariche } from "../components/compensi/CompensiRicariche";
+import { GaraWindTre } from "../components/compensi/GaraWindTre";
 
 export default function Compensi() {
   const [meta, setMeta] = useState(null);
@@ -26,7 +27,9 @@ export default function Compensi() {
           <TabsTrigger value="trattenute" className="gap-1.5" data-testid="compensi-tab-trattenute"><Percent className="h-4 w-4" /> Trattenute</TabsTrigger>
           <TabsTrigger value="plafond" className="gap-1.5" data-testid="compensi-tab-plafond"><Wallet className="h-4 w-4" /> Plafond</TabsTrigger>
           <TabsTrigger value="ricariche" className="gap-1.5" data-testid="compensi-tab-ricariche"><FileSpreadsheet className="h-4 w-4" /> Ricariche (CSV)</TabsTrigger>
+          <TabsTrigger value="gara" className="gap-1.5" data-testid="compensi-tab-gara"><Trophy className="h-4 w-4" /> Gara WindTre</TabsTrigger>
         </TabsList>
+        <TabsContent value="gara"><GaraWindTre /></TabsContent>
         <TabsContent value="ricariche">{meta && <CompensiRicariche meta={meta} />}</TabsContent>
         <TabsContent value="calcolo"><CompensiCalcolo /></TabsContent>
         <TabsContent value="regole">{meta && <CompensiRegole meta={meta} />}</TabsContent>
