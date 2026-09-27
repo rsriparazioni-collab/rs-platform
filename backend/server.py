@@ -6,6 +6,7 @@ import re
 import asyncio
 import hmac
 import magazzino_ricambi as magazzino_ricambi_module
+import compensi as compensi_module
 import io
 import uuid
 import hashlib
@@ -91,7 +92,7 @@ def set_session_cookie(resp, token: str) -> None:
 
 def serialize_user(u: dict) -> dict:
     return {"id": u["id"], "name": u["name"], "email": u["email"], "role": u["role"],
-            "store_ids": u.get("store_ids", []), "can_view_all": u.get("can_view_all", False),
+            "store_ids": u.get("store_ids", []), "can_view_all": u.get("can_view_all", False), "can_assign_ipro": u.get("can_assign_ipro", False),
             "active": u.get("active", True), "totp_enabled": bool(u.get("totp_enabled")), "telefono": u.get("telefono", ""),
             "sections": u.get("sections") or ["energia", "riparazioni", "telefonia"]}
 
@@ -564,6 +565,7 @@ class UserCreate(BaseModel):
     role: str = "negozio"
     store_ids: List[str] = []
     can_view_all: bool = False
+    can_assign_ipro: bool = False
     sections: List[str] = []
     telefono: str = ""
 
@@ -572,6 +574,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     store_ids: Optional[List[str]] = None
     can_view_all: Optional[bool] = None
+    can_assign_ipro: Optional[bool] = None
     active: Optional[bool] = None
     password: Optional[str] = None
     sections: Optional[List[str]] = None
@@ -600,7 +603,7 @@ async def create_user(input: UserCreate, user: dict = Depends(get_current_user))
         raise HTTPException(status_code=400, detail="Ruolo non valido")
     user = {"id": str(uuid.uuid4()), "name": input.name, "email": email,
             "password_hash": hash_password(input.password), "role": input.role,
-            "store_ids": input.store_ids, "can_view_all": input.can_view_all,
+            "store_ids": input.store_ids, "can_view_all": input.can_view_all, "can_assign_ipro": input.can_assign_ipro if user["role"] == "admin" else False,
             "sections": input.sections or ["energia", "riparazioni", "telefonia"], "telefono": input.telefono.strip(),
             "active": True, "created_at": datetime.now(timezone.utc).isoformat()}
     await db.users.insert_one(user)
@@ -4044,6 +4047,9 @@ class ServizioInput(BaseModel):
     data_uscita: Optional[str] = None
     prezzo_finale: Optional[float] = None
     tipo_attivazione: str = ""  # sim: nuovo | mnp | cambio_offerta
+    provenienza_operatore: str = ""  # sim mnp: operatore di provenienza
+    ricarica_iniziale: Optional[float] = None  # sim: prima ricarica dal plafond
+    costo_sim: Optional[float] = None
     esito_riparazione: str = ""  # normale | garanzia | ricambio_usato | scheda_madre | non_riparabile | preventivo_rifiutato
 
 SECRET_FIELDS = ("codice_sblocco", "account_password")
@@ -5323,6 +5329,7 @@ async def startup():
     await load_regole_prezzi()
     await seed_portali()
     await migra_segreti_in_chiaro()
+    await compensi_module.seed()
     try:
         init_storage()
         logger.info("Object storage inizializzato")
@@ -5492,6 +5499,9 @@ api_router.include_router(kpi_module.router)
 import backup as backup_module
 backup_module.setup(db=db, get_current_user=get_current_user)
 api_router.include_router(backup_module.router)
+import compensi as compensi_module  # noqa: F811
+compensi_module.setup(db=db, get_current_user=get_current_user, effective_pagato=effective_pagato)
+api_router.include_router(compensi_module.router)
 
 @api_router.post("/cron/promemoria-registro")
 async def cron_promemoria_registro(request: Request, background_tasks: BackgroundTasks):

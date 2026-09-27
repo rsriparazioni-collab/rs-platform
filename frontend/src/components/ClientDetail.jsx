@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen, ArrowLeftRight, ShoppingBag } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { PerIproButton } from "./PerIproButton";
 import WhatsAppLog from "./WhatsAppLog";
 import MessaggiPrevisti from "./MessaggiPrevisti";
 import { toast } from "sonner";
@@ -214,6 +215,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
             </SheetHeader>
             <div className="mt-6 space-y-6">
               <div className="flex flex-wrap gap-2">
+                <PerIproButton tipo="clients" id={detail.id} value={!!detail.per_ipro} onChange={(v) => setDetail({ ...detail, per_ipro: v })} />
                 <span className={`status-badge ${lavorazioneBadge(detail.lavorazione)}`}>{lavorazioneLabel(detail.lavorazione)}</span>
                 <span data-testid="detail-tipo-cliente-badge" className={`status-badge ${tipoClienteInfo(detail.tipo_cliente).badge}`}>
                   {tipoClienteInfo(detail.tipo_cliente).label}

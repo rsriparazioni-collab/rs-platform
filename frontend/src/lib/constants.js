@@ -1,3 +1,5 @@
+export const SIM_PROVENIENZE = ["Iliad", "CoopVoce", "Poste", "WindTre", "Very", "TIM", "Kena", "Vodafone", "Ho", "Fastweb", "Lyca", "Digi", "Altro"];
+
 export const LAVORAZIONI = [
   { id: "cambiare", label: "Da Cambiare", badge: "bg-amber-500/15 text-amber-700 border-amber-300" },
   { id: "non_cambiare", label: "Non Cambiare", badge: "bg-slate-500/15 text-slate-700 border-slate-300" },
@@ -19,6 +21,8 @@ export const lavorazioneLabel = (id) =>
 
 export const lavorazioneBadge = (id) =>
   LAVORAZIONI.find((l) => l.id === id)?.badge || "bg-slate-500/15 text-slate-700 border-slate-300";
+
+export const MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
 export const fmtDate = (d) => {
   if (!d) return "-";

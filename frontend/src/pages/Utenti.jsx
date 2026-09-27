@@ -142,7 +142,12 @@ export default function Utenti() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{storeNames(u.store_ids)}</td>
                   <td className="px-4 py-3 text-xs text-slate-600">{(u.sections || ["energia", "riparazioni", "telefonia"]).join(", ")}</td>
-                  <td className="px-4 py-3">{u.can_view_all ? "Sì" : "No"}</td>
+                  <td className="px-4 py-3">{u.can_view_all ? "Sì" : "No"}
+                    {isAdmin && u.role !== "admin" && (
+                      <label className="mt-1 flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" checked={!!u.can_assign_ipro} data-testid={`user-ipro-${i}`}
+                        onChange={async (e) => { try { await api.patch(`/users/${u.id}`, { can_assign_ipro: e.target.checked }); toast.success("Permesso Ipro aggiornato"); load(); } catch (err) { toast.error(apiError(err)); } }} /> Per Ipro</label>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`status-badge ${u.active ? "bg-emerald-500/15 text-emerald-700 border-emerald-300" : "bg-rose-500/15 text-rose-700 border-rose-300"}`}>
                       {u.active ? "Attivo" : "Disattivato"}
@@ -245,6 +250,12 @@ export default function Utenti() {
               <div className="flex items-center gap-3">
                 <Switch checked={form.can_view_all} onCheckedChange={(v) => setForm({ ...form, can_view_all: v })} data-testid="user-switch-view-all" />
                 <Label className="text-sm">Può vedere tutti i clienti (es. Deborah)</Label>
+              </div>
+            )}
+            {isAdmin && (
+              <div className="flex items-center gap-3">
+                <Switch checked={!!form.can_assign_ipro} onCheckedChange={(v) => setForm({ ...form, can_assign_ipro: v })} data-testid="user-switch-ipro" />
+                <Label className="text-sm">Può assegnare clienti/servizi "per Ipro" (compensi a Ipro)</Label>
               </div>
             )}
             <div className="flex justify-end gap-3 pt-2">

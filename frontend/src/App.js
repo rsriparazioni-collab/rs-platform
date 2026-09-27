@@ -22,6 +22,7 @@ import Vendite from "./pages/Vendite";
 import Formazione from "./pages/Formazione";
 import PrezziRiparazioni from "./pages/PrezziRiparazioni";
 import Kpi from "./pages/Kpi";
+import Compensi from "./pages/Compensi";
 import ResetPassword from "./pages/ResetPassword";
 import Presentazione from "./pages/Presentazione";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -85,6 +86,7 @@ function App() {
             <Route path="password" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><PasswordManager /></RequireRole>} />
             <Route path="formazione" element={<Formazione />} />
             <Route path="prezzi" element={<RequireRole roles={["admin"]}><PrezziRiparazioni /></RequireRole>} />
+            <Route path="compensi" element={<RequireRole roles={["admin"]}><Compensi /></RequireRole>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

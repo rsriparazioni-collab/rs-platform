@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { apriPortaleDopoSalvataggio } from "./PortaleBox";
-import { SERVIZIO_TIPI, RIP_STATI, TEL_OPERATORS, SBLOCCO_TIPI, SIM_ATTIVAZIONI } from "../lib/constants";
+import { SERVIZIO_TIPI, RIP_STATI, TEL_OPERATORS, SBLOCCO_TIPI, SIM_ATTIVAZIONI, SIM_PROVENIENZE } from "../lib/constants";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -397,6 +397,27 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                     <SelectTrigger data-testid="servizio-tipo-attivazione"><SelectValue placeholder="Numero nuovo o MNP?" /></SelectTrigger>
                     <SelectContent>{SIM_ATTIVAZIONI.map((o) => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent>
                   </Select>
+                </div>
+              )}
+              {tipo === "sim" && form.tipo_attivazione === "mnp" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Proviene da (operatore)</Label>
+                  <Select value={form.provenienza_operatore || ""} onValueChange={(v) => set("provenienza_operatore", v)}>
+                    <SelectTrigger data-testid="servizio-provenienza"><SelectValue placeholder="Operatore di provenienza" /></SelectTrigger>
+                    <SelectContent>{SIM_PROVENIENZE.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
+              {tipo === "sim" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prima ricarica € (da plafond)</Label>
+                  <Input type="number" step="0.01" value={form.ricarica_iniziale ?? ""} onChange={(e) => set("ricarica_iniziale", e.target.value)} placeholder="es. 10 o 15" data-testid="servizio-ricarica" />
+                </div>
+              )}
+              {tipo === "sim" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Costo SIM €</Label>
+                  <Input type="number" step="0.01" value={form.costo_sim ?? ""} onChange={(e) => set("costo_sim", e.target.value)} placeholder="es. 5" data-testid="servizio-costo-sim" />
                 </div>
               )}
               {tipo === "sim" && (

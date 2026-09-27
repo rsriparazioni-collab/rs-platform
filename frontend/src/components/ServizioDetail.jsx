@@ -4,6 +4,7 @@ import RitiroDaRiparazione from "./RitiroDaRiparazione";
 import WhatsAppLog from "./WhatsAppLog";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
+import { PerIproButton } from "./PerIproButton";
 import PortaleBox from "./PortaleBox";
 import OrdinaRicambio from "./OrdinaRicambio";
 import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI, magazzinoCategoriaLabel, RIP_ESITI, ripEsitoLabel } from "../lib/constants";
@@ -277,6 +278,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
+                {!isRip && <PerIproButton tipo="servizi" id={detail.id} value={!!detail.per_ipro} onChange={(v) => setDetail({ ...detail, per_ipro: v })} />}
                 {isRip && detail.numero_riparazione && (
                   <span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300" data-testid="servizio-numero-badge">N° {detail.numero_riparazione}</span>
                 )}

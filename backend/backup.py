@@ -71,11 +71,29 @@ async def backup_loop() -> None:
     while True:
         try:
             ultimo = await _d["db"].cron_log.find_one({"job": "backup-automatico"}, {"_id": 0, "at": 1}, sort=[("at", -1)])
-            if not ultimo or (datetime.now(timezone.utc) - datetime.fromisoformat(ultimo["at"])).total_seconds() >= 86400:
+            eta = (datetime.now(timezone.utc) - datetime.fromisoformat(ultimo["at"])).total_seconds() if ultimo else None
+            if eta is None or eta >= 86400:
                 await salva_backup_automatico()
+            await controlla_backup_scaduto()
         except Exception as e:
             logger.error(f"backup_loop errore: {e}")
         await asyncio.sleep(3600)
+
+
+async def controlla_backup_scaduto() -> None:
+    """Avviso a campanella (admin) se l'ultimo file di backup ha più di 2 giorni."""
+    db = _d["db"]
+    files = _lista()
+    eta_ore = (datetime.now(timezone.utc) - datetime.fromisoformat(files[0]["creato_il"])).total_seconds() / 3600 if files else None
+    if eta_ore is not None and eta_ore < 48:
+        return
+    oggi = datetime.now(timezone.utc).date().isoformat()
+    if await db.notifiche.find_one({"tipo": "backup_scaduto", "at": {"$gte": oggi}}):
+        return
+    testo = ("Nessun backup automatico presente: controlla la pagina Sicurezza." if eta_ore is None
+             else f"Backup dati non aggiornato da {int(eta_ore // 24)} giorni: verifica il backup automatico nella pagina Sicurezza.")
+    await db.notifiche.insert_one({"id": os.urandom(8).hex(), "store_id": "", "tipo": "backup_scaduto", "testo": testo, "letta": False,
+                                   "at": datetime.now(timezone.utc).isoformat(), "solo_admin": True})
 
 
 def _lista() -> list[dict]:

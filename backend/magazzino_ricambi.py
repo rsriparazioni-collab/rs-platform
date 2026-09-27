@@ -161,9 +161,11 @@ async def tipologie():
 
 
 def _notifiche_scope(user: dict) -> dict:
-    if user["role"] in ("admin", "tecnico") or user.get("can_view_all"):
+    if user["role"] == "admin":
         return {}
-    return {"store_id": {"$in": user.get("store_ids", [])}}
+    if user["role"] == "tecnico" or user.get("can_view_all"):
+        return {"solo_admin": {"$ne": True}}
+    return {"store_id": {"$in": user.get("store_ids", [])}, "solo_admin": {"$ne": True}}
 
 
 @router.get("/notifiche")
