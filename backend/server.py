@@ -5502,6 +5502,10 @@ api_router.include_router(backup_module.router)
 import compensi as compensi_module  # noqa: F811
 compensi_module.setup(db=db, get_current_user=get_current_user, effective_pagato=effective_pagato)
 api_router.include_router(compensi_module.router)
+import ricariche as ricariche_module
+ricariche_module.setup(db=db, get_current_user=get_current_user)
+api_router.include_router(ricariche_module.router)
+compensi_module.setup(ricariche_per_store=ricariche_module.ricariche_per_store, ricariche_mapping=ricariche_module._mapping)
 
 @api_router.post("/cron/promemoria-registro")
 async def cron_promemoria_registro(request: Request, background_tasks: BackgroundTasks):

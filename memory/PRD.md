@@ -394,3 +394,8 @@ Vedi /app/memory/test_credentials.md
 - Test: iteration_23 (12/12 pytest backend + frontend OK dopo fix doppio conteggio ricariche).
 - IN ATTESA UTENTE: Sync scrittura Fogli Google bolle ritiro (serve link foglio + colonne; richiede scope Sheets su OAuth Drive).
 - Regole compensi Kena/Iliad/Ho/Fastweb ancora da definire dall'utente (seed a 0 €).
+
+## 2026-09-27 – Import CSV ricariche (tab "Ricariche (CSV)" in Compensi)
+- `backend/ricariche.py`: POST /api/ricariche/import (CSV ; del portale, idempotente su colonna #), GET /api/ricariche/riepilogo?anno&mese (totali per negozio/utente/operatore, fallite, mapping), PUT /api/ricariche/mapping. Collezioni `ricariche`, `ricariche_mapping` (utente portale -> store, auto-guess dal nome), `ricariche_import_log`.
+- Plafond e "ricariche da richiedere" nei compensi usano i dati CSV importati quando presenti (fallback ai campi SIM). "System" = ricariche contestuali alle attivazioni, non assegnate di default.
+- Test: import file reale 383 righe (lug-set 2026), settembre 97 ricariche = 1.351 €; re-import 0 duplicati; UI verificata via screenshot.

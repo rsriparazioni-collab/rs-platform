@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Euro, Settings2, Wallet, Percent } from "lucide-react";
+import { Euro, Settings2, Wallet, Percent, FileSpreadsheet } from "lucide-react";
 import api from "../lib/api";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { CompensiCalcolo } from "../components/compensi/CompensiCalcolo";
 import { CompensiRegole } from "../components/compensi/CompensiRegole";
 import { CompensiTrattenute } from "../components/compensi/CompensiTrattenute";
 import { CompensiPlafond } from "../components/compensi/CompensiPlafond";
+import { CompensiRicariche } from "../components/compensi/CompensiRicariche";
 
 export default function Compensi() {
   const [meta, setMeta] = useState(null);
@@ -23,8 +24,10 @@ export default function Compensi() {
           <TabsTrigger value="calcolo" className="gap-1.5" data-testid="compensi-tab-calcolo"><Euro className="h-4 w-4" /> Calcolo mensile</TabsTrigger>
           <TabsTrigger value="regole" className="gap-1.5" data-testid="compensi-tab-regole"><Settings2 className="h-4 w-4" /> Regole e gare</TabsTrigger>
           <TabsTrigger value="trattenute" className="gap-1.5" data-testid="compensi-tab-trattenute"><Percent className="h-4 w-4" /> Trattenute</TabsTrigger>
-          <TabsTrigger value="plafond" className="gap-1.5" data-testid="compensi-tab-plafond"><Wallet className="h-4 w-4" /> Plafond ricariche</TabsTrigger>
+          <TabsTrigger value="plafond" className="gap-1.5" data-testid="compensi-tab-plafond"><Wallet className="h-4 w-4" /> Plafond</TabsTrigger>
+          <TabsTrigger value="ricariche" className="gap-1.5" data-testid="compensi-tab-ricariche"><FileSpreadsheet className="h-4 w-4" /> Ricariche (CSV)</TabsTrigger>
         </TabsList>
+        <TabsContent value="ricariche">{meta && <CompensiRicariche meta={meta} />}</TabsContent>
         <TabsContent value="calcolo"><CompensiCalcolo /></TabsContent>
         <TabsContent value="regole">{meta && <CompensiRegole meta={meta} />}</TabsContent>
         <TabsContent value="trattenute">{meta && <CompensiTrattenute meta={meta} reload={loadMeta} />}</TabsContent>

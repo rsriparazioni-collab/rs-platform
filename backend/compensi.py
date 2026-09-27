@@ -146,9 +146,16 @@ async def plafond(admin: dict = Depends(_admin)):
     for m in movimenti:
         carichi[m.get("store_id", "")] += m["importo"]
     ricariche = defaultdict(float)
-    async for s in db.servizi.find({"tipo": "sim", "ricarica_iniziale": {"$gt": 0}}, {"_id": 0, "venditore_id": 1, "ricarica_iniziale": 1}):
-        sid = s.get("venditore_id", "")
-        ricariche[sid if sid in carichi else ""] += s["ricarica_iniziale"]
+    ric_csv = await db.ricariche.find({"esito": "eseguita"}, {"_id": 0, "utente": 1, "importo": 1}).to_list(50000)
+    if ric_csv:
+        mapping = await _d["ricariche_mapping"]()
+        for r in ric_csv:
+            sid = mapping.get(r["utente"], "")
+            ricariche[sid if sid in carichi else ""] += r["importo"]
+    else:
+        async for s in db.servizi.find({"tipo": "sim", "ricarica_iniziale": {"$gt": 0}}, {"_id": 0, "venditore_id": 1, "ricarica_iniziale": 1}):
+            sid = s.get("venditore_id", "")
+            ricariche[sid if sid in carichi else ""] += s["ricarica_iniziale"]
     saldi = [{"store_id": sid, "store_name": stores.get(sid, "Plafond globale"), "carichi": round(carichi.get(sid, 0), 2),
               "ricariche": round(ricariche.get(sid, 0), 2), "saldo": round(carichi.get(sid, 0) - ricariche.get(sid, 0), 2)}
              for sid in sorted(set(carichi) | set(ricariche) | {""}, key=lambda x: stores.get(x, ""))]
@@ -311,6 +318,7 @@ async def calcola(mese: str, per_pagamento: bool = False) -> dict:
         return eventi_cache[m]
 
     destinatari = [("store", s["id"], s["nome"], s) for s in stores] + [("user", u["id"], u["name"], u) for u in users]
+    ric_csv = await _d["ricariche_per_store"](mese)
     out = []
     for tipo, dest_id, nome, obj in destinatari:
         righe = []
@@ -341,7 +349,7 @@ async def calcola(mese: str, per_pagamento: bool = False) -> dict:
                           "e_gara": bool(r.get("e_gara")), "gara_pagata": pagata})
         ev_mese = await eventi(mese)
         sim_propri = [e for e in ev_mese.get("sim", []) if _appartiene(e, tipo, dest_id)]
-        ricariche = round(sum(e.get("ricarica", 0) for e in sim_propri), 2)
+        ricariche = round(ric_csv.get(dest_id, 0.0), 2) if (ric_csv and tipo == "store") else (0.0 if ric_csv else round(sum(e.get("ricarica", 0) for e in sim_propri), 2))
         costo_sim = round(sum(e.get("costo_sim", 0) for e in sim_propri), 2)
         if not righe and not ricariche and not costo_sim:
             continue
