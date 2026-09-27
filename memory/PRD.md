@@ -376,3 +376,11 @@ Vedi /app/memory/test_credentials.md
 ## 2026-09-27 — Password admin + reset password via email
 - Password admin rsriparazioni@gmail.com → **EnricoRS@26** (PATCH users + ADMIN_PASSWORD in .env). Seed admin ora NON sovrascrive più la password ad ogni avvio (solo se manca hash). ⚠ In produzione aggiornare la variabile ADMIN_PASSWORD (o la password resta quella impostata via UI, non viene più riallineata).
 - `POST /auth/forgot-password` (rate limit 5/15min per IP, risposta neutra, token urlsafe 32 → sha256 in `password_reset_tokens` TTL 1h, email Resend con link {FRONTEND_URL}/reset-password?token=), `POST /auth/reset-password` (min 8 char, single-use, azzera lockout, audit). Frontend `ResetPassword.jsx` (/reset-password) + link "Password dimenticata?" in Login.
+
+## 2026-09-27 – Backup dati + pacchetto server locale (offline)
+- `backend/backup.py`: GET /api/admin/backup (info), GET /api/admin/backup/export (ZIP JSON di tutte le collezioni), POST /api/admin/backup/run, GET /api/admin/backup/download/{file}. Loop automatico ogni 24h in startup (conserva ultimi 7 in `backend/backups/`, env BACKUP_DIR).
+- `backend/import_backup.py`: ripristino ZIP nel DB (MONGO_URL/DB_NAME), richiede `--conferma`.
+- Frontend: `components/BackupCard.jsx` in pagina Sicurezza (solo admin).
+- `deploy-locale/`: docker-compose (mongo+backend+nginx frontend su :8080), Dockerfile, nginx.conf, .env.example, README in italiano. Nuovo env `COOKIE_SECURE=false` per uso su http LAN.
+- Limiti offline: WhatsApp/Drive/email non funzionano; allegati object-storage non inclusi nel backup; nessuna sincronizzazione automatica cloud<->locale.
+- Backlog P2: notifiche email compensi venditori; calcolo € compensi; sync bidirezionale fogli Google bolle ritiro; refactor server.py monolitico.

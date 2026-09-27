@@ -87,7 +87,7 @@ def create_token(user_id: str, login_at: Optional[int] = None) -> str:
 
 def set_session_cookie(resp, token: str) -> None:
     # Senza max_age: cookie di sessione, scade alla chiusura del browser
-    resp.set_cookie("gu_token", token, httponly=True, secure=True, samesite="lax")
+    resp.set_cookie("gu_token", token, httponly=True, secure=os.environ.get("COOKIE_SECURE", "true").lower() != "false", samesite="lax")
 
 def serialize_user(u: dict) -> dict:
     return {"id": u["id"], "name": u["name"], "email": u["email"], "role": u["role"],
@@ -5329,6 +5329,7 @@ async def startup():
     except Exception as e:
         logger.error(f"Storage init fallito: {e}")
     asyncio.create_task(whatsapp_queue_loop())
+    asyncio.create_task(backup_module.backup_loop())
 
 async def whatsapp_queue_loop() -> None:
     """Fallback interno al cron piattaforma: svuota la coda WhatsApp (recensioni) ogni 60s."""
@@ -5488,6 +5489,9 @@ import google_drive as google_drive_module
 import kpi as kpi_module
 kpi_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send)
 api_router.include_router(kpi_module.router)
+import backup as backup_module
+backup_module.setup(db=db, get_current_user=get_current_user)
+api_router.include_router(backup_module.router)
 
 @api_router.post("/cron/promemoria-registro")
 async def cron_promemoria_registro(request: Request, background_tasks: BackgroundTasks):

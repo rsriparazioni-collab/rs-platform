@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { fmtDate } from "../lib/constants";
+import { BackupCard } from "../components/BackupCard";
 
 export default function Sicurezza() {
   const { user, setUser } = useAuth();
@@ -139,6 +140,8 @@ export default function Sicurezza() {
           </form>
         )}
       </div>
+
+      {user.role === "admin" && <BackupCard />}
     </div>
   );
 }
