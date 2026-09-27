@@ -399,3 +399,9 @@ Vedi /app/memory/test_credentials.md
 - `backend/ricariche.py`: POST /api/ricariche/import (CSV ; del portale, idempotente su colonna #), GET /api/ricariche/riepilogo?anno&mese (totali per negozio/utente/operatore, fallite, mapping), PUT /api/ricariche/mapping. Collezioni `ricariche`, `ricariche_mapping` (utente portale -> store, auto-guess dal nome), `ricariche_import_log`.
 - Plafond e "ricariche da richiedere" nei compensi usano i dati CSV importati quando presenti (fallback ai campi SIM). "System" = ricariche contestuali alle attivazioni, non assegnate di default.
 - Test: import file reale 383 righe (lug-set 2026), settembre 97 ricariche = 1.351 €; re-import 0 duplicati; UI verificata via screenshot.
+
+## 2026-09-27 – Regolamento Gara WindTre/Very (tab "Gara WindTre" in Compensi)
+- `backend/gara_windtre.py`: tariffe (settings `_id=gara_windtre_tariffe`, default TARIFFE_DEFAULT: soglie fisso 1/3/8/17 consumer+PIVA per categoria, FTTC consumer=FTTH-22, convergente +30, WT mobile 5/18/38 canone<=/>9.99, tied, PIVA +15, Very 5/10/15/35, extra MNP rete>=15: +35 top (Iliad/CoopVoce/Poste/Tiscali) / +20 altri, NO MNP=0). GET/PUT /api/gara-windtre/tariffe, GET /api/gara-windtre/calcolo?anno&mese, POST /api/gara-windtre/premio (premio totale mese -> quota negozio/inseritore proporzionale).
+- Servizi: nuovi campi categoria_prodotto, convergente, tied, esito_attivazione (form mostra i campi quando operatore WINDTRE/VERY). P.IVA da clients.tipo_cliente != privato.
+- Compensi: riga "gara_windtre" per negozio (venditore_id) e inseritore (operatore_id/created_by); regole seed WindTre/Very generiche disattivate.
+- Test iteration_24: 6/6 backend + frontend OK.
