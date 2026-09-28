@@ -209,6 +209,16 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
     }
   };
 
+  const reinviaNegozio = async () => {
+    try {
+      await api.post(`/servizi/${detail.id}/whatsapp/pronto-negozio`);
+      toast.success("Avviso inviato al negozio");
+      refresh();
+    } catch (e) {
+      toast.error(apiError(e, "Invio al negozio fallito"));
+    }
+  };
+
   const markPaid = async () => {
     try {
       await api.post(`/servizi/${detail.id}/mark-paid`);
@@ -309,6 +319,16 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                   <span className="status-badge bg-amber-500/15 text-amber-700 border-amber-300" title={detail.pronto_msg_error} data-testid="servizio-pronto-error-badge">
                     Avviso "pronto" non inviato
                   </span>
+                )}
+                {isRip && detail.pronto_negozio_sent_at && (
+                  <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300" data-testid="servizio-pronto-negozio-sent-badge">
+                    <MessageCircle className="h-3 w-3" /> Negozio avvisato {fmtDate(detail.pronto_negozio_sent_at)}
+                  </span>
+                )}
+                {isRip && detail.pronto_negozio_error && (
+                  <button type="button" onClick={reinviaNegozio} className="status-badge cursor-pointer bg-rose-500/15 text-rose-700 border-rose-300 hover:bg-rose-500/25" title={detail.pronto_negozio_error} data-testid="servizio-pronto-negozio-error-badge">
+                    Avviso al negozio non inviato: {detail.pronto_negozio_error} · Reinvia
+                  </button>
                 )}
                 {isRip && detail.review_msg_sent_at && (
                   <span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300" data-testid="servizio-review-sent-badge">Recensione inviata {fmtDate(detail.review_msg_sent_at)}</span>

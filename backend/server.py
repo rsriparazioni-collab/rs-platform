@@ -4895,23 +4895,52 @@ async def avvisi_truffe_ora(admin: dict = Depends(require_admin)):
 
 PRONTO_MSG = MSG_DEFAULTS["msg_pronto"]
 
+async def telefono_avvisi_store(store: dict) -> str:
+    """Numero a cui avvisare il negozio: telefono_avvisi → telefono → numero del WhatsApp collegato del negozio."""
+    for k in ("telefono_avvisi", "telefono"):
+        if (store.get(k) or "").strip():
+            return re.sub(r"\D", "", store[k])
+    try:
+        async with httpx.AsyncClient(timeout=10) as http_client:
+            resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
+        for s in (resp.json() or {}).get("sessions", []):
+            if s.get("session") == store.get("id") and s.get("connected") and (s.get("user") or {}).get("id"):
+                return s["user"]["id"].split(":")[0].split("@")[0]
+    except Exception:
+        pass
+    return ""
+
 async def invia_avviso_pronto_negozio(svc: dict) -> None:
-    """Stato 'pronto' (in laboratorio): avvisa SOLO il negozio (telefono_avvisi) che deve ritirarlo dal laboratorio."""
+    """Stato 'pronto' (in laboratorio): avvisa il negozio (WhatsApp dal laboratorio + campanella) che deve ritirarlo dal laboratorio."""
     store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
-    if not store or not store.get("telefono_avvisi"):
-        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_error": "Negozio senza telefono avvisi"}})
+    if not store:
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_error": "Negozio non trovato"}})
         return
     client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "cognome": 1})
     nome = f"{(client_doc or {}).get('cognome', '')} {(client_doc or {}).get('nome', '')}".strip()
     msg = (f"Laboratorio: la riparazione N. {svc.get('numero_riparazione', '-')} ({svc.get('dispositivo', 'dispositivo')} di {nome}) "
            f"è PRONTA. Passa a ritirarla dal laboratorio e portala in negozio {store['nome']}; "
            "poi metti lo stato 'Pronto da ritirare' per avvisare il cliente.")
+    await db.notifiche.insert_one({"id": str(uuid.uuid4()), "store_id": store["id"], "tipo": "riparazione_pronta", "titolo": f"Riparazione pronta in laboratorio: {svc.get('numero_riparazione', '-')}",
+                                   "testo": msg, "servizio_id": svc["id"], "letta": False, "at": datetime.now(timezone.utc).isoformat()})
+    telefono = await telefono_avvisi_store(store)
+    if not telefono:
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_error": "Negozio senza telefono avvisi (impostalo in Gestione Negozi)"}})
+        return
+    sessione = LAB_SESSION if await wa_sessione_connessa(LAB_SESSION) else await wa_session_servizio(svc)
     try:
-        await wa_send(store["telefono_avvisi"], msg, session=await wa_session_servizio(svc), tipo="avviso_negozio",
-                      client_id=svc["client_id"], servizio_id=svc["id"])
+        await wa_send(telefono, msg, session=sessione, tipo="avviso_negozio", client_id=svc["client_id"], servizio_id=svc["id"])
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_sent_at": datetime.now(timezone.utc).isoformat(), "pronto_negozio_error": None}})
     except HTTPException as e:
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_error": str(e.detail)}})
+
+async def wa_sessione_connessa(session: str) -> bool:
+    try:
+        async with httpx.AsyncClient(timeout=10) as http_client:
+            resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
+        return any(s.get("session") == session and s.get("connected") for s in (resp.json() or {}).get("sessions", []))
+    except Exception:
+        return False
 
 async def invia_avviso_pronto(svc: dict) -> None:
     client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "telefono": 1})
@@ -4938,6 +4967,17 @@ async def whatsapp_pronto_servizio(servizio_id: str, user: dict = Depends(get_cu
     if updated.get("pronto_msg_error"):
         raise HTTPException(status_code=400, detail=f"WhatsApp: {updated['pronto_msg_error']}")
     return {"status": "ok", "pronto_msg_sent_at": updated.get("pronto_msg_sent_at")}
+
+@api_router.post("/servizi/{servizio_id}/whatsapp/pronto-negozio")
+async def whatsapp_pronto_negozio(servizio_id: str, user: dict = Depends(get_current_user)):
+    svc = await get_scoped_servizio(servizio_id, user)
+    if svc.get("tipo") != "riparazione":
+        raise HTTPException(status_code=400, detail="Solo per riparazioni")
+    await invia_avviso_pronto_negozio(svc)
+    updated = await db.servizi.find_one({"id": servizio_id}, {"_id": 0, "pronto_negozio_sent_at": 1, "pronto_negozio_error": 1})
+    if updated.get("pronto_negozio_error"):
+        raise HTTPException(status_code=400, detail=f"WhatsApp negozio: {updated['pronto_negozio_error']}")
+    return {"status": "ok", "pronto_negozio_sent_at": updated.get("pronto_negozio_sent_at")}
 
 @api_router.delete("/servizi/{servizio_id}")
 async def delete_servizio(servizio_id: str, admin: dict = Depends(require_admin)):

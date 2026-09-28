@@ -422,3 +422,8 @@ Vedi /app/memory/test_credentials.md
 - ClientDetail: pulsanti "Aggiungi al cliente" ora includono Riparazione, SIM, Internet, Telefono fisso, Accessori, Ritiro, Vendita (cliente precompilato).
 - ServizioForm (riparazione, solo creazione): campo "Ricambio dal magazzino" (ricerca /magazzino/disponibilita con prezzo_acquisto): selezione imposta con_ricambio/tipo/costo; al salvataggio chiama POST /servizi/{id}/ricambi (se disponibile) oppure /ricambi/ordina con da_store_id (se esaurito / altro negozio).
 - Verificato via UI: creazione riparazione da scheda cliente con scarico ricambio Morbegno→Sondrio.
+
+## 2026-09-28 – Fix avviso "pronto in laboratorio" al negozio
+- Causa: negozi (es. Tirano) senza `telefono_avvisi` → invio silenziosamente saltato (solo pronto_negozio_error nel DB, non visibile).
+- Fix server.py: `telefono_avvisi_store()` fallback telefono_avvisi → telefono → numero del WhatsApp collegato del negozio (da WA_SERVICE /status); invio dalla sessione `laboratorio` se connessa (altrimenti sessione negozio); notifica a campanella `riparazione_pronta` sempre creata per il negozio; nuovo POST /servizi/{id}/whatsapp/pronto-negozio (reinvio) + badge errore/reinvia e "Negozio avvisato" in ServizioDetail.
+- Test dry-run: pronto→WA a 393890564763 (Tirano) da sessione laboratorio + campanella; pronto_ritiro→cliente da sessione Tirano; consegnato→recensione. Sessioni WA collegate verificate via /status (Tirano, laboratorio, Morbegno, Gravedona…).
