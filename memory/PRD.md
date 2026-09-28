@@ -432,3 +432,8 @@ Vedi /app/memory/test_credentials.md
 - GET /api/whatsapp/stato-invii?giorni=7 (scoped per utente via wa_sessions_allowed): per sessione/negozio inviati/falliti, ultimi 5 messaggi, ultimi 3 errori, stato collegamento (da WA_SERVICE /status), flag dry_run e servizio_ok.
 - `components/StatoInviiWhatsApp.jsx` in Dashboard (tutti i ruoli, ognuno vede i propri negozi). Pallino verde/rosso = sessione collegata; "da ricollegare" se non connessa.
 - Nota: la sessione WhatsApp "RS MORBEGNO" ha id c2bf06a7-… diverso dallo store id Morbegno (348642fd-…) → stato "sconosciuto" e gli invii con session=store id Morbegno dipendono dal fallback del microservizio. Da verificare/ricollegare Morbegno da WHP Collegamento.
+
+## 2026-09-28 – Report laboratorio (cosa devono pagare i negozi)
+- update_servizio: log cambi stato riparazione in `stato_log` [{stato, at, user_id, user_name}] e attribuzione `lavorato_da_id/lavorato_da/lavorato_at` al primo utente che mette in_lavorazione/pronto (da ora in avanti; le riparazioni vecchie sono "non attribuite").
+- `backend/report_laboratorio.py`: GET /api/riparazioni/report-laboratorio?anno&mese&tecnico_id&includi_non_attribuite&min_manodopera=15 (+ /export xlsx). Per negozio: n riparazioni, con ricambio (costo_componente + 2,50 spedizione oppure ricambi magazzino) vs solo manodopera (minuti×0,22775, min 30 min; solo-manodopera min 15 €), centri di costo ricambi/manodopera, totale. Accesso admin/tecnico/can_view_all.
+- UI: Riparazioni → pulsante "Report laboratorio" (ReportLaboratorio.jsx).

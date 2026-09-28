@@ -4250,6 +4250,11 @@ async def update_servizio(servizio_id: str, input: ServizioInput, background_tas
     if data.get("stato") == "non_riparabile" and not (data.get("esito_riparazione") or old.get("esito_riparazione")):
         data["esito_riparazione"] = "non_riparabile"
     await db.servizi.update_one({"id": servizio_id}, {"$set": data})
+    if data.get("stato") and data["stato"] != old.get("stato") and old.get("tipo") == "riparazione":
+        upd = {"$push": {"stato_log": {"stato": data["stato"], "at": datetime.now(timezone.utc).isoformat(), "user_id": user["id"], "user_name": user.get("name", "")}}}
+        if data["stato"] in ("in_lavorazione", "pronto") and not old.get("lavorato_da_id"):
+            upd["$set"] = {"lavorato_da_id": user["id"], "lavorato_da": user.get("name", ""), "lavorato_at": datetime.now(timezone.utc).isoformat()}
+        await db.servizi.update_one({"id": servizio_id}, upd)
     if data.get("stato") in ("consegnato", "non_riparabile") and old.get("stato") not in ("consegnato", "non_riparabile"):
         await db.servizi.update_one({"id": servizio_id}, cancella_segreti_update())
     updated = await db.servizi.find_one({"id": servizio_id}, {"_id": 0})
@@ -5630,6 +5635,9 @@ gara_windtre_module.setup(db=db, get_current_user=get_current_user)
 api_router.include_router(gara_windtre_module.router)
 trasferimenti_module.setup(db=db, get_current_user=get_current_user, xlsx_response=_xlsx_response)
 api_router.include_router(trasferimenti_module.router)
+import report_laboratorio as report_laboratorio_module
+report_laboratorio_module.setup(db=db, get_current_user=get_current_user, xlsx_response=_xlsx_response, costi_riparazione=costi_riparazione)
+api_router.include_router(report_laboratorio_module.router)
 compensi_module.setup(ricariche_per_store=ricariche_module.ricariche_per_store, ricariche_mapping=ricariche_module._mapping,
                       gara_windtre=gara_windtre_module.generato_per_destinatario)
 

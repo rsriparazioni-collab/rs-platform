@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Search, Wrench, CheckCircle2, XCircle, Pencil } from "lucide-react";
+import { Plus, Search, Wrench, CheckCircle2, XCircle, Pencil, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { RIP_STATI, ripStatoLabel, ripStatoBadge, fmtDate } from "../lib/constants";
 import ServizioForm from "../components/ServizioForm";
 import ServizioDetail from "../components/ServizioDetail";
+import ReportLaboratorio from "../components/ReportLaboratorio";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -17,6 +18,7 @@ export default function Riparazioni() {
   const [meta, setMeta] = useState({ stores: [], operators: [] });
   const [filters, setFilters] = useState({ q: "", stato: "all", venditore_id: "all" });
   const [formOpen, setFormOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detailRow, setDetailRow] = useState(null);
   const canSeeAll = user.role === "admin" || user.role === "tecnico" || user.can_view_all;
@@ -54,11 +56,19 @@ export default function Riparazioni() {
             {servizi.length} riparazioni {canSeeAll ? "in totale" : "del tuo negozio"}
           </p>
         </div>
-        <Button onClick={() => { setEditing(null); setFormOpen(true); }} data-testid="add-riparazione-button"
-                className="gap-2 bg-slate-900 hover:bg-slate-800">
-          <Plus className="h-4 w-4" /> Nuova riparazione
-        </Button>
+        <div className="flex gap-2">
+          {(user.role === "admin" || user.role === "tecnico" || user.can_view_all) && (
+            <Button variant="outline" onClick={() => setReportOpen(true)} className="gap-2" data-testid="report-laboratorio-button">
+              <FlaskConical className="h-4 w-4" /> Report laboratorio
+            </Button>
+          )}
+          <Button onClick={() => { setEditing(null); setFormOpen(true); }} data-testid="add-riparazione-button"
+                  className="gap-2 bg-slate-900 hover:bg-slate-800">
+            <Plus className="h-4 w-4" /> Nuova riparazione
+          </Button>
+        </div>
       </div>
+      <ReportLaboratorio open={reportOpen} onClose={() => setReportOpen(false)} />
 
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="riparazioni-filters">
         <div className="relative min-w-[220px] flex-1">
