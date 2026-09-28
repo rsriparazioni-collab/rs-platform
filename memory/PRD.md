@@ -437,3 +437,8 @@ Vedi /app/memory/test_credentials.md
 - update_servizio: log cambi stato riparazione in `stato_log` [{stato, at, user_id, user_name}] e attribuzione `lavorato_da_id/lavorato_da/lavorato_at` al primo utente che mette in_lavorazione/pronto (da ora in avanti; le riparazioni vecchie sono "non attribuite").
 - `backend/report_laboratorio.py`: GET /api/riparazioni/report-laboratorio?anno&mese&tecnico_id&includi_non_attribuite&min_manodopera=15 (+ /export xlsx). Per negozio: n riparazioni, con ricambio (costo_componente + 2,50 spedizione oppure ricambi magazzino) vs solo manodopera (minuti×0,22775, min 30 min; solo-manodopera min 15 €), centri di costo ricambi/manodopera, totale. Accesso admin/tecnico/can_view_all.
 - UI: Riparazioni → pulsante "Report laboratorio" (ReportLaboratorio.jsx).
+
+## 2026-09-28 – Stati clienti coerenti (riparazioni/telefonia vs energia)
+- Bug: cliente creato da Riparazioni/Telefonia riceveva lavorazione "da_quotare" e gestione "cambiaora" (stati energia). Causa: default ClientInput (lavorazione da_quotare, gestione cambiaora, tipo_bolletta luce).
+- Fix server.py: `cliente_energia(c)` (enel/data_contratto/pod/pdr/fornitore/nuovo_fornitore oppure origine non riparazione/telefonia). create_client: se non energia → lavorazione "" e gestione riparazioni|telefonia; log "cliente_inserito". Migrazione startup `migra_stati_clienti_non_energia` (origine riparazione/telefonia + da_quotare senza dati energia).
+- list_clients: `stato_servizio` (ultimo servizio: tipo+stato) per clienti non energia. UI Clienti: colonna Lavorazione mostra "Riparazione: In lavorazione" / "SIM: Attiva" ecc., "Nessuna pratica energia" se nulla; Pagato "-" per non energia. ClientDetail badge "Nessuna pratica luce/gas".

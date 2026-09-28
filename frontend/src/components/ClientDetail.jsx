@@ -216,7 +216,11 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
             <div className="mt-6 space-y-6">
               <div className="flex flex-wrap gap-2">
                 <PerIproButton tipo="clients" id={detail.id} value={!!detail.per_ipro} onChange={(v) => setDetail({ ...detail, per_ipro: v })} />
-                <span className={`status-badge ${lavorazioneBadge(detail.lavorazione)}`}>{lavorazioneLabel(detail.lavorazione)}</span>
+                {detail.lavorazione ? (
+                  <span className={`status-badge ${lavorazioneBadge(detail.lavorazione)}`}>{lavorazioneLabel(detail.lavorazione)}</span>
+                ) : (
+                  <span className="status-badge bg-slate-500/10 text-slate-600 border-slate-300" data-testid="cliente-no-energia-badge">Nessuna pratica luce/gas</span>
+                )}
                 <span data-testid="detail-tipo-cliente-badge" className={`status-badge ${tipoClienteInfo(detail.tipo_cliente).badge}`}>
                   {tipoClienteInfo(detail.tipo_cliente).label}
                 </span>

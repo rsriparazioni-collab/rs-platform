@@ -66,6 +66,16 @@ export const RIP_STATI = [
 
 export const ripStatoLabel = (id) => RIP_STATI.find((s) => s.id === id)?.label || id || "-";
 export const ripStatoBadge = (id) => RIP_STATI.find((s) => s.id === id)?.badge || "bg-slate-500/15 text-slate-700 border-slate-300";
+const TEL_STATI = { attivo: "Attivo", attiva: "Attiva", in_attesa: "In attesa attivazione", annullato: "Annullato", "": "Inserito" };
+export const statoServizioLabel = (s) => {
+  if (!s) return "-";
+  if (s.tipo === "riparazione") return `Riparazione: ${ripStatoLabel(s.stato)}`;
+  if (["sim", "internet", "fisso"].includes(s.tipo)) return `${s.tipo === "sim" ? "SIM" : s.tipo === "internet" ? "Internet" : "Fisso"}: ${TEL_STATI[s.stato] ?? s.stato}`;
+  if (s.tipo === "ritiro") return "Ritiro usato";
+  return s.tipo === "vendita" || s.tipo === "accessori" ? "Vendita effettuata" : s.tipo;
+};
+export const statoServizioBadge = (s) => (s?.tipo === "riparazione" ? ripStatoBadge(s.stato) : "bg-indigo-500/15 text-indigo-700 border-indigo-300");
+
 
 export const SERVIZIO_TIPI = [
   { id: "riparazione", label: "Riparazione", section: "riparazioni" },

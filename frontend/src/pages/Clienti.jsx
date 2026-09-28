@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import SyncFogliDialog from "../components/SyncFogliDialog";
 import { useAuth } from "../context/AuthContext";
-import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate, PREMIUM_STEPS, tipoClienteInfo, isBusinessCliente } from "../lib/constants";
+import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate, PREMIUM_STEPS, tipoClienteInfo, isBusinessCliente, statoServizioLabel, statoServizioBadge } from "../lib/constants";
 
 const TIPI_SERVIZI = {
   luce: { label: "Luce", badge: "bg-sky-50 text-sky-700", icon: <Zap className="h-3 w-3" /> },
@@ -258,7 +258,11 @@ export default function Clienti() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">{c.fornitore_provenienza || "-"}</td>
                   <td className="px-4 py-3">
-                    <span className={`status-badge ${lavorazioneBadge(c.lavorazione)}`}>{lavorazioneLabel(c.lavorazione)}</span>
+                    {c.stato_servizio ? (
+                      <span className={`status-badge ${statoServizioBadge(c.stato_servizio)}`} data-testid={`cliente-stato-servizio-${i}`}>{statoServizioLabel(c.stato_servizio)}</span>
+                    ) : c.lavorazione ? (
+                      <span className={`status-badge ${lavorazioneBadge(c.lavorazione)}`}>{lavorazioneLabel(c.lavorazione)}</span>
+                    ) : <span className="text-xs text-slate-400">Nessuna pratica energia</span>}
                   </td>
                   <td className="px-4 py-3">
                     {c.data_rinnovo ? (
@@ -272,7 +276,9 @@ export default function Clienti() {
                   </td>
                   {canSeeAll && <td className="px-4 py-3 text-slate-600">{storeName(c.venditore_id)}</td>}
                   <td className="px-4 py-3">
-                    {c.pagato_effettivo
+                    {!c.lavorazione && !c.data_contratto
+                      ? <span className="text-xs text-slate-400">-</span>
+                      : c.pagato_effettivo
                       ? <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300"><CheckCircle2 className="h-3 w-3" /> Pagato</span>
                       : <span className="status-badge bg-rose-500/15 text-rose-700 border-rose-300"><XCircle className="h-3 w-3" /> Non pagato</span>}
                   </td>

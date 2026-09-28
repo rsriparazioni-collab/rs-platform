@@ -903,6 +903,12 @@ async def clients_conteggio_gestione(user: dict = Depends(get_current_user)):
     tot = await db.clients.count_documents(scope)
     return {"cambiaora": tot - enel, "enel": enel, "tutti": tot}
 
+def cliente_energia(c: dict) -> bool:
+    """True se il cliente ha una pratica luce/gas (stati lavorazione CambiaOra/ENEL applicabili)."""
+    if c.get("gestione") == "enel" or c.get("data_contratto") or c.get("pod") or c.get("pdr") or c.get("fornitore_provenienza") or c.get("nuovo_fornitore"):
+        return True
+    return c.get("origine", "") not in ("riparazione", "telefonia")
+
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(get_current_user),
                        lavorazione: str = "", tipo_bolletta: str = "", tipo_servizio: str = "",
@@ -937,15 +943,20 @@ async def list_clients(user: dict = Depends(get_current_user),
             "telefono": 1, "email": 1, "codice_fiscale": 1, "pod": 1, "pdr": 1,
             "tipo_bolletta": 1, "fornitore_provenienza": 1, "lavorazione": 1,
             "data_contratto": 1, "venditore_id": 1, "pagato": 1, "last_payment_date": 1,
-            "privacy_firmata": 1, "created_at": 1, "no_recensioni": 1, "gestione": 1, "enel_operazione": 1}
+            "privacy_firmata": 1, "created_at": 1, "no_recensioni": 1, "gestione": 1, "enel_operazione": 1, "origine": 1}
     clients = await db.clients.find(scope, proj).sort("created_at", -1).to_list(5000)
     tipi_per_client = {}
     async for row in db.servizi.aggregate([{"$group": {"_id": "$client_id", "tipi": {"$addToSet": "$tipo"}}}]):
         tipi_per_client[row["_id"]] = row["tipi"]
+    ultimo_servizio = {}
+    async for row in db.servizi.aggregate([{"$sort": {"updated_at": -1}}, {"$group": {"_id": "$client_id", "tipo": {"$first": "$tipo"}, "stato": {"$first": "$stato"}}}]):
+        ultimo_servizio[row["_id"]] = {"tipo": row["tipo"], "stato": row.get("stato") or ""}
     out = []
     for c in clients:
         compute_dates(c)
         tipi = set(tipi_per_client.get(c["id"], []))
+        if not cliente_energia(c):
+            c["stato_servizio"] = ultimo_servizio.get(c["id"])
         cats = set()
         if c.get("data_contratto"):
             cats.add("energia")
@@ -973,6 +984,9 @@ async def list_clients(user: dict = Depends(get_current_user),
 async def create_client(input: ClientInput, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     data = input.model_dump()
     valida_tipo_cliente(data)
+    if not cliente_energia(data):
+        data["lavorazione"] = ""
+        data["gestione"] = "riparazioni" if data.get("origine") == "riparazione" else "telefonia"
     if user["role"] == "negozio" and data["venditore_id"] not in user.get("store_ids", []):
         if user.get("store_ids"):
             data["venditore_id"] = user["store_ids"][0]
@@ -980,7 +994,10 @@ async def create_client(input: ClientInput, background_tasks: BackgroundTasks, u
                  "created_by": user["id"], "created_at": datetime.now(timezone.utc).isoformat(),
                  "updated_at": datetime.now(timezone.utc).isoformat()})
     await db.clients.insert_one(data)
-    await log_lavorazione(data, user, data["lavorazione"], "Cliente inserito")
+    if data["lavorazione"]:
+        await log_lavorazione(data, user, data["lavorazione"], "Cliente inserito")
+    else:
+        await log_lavorazione(data, user, "cliente_inserito", "Cliente inserito (riparazioni/telefonia)")
     data.pop("_id", None)
     if data.get("telefono"):
         background_tasks.add_task(privacy_automatica_nuovo_cliente, data["id"], data.get("origine", "") != "riparazione")
@@ -5454,6 +5471,7 @@ async def startup():
     await load_regole_prezzi()
     await seed_portali()
     await migra_segreti_in_chiaro()
+    await migra_stati_clienti_non_energia()
     await compensi_module.seed()
     try:
         init_storage()
@@ -5477,6 +5495,18 @@ async def whatsapp_queue_loop() -> None:
 app.include_router(api_router)
 
 # ---------------- Registro accessi (audit GDPR) ----------------
+async def migra_stati_clienti_non_energia() -> None:
+    """Clienti nati da riparazioni/telefonia senza pratica luce/gas: tolgono lo stato energia ('Da quotare') e la gestione cambiaora."""
+    q = {"origine": {"$in": ["riparazione", "telefonia"]}, "lavorazione": "da_quotare",
+         "data_contratto": {"$in": [None, ""]}, "pod": {"$in": [None, ""]}, "pdr": {"$in": [None, ""]}, "fornitore_provenienza": {"$in": [None, ""]},
+         "nuovo_fornitore": {"$in": [None, ""]}, "gestione": {"$ne": "enel"}}
+    n = 0
+    async for c in db.clients.find(q, {"_id": 0, "id": 1, "origine": 1}):
+        await db.clients.update_one({"id": c["id"]}, {"$set": {"lavorazione": "", "gestione": "riparazioni" if c["origine"] == "riparazione" else "telefonia"}})
+        n += 1
+    if n:
+        logger.info(f"Migrazione stati clienti non energia: {n} clienti aggiornati")
+
 async def migra_segreti_in_chiaro() -> None:
     """Cifra i codici sblocco/password salvati in chiaro e cancella quelli di riparazioni chiuse."""
     cur = db.servizi.find({"$or": [{"codice_sblocco": {"$nin": [None, ""]}}, {"account_password": {"$nin": [None, ""]}}]}, {"_id": 0})
