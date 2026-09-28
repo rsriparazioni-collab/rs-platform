@@ -405,3 +405,10 @@ Vedi /app/memory/test_credentials.md
 - Servizi: nuovi campi categoria_prodotto, convergente, tied, esito_attivazione (form mostra i campi quando operatore WINDTRE/VERY). P.IVA da clients.tipo_cliente != privato.
 - Compensi: riga "gara_windtre" per negozio (venditore_id) e inseritore (operatore_id/created_by); regole seed WindTre/Very generiche disattivate.
 - Test iteration_24: 6/6 backend + frontend OK.
+
+## 2026-09-27 – Trasferimenti tra negozi (scarico magazzino cross-store + report fattura)
+- Verifica esistente: riparazioni scalano da magazzino (anche altro negozio, con avviso); vendite scalano se collegate a articolo magazzino; servizi tipo "accessori/vendita" (campo prodotto libero) NON scalano: usare modulo Vendite.
+- `backend/trasferimenti.py`: collezione `trasferimenti` {da_store_id, a_store_id, item_id, nome, quantita, prezzo_unitario (=prezzo_acquisto), regime_iva, origine riparazione|vendita, servizio_id/vendita_id, in_ordine, fatturato, numero_fattura, mese}. Registrato da usa_ricambio (server.py), ordina_ricambio con nuovo `da_store_id` (ordine a carico del cedente: giacenza negativa + in_ordine + notifica), create_vendita cross-store. Annullato con rimozione ricambio / delete vendita; in_ordine chiuso da /magazzino/{id}/arrivo.
+- API: GET /api/magazzino/trasferimenti?anno&mese&da_store&a_store&solo_da_fatturare (coppie con imponibile/IVA/totale), GET .../export (xlsx), POST .../{id}/fatturato, PATCH .../{id} (prezzo/regime, solo non fatturati).
+- UI: Magazzino → box "Trasferimenti tra negozi" (TrasferimentiNegozi.jsx); dettaglio riparazione → "Ordina da {negozio}" per articoli esauriti.
+- Test iteration_25: 6/6 backend + frontend OK.
