@@ -50,6 +50,7 @@ class OrdinaInput(BaseModel):
     tipologia: str = "altro"
     quantita: int = 1
     note: str = ""
+    da_store_id: str = ""  # ordina dal magazzino di un altro negozio (cedente)
 
 
 class ArrivoInput(BaseModel):
@@ -82,7 +83,12 @@ async def ordina_ricambio(servizio_id: str, input: OrdinaInput, user: dict = Dep
     store_id = svc.get("venditore_id")
     now = _now()
     item = None
-    if input.magazzino_id:
+    cedente = input.da_store_id if input.da_store_id and input.da_store_id != store_id else ""
+    if cedente and input.magazzino_id:
+        item = await db.magazzino.find_one({"id": input.magazzino_id, "store_id": cedente}, {"_id": 0})
+        if not item:
+            raise HTTPException(status_code=404, detail="Articolo non trovato nel magazzino del negozio cedente")
+    elif input.magazzino_id:
         item = await db.magazzino.find_one({"id": input.magazzino_id}, {"_id": 0})
         if item and item.get("store_id") != store_id:
             same = await db.magazzino.find_one({"store_id": store_id, "nome": item["nome"]}, {"_id": 0})
@@ -106,6 +112,14 @@ async def ordina_ricambio(servizio_id: str, input: OrdinaInput, user: dict = Dep
     await db.magazzino.update_one({"id": item["id"]}, {"$set": {"quantita": nuova, "in_ordine": True, "ordine_at": now, "ordine_servizio_id": servizio_id,
                                                               "ordine_servizio_numero": svc.get("numero_riparazione") or svc.get("numero", ""), "updated_at": now}})
     uso = {"item_id": item["id"], "nome": item["nome"], "quantita": input.quantita, "prezzo_vendita": item.get("prezzo_vendita"), "at": now, "in_ordine": True}
+    if cedente:
+        uso["da_store_id"] = cedente
+        await _d["trasferimenti"].registra(cedente, store_id, item, input.quantita, "riparazione", user, servizio_id=servizio_id,
+                                           riferimento=f"Riparazione {svc.get('numero_riparazione') or ''}".strip(), in_ordine=True)
+        mio = await db.stores.find_one({"id": store_id}, {"_id": 0, "nome": 1}) or {}
+        await _notifica_store(cedente, f"📦 {mio.get('nome', 'Altro negozio')} ha richiesto {input.quantita} x {item['nome']} dal vostro magazzino (esaurito): "
+                              f"è stato messo in ordine a vostro carico. Al suo arrivo registrate il carico e consegnatelo.", session=store_id,
+                              servizio_id=servizio_id, item_id=item["id"], da_store_id=store_id, titolo=f"Ordine per altro negozio: {item['nome']}")
     upd = {"$push": {"ricambi_usati": uso}, "$set": {"updated_at": now}}
     if svc.get("stato") in ("ingresso", "preventivo", "in_attesa_cliente", "attesa_ricambio_cliente", "in_lavorazione"):
         upd["$set"]["stato"] = "attesa_ricambio_carico"
@@ -132,6 +146,7 @@ async def arrivo_ricambio(item_id: str, input: ArrivoInput, user: dict = Depends
     await db.magazzino.update_one({"id": item_id}, upd)
     sbloccate = []
     if nuova >= 0:
+        await _d["trasferimenti"].arrivato(item_id)
         async for s in db.servizi.find({"ricambi_usati": {"$elemMatch": {"item_id": item_id, "in_ordine": True}}}, {"_id": 0, "id": 1, "numero_riparazione": 1, "stato": 1, "ricambi_usati": 1}):
             usati = [{**u, "in_ordine": False, "arrivato_at": now} if u.get("item_id") == item_id else u for u in s.get("ricambi_usati") or []]
             set_ = {"ricambi_usati": usati, "updated_at": now}

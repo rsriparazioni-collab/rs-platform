@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, Search, Package, Pencil, Trash2, Minus, PlusCircle, FileDown, BadgeEuro } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
+import { TrasferimentiNegozi } from "../components/TrasferimentiNegozi";
 import RigeneratiVenduti from "../components/RigeneratiVenduti";
 import { useAuth } from "../context/AuthContext";
 import { MAGAZZINO_CATEGORIE, magazzinoCategoriaLabel, CONDIZIONI, REGIMI_IVA, regimeIvaLabel, regimeIvaBadge, RICAMBIO_TIPOLOGIE, tipologiaLabel } from "../lib/constants";
@@ -138,6 +139,7 @@ export default function Magazzino() {
       </div>
 
       <DaOrdinare key={daOrdinareKey} onChanged={() => { load(); setDaOrdinareKey((k) => k + 1); }} />
+      <TrasferimentiNegozi />
 
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="magazzino-filters">
         <div className="relative min-w-[220px] flex-1">

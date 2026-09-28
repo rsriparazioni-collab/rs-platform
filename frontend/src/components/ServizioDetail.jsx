@@ -156,6 +156,18 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
     }
   };
 
+  const ordinaDaNegozio = async (o) => {
+    if (!detail) return;
+    try {
+      await api.post(`/servizi/${detail.id}/ricambi/ordina`, { magazzino_id: o.item_id, da_store_id: o.store_id, quantita: ricQty, tipologia: "altro" });
+      toast.success(`Messo in ordine a carico di ${o.store_name}: avviso inviato al negozio`);
+      setRicQty(1); setRicercaRic(""); setRisultatiRic([]);
+      refresh();
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+  };
+
   const removeRicambio = async (idx) => {
     try {
       await api.delete(`/servizi/${detail.id}/ricambi/${idx}`);
@@ -479,9 +491,14 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                                   </div>
                                 </div>
                               ) : (
-                                <div className="mt-1.5 flex items-center gap-2">
+                                <div className="mt-1.5 flex flex-wrap items-center gap-2">
                                   <p className="text-xs text-slate-400">Esaurito in tutti i negozi{own?.in_ordine ? " · già in ordine" : ""}</p>
                                   <Button type="button" size="sm" variant="outline" className="h-7 border-rose-300 text-xs text-rose-700" onClick={() => setOrdinaPreset({ item_id: own?.item_id || g.stores[0]?.item_id, marca: g.marca, modello: g.modello, tipologia: g.tipologia })} data-testid={`servizio-ricambio-ordina-${gi}`}>Usa e metti in ordine</Button>
+                                  {g.stores.filter((s) => s.store_id !== detail.venditore_id).map((o) => (
+                                    <Button key={o.item_id} type="button" size="sm" variant="ghost" className="h-7 text-xs text-amber-800" onClick={() => ordinaDaNegozio(o)} data-testid={`servizio-ricambio-ordina-da-${gi}-${o.store_id}`}>
+                                      Ordina da {o.store_name}
+                                    </Button>
+                                  ))}
                                 </div>
                               )}
                             </div>

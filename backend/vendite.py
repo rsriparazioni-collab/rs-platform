@@ -171,6 +171,10 @@ async def create_vendita(input: VenditaInput, user: dict = _user()):
                                 "venduto_da": user["name"], "margine": data["prezzo"] - float(item.get("prezzo_acquisto") or 0)})
         await db.magazzino.update_one({"id": item["id"]}, upd)
         data["magazzino_nome"] = item.get("nome")
+        if item.get("store_id") and item.get("store_id") != data["store_id"]:
+            import trasferimenti as _tr
+            await _tr.registra(item["store_id"], data["store_id"], item, data["quantita"], "vendita", user, vendita_id=data["id"],
+                               riferimento=f"Vendita {data.get('descrizione') or item.get('nome', '')}"[:80])
         if item.get("ritiro_id"):
             import report_ritiri as _rr
             await _rr.aggiorna_stato_ritiro(item["ritiro_id"], "venduto", data.get("numero_fattura") or "", user["name"])
@@ -219,6 +223,8 @@ async def delete_vendita(vendita_id: str, user: dict = _user()):
     if not v:
         raise HTTPException(status_code=404, detail="Vendita non trovata")
     if v.get("magazzino_item_id"):
+        import trasferimenti as _tr
+        await _tr.annulla_vendita(vendita_id)
         await db.magazzino.update_one({"id": v["magazzino_item_id"]}, {"$inc": {"quantita": v.get("quantita") or 1},
                                                                         "$set": {"stato": "disponibile"}})
     await db.vendite.delete_one({"id": vendita_id})

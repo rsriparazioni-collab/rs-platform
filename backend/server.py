@@ -6,6 +6,7 @@ import re
 import asyncio
 import hmac
 import magazzino_ricambi as magazzino_ricambi_module
+import trasferimenti as trasferimenti_module
 import compensi as compensi_module
 import io
 import uuid
@@ -2921,6 +2922,8 @@ async def usa_ricambio(servizio_id: str, input: RicambioUsoInput, user: dict = D
     altro_negozio = item.get("store_id") != svc.get("venditore_id")
     if altro_negozio:
         uso["da_store_id"] = item.get("store_id")
+        await trasferimenti_module.registra(item["store_id"], svc.get("venditore_id", ""), item, input.quantita, "riparazione", user,
+                                            servizio_id=servizio_id, riferimento=f"Riparazione {svc.get('numero_riparazione') or ''}".strip())
         mio = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0, "nome": 1}) or {}
         cli = await db.clients.find_one({"id": svc.get("client_id")}, {"_id": 0, "nome": 1, "cognome": 1}) or {}
         testo = (f"📦 Richiesta ricambio da {mio.get('nome', 'altro negozio')}: ci serve {input.quantita} x {item['nome']} "
@@ -2940,6 +2943,8 @@ async def annulla_ricambio(servizio_id: str, index: int, user: dict = Depends(ge
     if index < 0 or index >= len(usati):
         raise HTTPException(status_code=404, detail="Ricambio non trovato")
     uso = usati[index]
+    if uso.get("da_store_id"):
+        await trasferimenti_module.annulla(servizio_id, uso["item_id"])
     await db.magazzino.update_one({"id": uso["item_id"]},
                                   {"$inc": {"quantita": uso["quantita"]},
                                    "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}})
@@ -5493,7 +5498,7 @@ report_ritiri_module.setup(db=db, get_current_user=get_current_user, ritiri_scop
 api_router.include_router(report_ritiri_module.router)
 
 magazzino_ricambi_module.setup(db=db, get_current_user=get_current_user, get_scoped_servizio=get_scoped_servizio,
-                               magazzino_scope=magazzino_scope, wa_send=wa_send)
+                               magazzino_scope=magazzino_scope, wa_send=wa_send, trasferimenti=trasferimenti_module)
 api_router.include_router(magazzino_ricambi_module.router)
 
 import google_drive as google_drive_module
@@ -5512,6 +5517,8 @@ api_router.include_router(ricariche_module.router)
 import gara_windtre as gara_windtre_module
 gara_windtre_module.setup(db=db, get_current_user=get_current_user)
 api_router.include_router(gara_windtre_module.router)
+trasferimenti_module.setup(db=db, get_current_user=get_current_user, xlsx_response=_xlsx_response)
+api_router.include_router(trasferimenti_module.router)
 compensi_module.setup(ricariche_per_store=ricariche_module.ricariche_per_store, ricariche_mapping=ricariche_module._mapping,
                       gara_windtre=gara_windtre_module.generato_per_destinatario)
 
