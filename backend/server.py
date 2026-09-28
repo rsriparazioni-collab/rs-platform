@@ -2743,7 +2743,8 @@ async def disponibilita_magazzino(user: dict = Depends(get_current_user), q: str
         g["stores"].append({"item_id": i["id"], "store_id": i.get("store_id", ""),
                             "store_name": smap.get(i.get("store_id", ""), "-"),
                             "quantita": i.get("quantita", 0), "in_ordine": bool(i.get("in_ordine")),
-                            "prezzo_vendita": i.get("prezzo_vendita") if can_price else None})
+                            "prezzo_vendita": i.get("prezzo_vendita") if can_price else None,
+                            "prezzo_acquisto": i.get("prezzo_acquisto") if can_price else None})
     return sorted(grouped.values(), key=lambda x: x["nome"])
 
 @api_router.post("/magazzino")

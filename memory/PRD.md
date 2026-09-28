@@ -417,3 +417,8 @@ Vedi /app/memory/test_credentials.md
 - ServizioInput: `magazzino_item_id`, `quantita`. create_servizio (tipo accessori/vendita) → scarica_articolo_servizio: scala giacenza (errore se insufficiente), autocompila prodotto, salva magazzino_nome/magazzino_store_id, registra trasferimento se articolo di altro negozio. delete_servizio ripristina giacenza e annulla trasferimento. In PATCH il collegamento non è modificabile.
 - ServizioForm: ricerca "Articolo di magazzino (scarico automatico)" via /magazzino/disponibilita, selezione con quantità; ServizioDetail badge "Scaricato da magazzino ×N".
 - Test: curl end-to-end OK (scarico 2 pz, trasferimento Morbegno→Sondrio, giacenza insufficiente 400, delete ripristina), screenshot form OK.
+
+## 2026-09-28 – Scheda cliente → tutti i servizi + ricambio dal magazzino nel form riparazione
+- ClientDetail: pulsanti "Aggiungi al cliente" ora includono Riparazione, SIM, Internet, Telefono fisso, Accessori, Ritiro, Vendita (cliente precompilato).
+- ServizioForm (riparazione, solo creazione): campo "Ricambio dal magazzino" (ricerca /magazzino/disponibilita con prezzo_acquisto): selezione imposta con_ricambio/tipo/costo; al salvataggio chiama POST /servizi/{id}/ricambi (se disponibile) oppure /ricambi/ordina con da_store_id (se esaurito / altro negozio).
+- Verificato via UI: creazione riparazione da scheda cliente con scarico ricambio Morbegno→Sondrio.

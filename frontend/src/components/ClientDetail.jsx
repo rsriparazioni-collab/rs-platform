@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen, ArrowLeftRight, ShoppingBag } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen, ArrowLeftRight, ShoppingBag, Phone, Package } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { PerIproButton } from "./PerIproButton";
 import WhatsAppLog from "./WhatsAppLog";
@@ -346,7 +346,13 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                           <Smartphone className="h-4 w-4" /> SIM
                         </Button>
                         <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-internet-button" onClick={() => onNuovoServizio("internet", detail)}>
-                          <Wifi className="h-4 w-4" /> Internet / Fisso
+                          <Wifi className="h-4 w-4" /> Internet
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-fisso-button" onClick={() => onNuovoServizio("fisso", detail)}>
+                          <Phone className="h-4 w-4" /> Telefono fisso
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-accessori-button" onClick={() => onNuovoServizio("accessori", detail)}>
+                          <Package className="h-4 w-4" /> Accessori
                         </Button>
                         <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-ritiro-button" onClick={() => onNuovoServizio("ritiro", detail)}>
                           <PackageOpen className="h-4 w-4" /> Ritiro telefono
