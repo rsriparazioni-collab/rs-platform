@@ -3447,6 +3447,42 @@ async def register_privacy_site(client: dict, store_name: str, categoria: str = 
 async def whatsapp_log(admin: dict = Depends(require_admin)):
     return await db.wa_log.find({}, {"_id": 0}).sort("at", -1).to_list(50)
 
+@api_router.get("/whatsapp/stato-invii")
+async def whatsapp_stato_invii(giorni: int = 7, user: dict = Depends(get_current_user)):
+    """Riepilogo invii WhatsApp per negozio/sessione (ultimi N giorni) con ultimi messaggi ed errori."""
+    allowed = wa_sessions_allowed(user)
+    dal = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
+    q: dict = {"at": {"$gte": dal}}
+    if allowed is not None:
+        q["session"] = {"$in": list(allowed)}
+    logs = await db.wa_log.find(q, {"_id": 0, "id": 1, "phone": 1, "session": 1, "tipo": 1, "ok": 1, "error": 1, "at": 1, "dry_run": 1, "message": 1}).sort("at", -1).to_list(3000)
+    stores = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    nomi = {**stores, LAB_SESSION: "Laboratorio", ENEL_SESSION_DEBORAH: "ENEL Deborah", "default": "Predefinita"}
+    connessi: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=5) as http_client:
+            resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
+        connessi = {s.get("session"): bool(s.get("connected")) for s in resp.json().get("sessions", [])}
+    except Exception:
+        pass
+    gruppi: dict = {}
+    for l in logs:
+        g = gruppi.setdefault(l["session"], {"session": l["session"], "nome": nomi.get(l["session"], l["session"]), "inviati": 0, "falliti": 0, "ultimo_at": None, "ultimi": [], "errori": []})
+        g["inviati" if l["ok"] else "falliti"] += 1
+        g["ultimo_at"] = g["ultimo_at"] or l["at"]
+        if len(g["ultimi"]) < 5:
+            g["ultimi"].append({**l, "message": (l.get("message") or "")[:120]})
+        if not l["ok"] and len(g["errori"]) < 3:
+            g["errori"].append({"at": l["at"], "tipo": l["tipo"], "error": l.get("error"), "phone": l["phone"]})
+    for sid, nome in nomi.items():
+        if sid not in gruppi and (allowed is None or sid in allowed) and sid in connessi:
+            gruppi[sid] = {"session": sid, "nome": nome, "inviati": 0, "falliti": 0, "ultimo_at": None, "ultimi": [], "errori": []}
+    for g in gruppi.values():
+        g["connessa"] = connessi.get(g["session"])
+    out = sorted(gruppi.values(), key=lambda g: (-g["falliti"], g["nome"]))
+    return {"giorni": giorni, "dry_run": await wa_dry_run_attivo(), "servizio_ok": bool(connessi), "totale_inviati": sum(g["inviati"] for g in out),
+            "totale_falliti": sum(g["falliti"] for g in out), "negozi": out}
+
 @api_router.get("/whatsapp/sessions-summary")
 async def whatsapp_sessions_summary(admin: dict = Depends(require_admin)):
     totale = await db.stores.count_documents({}) + 3

@@ -6,6 +6,7 @@ import api, { apiError } from "../lib/api";
 import MarginiChart from "../components/MarginiChart";
 import DaRichiamare from "../components/DaRichiamare";
 import CodaWhatsApp from "../components/CodaWhatsApp";
+import StatoInviiWhatsApp from "../components/StatoInviiWhatsApp";
 import ContattoDialog, { ContattoBadge, ContattoButton } from "../components/ContattoDialog";
 import { useAuth } from "../context/AuthContext";
 import RegistroRapido from "../components/RegistroRapido";
@@ -135,6 +136,7 @@ export default function Dashboard() {
 
       <ContattoDialog target={contatto} onClose={() => setContatto(null)} onSaved={reloadScadenze} />
       {(user.role === "admin" || user.can_view_all) && <CodaWhatsApp />}
+      <StatoInviiWhatsApp />
       <DaRichiamare refreshKey={refreshKey} onChanged={reloadScadenze} />
 
       {scadenze && (

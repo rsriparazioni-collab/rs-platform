@@ -427,3 +427,8 @@ Vedi /app/memory/test_credentials.md
 - Causa: negozi (es. Tirano) senza `telefono_avvisi` → invio silenziosamente saltato (solo pronto_negozio_error nel DB, non visibile).
 - Fix server.py: `telefono_avvisi_store()` fallback telefono_avvisi → telefono → numero del WhatsApp collegato del negozio (da WA_SERVICE /status); invio dalla sessione `laboratorio` se connessa (altrimenti sessione negozio); notifica a campanella `riparazione_pronta` sempre creata per il negozio; nuovo POST /servizi/{id}/whatsapp/pronto-negozio (reinvio) + badge errore/reinvia e "Negozio avvisato" in ServizioDetail.
 - Test dry-run: pronto→WA a 393890564763 (Tirano) da sessione laboratorio + campanella; pronto_ritiro→cliente da sessione Tirano; consegnato→recensione. Sessioni WA collegate verificate via /status (Tirano, laboratorio, Morbegno, Gravedona…).
+
+## 2026-09-28 – Pannello "Stato invii WhatsApp" in Dashboard
+- GET /api/whatsapp/stato-invii?giorni=7 (scoped per utente via wa_sessions_allowed): per sessione/negozio inviati/falliti, ultimi 5 messaggi, ultimi 3 errori, stato collegamento (da WA_SERVICE /status), flag dry_run e servizio_ok.
+- `components/StatoInviiWhatsApp.jsx` in Dashboard (tutti i ruoli, ognuno vede i propri negozi). Pallino verde/rosso = sessione collegata; "da ricollegare" se non connessa.
+- Nota: la sessione WhatsApp "RS MORBEGNO" ha id c2bf06a7-… diverso dallo store id Morbegno (348642fd-…) → stato "sconosciuto" e gli invii con session=store id Morbegno dipendono dal fallback del microservizio. Da verificare/ricollegare Morbegno da WHP Collegamento.
