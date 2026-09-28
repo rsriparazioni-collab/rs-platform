@@ -4059,6 +4059,8 @@ class ServizioInput(BaseModel):
     convergente: bool = False
     tied: bool = False
     esito_attivazione: str = "riconosciuta"  # riconosciuta | in_attesa | annullata | respinta | non_riconosciuta | stornata
+    magazzino_item_id: str = ""  # accessori/vendita: articolo di magazzino da scaricare
+    quantita: int = 1
     esito_riparazione: str = ""  # normale | garanzia | ricambio_usato | scheda_madre | non_riparabile | preventivo_rifiutato
 
 SECRET_FIELDS = ("codice_sblocco", "account_password")
@@ -4128,6 +4130,28 @@ async def list_servizi(user: dict = Depends(get_current_user), tipo: str = "", s
                    or ql in s.get("operatore_tel", "").lower() or ql in s.get("prodotto", "").lower()]
     return [serialize_servizio(s, names.get(s["client_id"], "")) for s in servizi]
 
+async def scarica_articolo_servizio(data: dict, user: dict) -> None:
+    """Vendita accessori/prodotti: scala l'articolo di magazzino e registra il trasferimento se di un altro negozio."""
+    qta = max(int(data.get("quantita") or 1), 1)
+    item = await db.magazzino.find_one({"id": data["magazzino_item_id"]}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Articolo di magazzino non trovato")
+    if (item.get("quantita") or 0) < qta:
+        raise HTTPException(status_code=400, detail=f"Giacenza insufficiente ({item.get('quantita') or 0})")
+    now = datetime.now(timezone.utc).isoformat()
+    upd = {"$inc": {"quantita": -qta}, "$set": {"updated_at": now}}
+    if item.get("categoria") == "rigenerati" and (item.get("quantita") or 0) - qta <= 0:
+        upd["$set"].update({"stato": "venduto", "venduto_at": now, "venduto_prezzo": data.get("importo"), "venduto_da": user["name"]})
+    await db.magazzino.update_one({"id": item["id"]}, upd)
+    data["quantita"] = qta
+    data["magazzino_nome"] = item.get("nome")
+    data["magazzino_store_id"] = item.get("store_id", "")
+    if not data.get("prodotto"):
+        data["prodotto"] = item.get("nome", "")
+    if item.get("store_id") and item.get("store_id") != data.get("venditore_id"):
+        await trasferimenti_module.registra(item["store_id"], data.get("venditore_id", ""), item, qta, "vendita", user, servizio_id=data["id"],
+                                            riferimento=f"Vendita {item.get('nome', '')}"[:80])
+
 @api_router.post("/servizi")
 async def create_servizio(input: ServizioInput, user: dict = Depends(get_current_user)):
     if input.tipo not in SERVIZIO_TIPI:
@@ -4149,6 +4173,10 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
     data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_at": now, "updated_at": now,
                  "last_payment_date": date.today().isoformat() if data.get("pagato") else None,
                  "privacy_firmata": False, "privacy_msg_sent_at": None, "review_msg_sent_at": None})
+    if data["tipo"] in ("accessori", "vendita") and data.get("magazzino_item_id"):
+        await scarica_articolo_servizio(data, user)
+    else:
+        data["magazzino_item_id"] = ""
     await db.servizi.insert_one(data)
     data.pop("_id", None)
     return serialize_servizio(data, f"{client_doc.get('cognome', '')} {client_doc.get('nome', '')}".strip())
@@ -4173,6 +4201,8 @@ async def get_servizio(servizio_id: str, user: dict = Depends(get_current_user))
 async def update_servizio(servizio_id: str, input: ServizioInput, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     old = await get_scoped_servizio(servizio_id, user)
     data = input.model_dump(exclude_unset=True)
+    data.pop("magazzino_item_id", None)
+    data.pop("quantita", None)
     if user["role"] == "negozio":
         data.pop("venditore_id", None)
     apply_rip_dates(data, old)
@@ -4910,9 +4940,13 @@ async def whatsapp_pronto_servizio(servizio_id: str, user: dict = Depends(get_cu
 
 @api_router.delete("/servizi/{servizio_id}")
 async def delete_servizio(servizio_id: str, admin: dict = Depends(require_admin)):
+    svc = await db.servizi.find_one({"id": servizio_id}, {"_id": 0, "magazzino_item_id": 1, "quantita": 1})
     res = await db.servizi.delete_one({"id": servizio_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Servizio non trovato")
+    if svc and svc.get("magazzino_item_id"):
+        await db.magazzino.update_one({"id": svc["magazzino_item_id"]}, {"$inc": {"quantita": int(svc.get("quantita") or 1)}, "$set": {"stato": "disponibile"}})
+        await trasferimenti_module.annulla(servizio_id, svc["magazzino_item_id"])
     await db.attachments.update_many({"servizio_id": servizio_id}, {"$set": {"is_deleted": True}})
     return {"status": "ok"}
 

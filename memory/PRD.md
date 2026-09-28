@@ -412,3 +412,8 @@ Vedi /app/memory/test_credentials.md
 - API: GET /api/magazzino/trasferimenti?anno&mese&da_store&a_store&solo_da_fatturare (coppie con imponibile/IVA/totale), GET .../export (xlsx), POST .../{id}/fatturato, PATCH .../{id} (prezzo/regime, solo non fatturati).
 - UI: Magazzino → box "Trasferimenti tra negozi" (TrasferimentiNegozi.jsx); dettaglio riparazione → "Ordina da {negozio}" per articoli esauriti.
 - Test iteration_25: 6/6 backend + frontend OK.
+
+## 2026-09-28 – Vendita con scarico (servizi accessori/vendita)
+- ServizioInput: `magazzino_item_id`, `quantita`. create_servizio (tipo accessori/vendita) → scarica_articolo_servizio: scala giacenza (errore se insufficiente), autocompila prodotto, salva magazzino_nome/magazzino_store_id, registra trasferimento se articolo di altro negozio. delete_servizio ripristina giacenza e annulla trasferimento. In PATCH il collegamento non è modificabile.
+- ServizioForm: ricerca "Articolo di magazzino (scarico automatico)" via /magazzino/disponibilita, selezione con quantità; ServizioDetail badge "Scaricato da magazzino ×N".
+- Test: curl end-to-end OK (scarico 2 pz, trasferimento Morbegno→Sondrio, giacenza insufficiente 400, delete ripristina), screenshot form OK.

@@ -391,7 +391,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                 )}
                 {["accessori", "vendita"].includes(detail.tipo) && (
                   <>
-                    <div><p className="text-xs text-slate-500">Prodotto</p><p className="font-medium">{detail.prodotto || "-"}</p></div>
+                    <div><p className="text-xs text-slate-500">Prodotto</p><p className="font-medium">{detail.prodotto || "-"}{detail.magazzino_item_id && <span className="ml-2 status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300" data-testid="servizio-magazzino-badge">Scaricato da magazzino ×{detail.quantita || 1}</span>}</p></div>
                     <div><p className="text-xs text-slate-500">Importo</p><p className="font-medium">€ {detail.importo ?? "-"}</p></div>
                   </>
                 )}

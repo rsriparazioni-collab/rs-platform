@@ -87,6 +87,18 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
   }, [search, clientId]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const [magSearch, setMagSearch] = useState("");
+  const [magResults, setMagResults] = useState([]);
+  const [magLabel, setMagLabel] = useState("");
+  useEffect(() => {
+    if (magSearch.trim().length < 2 || form.magazzino_item_id) { setMagResults([]); return undefined; }
+    const t = setTimeout(() => api.get("/magazzino/disponibilita", { params: { q: magSearch.trim() } }).then((r) => setMagResults(r.data.slice(0, 8))).catch(() => {}), 300);
+    return () => clearTimeout(t);
+  }, [magSearch, form.magazzino_item_id]);
+  const pickMag = (g, s) => {
+    setForm((f) => ({ ...f, magazzino_item_id: s.item_id, quantita: 1, prodotto: g.nome, importo: s.prezzo_vendita ?? f.importo }));
+    setMagLabel(`${g.nome} · ${s.store_name}`); setMagSearch(""); setMagResults([]);
+  };
   const isRip = tipo === "riparazione";
   const isTel = ["sim", "internet", "fisso"].includes(tipo);
   const isSim = tipo === "sim";
@@ -480,6 +492,32 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
           )}
 
           {isShop && (
+            <div className="space-y-3">
+              {!isEdit && (
+                <div className="space-y-1.5" data-testid="servizio-magazzino-box">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Articolo di magazzino (scarico automatico)</Label>
+                  {form.magazzino_item_id ? (
+                    <div className="flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm" data-testid="servizio-magazzino-selezionato">
+                      <span className="flex-1 text-emerald-900">{magLabel}</span>
+                      <input type="number" min="1" value={form.quantita || 1} onChange={(e) => set("quantita", Math.max(parseInt(e.target.value) || 1, 1))} className="w-14 rounded border border-slate-300 px-1.5 py-0.5 text-xs" data-testid="servizio-magazzino-qta" />
+                      <button type="button" className="text-xs text-rose-700 hover:underline" onClick={() => { set("magazzino_item_id", ""); setMagLabel(""); }} data-testid="servizio-magazzino-rimuovi">Rimuovi</button>
+                    </div>
+                  ) : (
+                    <>
+                      <Input placeholder="Cerca per nome, marca, barcode…" value={magSearch} onChange={(e) => setMagSearch(e.target.value)} data-testid="servizio-magazzino-search" />
+                      {magResults.length > 0 && (
+                        <div className="space-y-1 rounded-md border border-slate-200 p-2" data-testid="servizio-magazzino-risultati">
+                          {magResults.map((g) => g.stores.filter((s) => s.quantita > 0).map((s) => (
+                            <button key={s.item_id} type="button" onClick={() => pickMag(g, s)} className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm hover:bg-slate-100" data-testid={`servizio-magazzino-pick-${s.item_id}`}>
+                              <span>{g.nome}</span><span className="text-xs text-slate-500">{s.store_name} · {s.quantita} pz{s.prezzo_vendita != null ? ` · ${s.prezzo_vendita} €` : ""}</span>
+                            </button>
+                          )))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prodotto *</Label>
@@ -489,6 +527,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Importo €</Label>
                 <Input type="number" step="0.01" value={form.importo ?? ""} onChange={(e) => set("importo", e.target.value)} data-testid="servizio-importo" />
               </div>
+            </div>
             </div>
           )}
 
