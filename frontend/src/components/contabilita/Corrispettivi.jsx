@@ -7,9 +7,15 @@ import { MESI, PeriodoPicker, eur } from "./shared";
 import { GiornoDialog } from "./GiornoDialog";
 import { SpeseCassa } from "./SpeseCassa";
 
-export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese }) => {
+export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }) => {
   const [dati, setDati] = useState(null);
   const [giorno, setGiorno] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const importaFogli = async () => {
+    setImporting(true);
+    try { const r = await api.post("/contabilita/corrispettivi/importa-fogli"); toast.success(`Importati ${r.data.giorni} giorni e ${r.data.spese} spese${r.data.errori.length ? ` (${r.data.errori.length} schede con errori)` : ""}`); load(); }
+    catch (e) { toast.error(apiError(e)); } finally { setImporting(false); }
+  };
   const load = useCallback(() => api.get("/contabilita/corrispettivi", { params: { store_id: storeId, anno, mese } }).then((r) => setDati(r.data)).catch((e) => toast.error(apiError(e))), [storeId, anno, mese]);
   useEffect(() => { load(); }, [load]);
 
@@ -29,6 +35,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese }) => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodoPicker anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} />
         <div className="flex flex-wrap gap-2">
+          {isAdmin && <Button size="sm" variant="outline" onClick={importaFogli} disabled={importing} data-testid="corrispettivi-importa-fogli">{importing ? "Importo…" : "Importa dai fogli Google"}</Button>}
           <Button size="sm" onClick={() => setGiorno(dati.righe.find((r) => r.data === oggi) || dati.righe[0])} data-testid="corrispettivo-oggi-btn">+ Corrispettivo di oggi</Button>
           <Button size="sm" variant="outline" onClick={() => downloadBlob(`/contabilita/corrispettivi/pdf?store_id=${storeId}&anno=${anno}&mese=${mese}`, `Corrispettivi_${dati.store.nome}_${anno}-${mese}.pdf`)} data-testid="corrispettivi-pdf-btn"><Download className="mr-1 h-4 w-4" /> PDF mese</Button>
           <Button size="sm" variant="outline" onClick={inviaEmail} data-testid="corrispettivi-email-btn"><Mail className="mr-1 h-4 w-4" /> Invia email mese</Button>

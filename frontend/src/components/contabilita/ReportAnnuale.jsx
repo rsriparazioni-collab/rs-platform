@@ -28,7 +28,7 @@ export const ReportAnnuale = ({ storeId, anno, setAnno, isAdmin }) => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodoPicker anno={anno} setAnno={setAnno} soloAnno />
         {isAdmin && <Button size="sm" variant="outline" onClick={importa} disabled={importing} data-testid="report-importa-fogli">{importing ? "Importo…" : "Importa storico dai fogli Google"}</Button>}
-        <p className="w-full text-xs text-slate-500">Fatturato = corrispettivi inseriti + entrate del punto di pareggio (ENEL/Energia separato). Clicca un mese per inserire i valori storici quando non ci sono corrispettivi.</p>
+        <p className="w-full text-xs text-slate-500">Fatturato = corrispettivi inseriti + entrate del punto di pareggio (ENEL/Energia separato). Clicca un mese per inserire i valori storici (il dato storico prevale finché corrispettivi + entrate PDP del mese non lo superano).</p>
       </div>
       <div className="flex h-40 items-end gap-2 rounded-xl border border-slate-200 bg-white p-4" data-testid="report-grafico">
         {r.mesi.map((m) => (
@@ -63,7 +63,7 @@ export const ReportAnnuale = ({ storeId, anno, setAnno, isAdmin }) => {
       </div>
       {edit && (
         <div className="flex flex-wrap items-end gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4" data-testid="storico-editor">
-          <p className="w-full text-sm font-medium">Valori storici {edit.nome} {edit.anno} (usati solo se non ci sono corrispettivi inseriti nel mese)</p>
+          <p className="w-full text-sm font-medium">Valori storici {edit.nome} {edit.anno} (usati finché i dati inseriti nel gestionale non li superano)</p>
           <label className="text-xs text-slate-600">ENEL / Energia<div className="w-36"><Num value={edit.enel} onChange={(v) => setEdit({ ...edit, enel: v })} testid="storico-enel" /></div></label>
           <label className="text-xs text-slate-600">Altro<div className="w-36"><Num value={edit.altro} onChange={(v) => setEdit({ ...edit, altro: v })} testid="storico-altro" /></div></label>
           <Button size="sm" onClick={salvaStorico} data-testid="storico-salva">Salva</Button>

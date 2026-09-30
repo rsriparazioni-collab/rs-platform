@@ -516,8 +516,10 @@ async def _fatturato_mese(store: dict, anno: int, mese: int) -> dict:
     enel = sum(_f(v) for k, v in (doc.get("valori") or {}).items() if k.startswith("entrate|") and "enel" in k.lower() or k.startswith("entrate|") and "energia" in k.lower())
     altro_pdp = sum(_f(v) for k, v in (doc.get("valori") or {}).items() if k.startswith("entrate|")) - enel
     live = {"enel": round(enel, 2), "altro": round(corr + altro_pdp, 2)}
-    if storico and not corr and not doc:
-        return {"enel": _f(storico.get("enel")), "altro": _f(storico.get("altro")), "storico": True}
+    if storico:
+        st = {"enel": _f(storico.get("enel")), "altro": _f(storico.get("altro")), "storico": True}
+        if live["enel"] + live["altro"] <= st["enel"] + st["altro"]:
+            return st
     return live
 
 
@@ -616,6 +618,23 @@ async def importa_storico_fogli(request: Request):
             esito.append({"negozio": store["nome"], "mesi_importati": len(righe), "anni": sorted({r["anno"] for r in righe})})
     await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "import_storico", "esito": esito, "by": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()})
     return {"esito": esito}
+
+
+@router.post("/corrispettivi/importa-fogli")
+async def importa_corrispettivi_fogli(request: Request):
+    import httpx
+    import contabilita_import
+    user = await _user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        async def fetch(url):
+            r = await client.get(url)
+            r.raise_for_status()
+            return r.text
+        esito = await contabilita_import.importa_tutti(_d["db"], fetch)
+    await _d["db"].contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "import_corrispettivi", "esito": esito, "by": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()})
+    return {"esito": esito, "giorni": sum(e.get("giorni", 0) for e in esito), "spese": sum(e.get("spese", 0) for e in esito), "errori": [e for e in esito if e.get("errore")]}
 
 
 class StoricoInput(BaseModel):
