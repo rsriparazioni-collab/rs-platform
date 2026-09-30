@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Plus, X } from "lucide-react";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
-import { Num, PeriodoPicker, eur } from "./shared";
+import { MESI, Num, PeriodoPicker, eur } from "./shared";
 
 const CAT = [["entrate", "Entrate", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse modificabili", "text-amber-700"], ["fornitori", "Fornitori / acquisti", "text-slate-700"]];
 
@@ -27,6 +27,12 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese }) => {
         <PeriodoPicker anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} />
         <Button size="sm" onClick={salva} data-testid="pdp-salva">Salva valori</Button>
       </div>
+      {d.ereditato_da && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900" data-testid="pdp-ereditato">
+          <span>Spese fisse copiate automaticamente da <b>{d.ereditato_da}</b>: modificale solo se sono cambiate, poi premi "Salva valori" per confermarle per questo mese.</span>
+          <Button size="sm" variant="outline" onClick={salva} data-testid="pdp-conferma-ereditato">Conferma per {MESI[mese]}</Button>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-4" data-testid="pdp-riepilogo">
         <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">Entrate</p><p className="mt-1 text-xl font-semibold text-emerald-700" data-testid="pdp-entrate">{eur(entrate)}</p></div>
         <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">Punto di pareggio (uscite)</p><p className="mt-1 text-xl font-semibold text-rose-700" data-testid="pdp-uscite">{eur(uscite)}</p></div>

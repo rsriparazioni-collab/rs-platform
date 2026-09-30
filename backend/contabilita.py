@@ -467,7 +467,16 @@ async def _pdp_calcolo(store: dict, anno: int, mese: int) -> dict:
     db = _d["db"]
     voci = await _voci(store)
     doc = await db.pdp.find_one({"store_id": store["id"], "anno": anno, "mese": mese}, {"_id": 0}) or {}
-    valori = doc.get("valori") or {}
+    valori = dict(doc.get("valori") or {})
+    ereditato_da = None
+    if not doc:
+        prev = await db.pdp.find({"store_id": store["id"], "$or": [{"anno": {"$lt": anno}}, {"anno": anno, "mese": {"$lt": mese}}]},
+                                 {"_id": 0, "anno": 1, "mese": 1, "valori": 1}).sort([("anno", -1), ("mese", -1)]).limit(1).to_list(1)
+        if prev:
+            fisse = {k: v for k, v in (prev[0].get("valori") or {}).items() if k.startswith("spese_fisse|") and _f(v)}
+            if fisse:
+                valori.update(fisse)
+                ereditato_da = f"{MESI_IT[prev[0]['mese']]} {prev[0]['anno']}"
     corr = (await _mese_dati(store["id"], anno, mese))["totali"]
     entrate = {"Corrispettivi negozio": corr["totale"]}
     for v in voci["entrate"]:
@@ -481,7 +490,7 @@ async def _pdp_calcolo(store: dict, anno: int, mese: int) -> dict:
     return {"store": {"id": store["id"], "nome": store["nome"]}, "anno": anno, "mese": mese, "voci": voci, "valori": valori,
             "entrate": entrate, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
             "punto_pareggio": tot_uscite, "risultato": round(tot_entrate - tot_uscite, 2),
-            "copertura_pct": round(tot_entrate / tot_uscite * 100, 1) if tot_uscite else None, "note": doc.get("note", "")}
+            "copertura_pct": round(tot_entrate / tot_uscite * 100, 1) if tot_uscite else None, "note": doc.get("note", ""), "ereditato_da": ereditato_da}
 
 
 @router.get("/pdp")
