@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Euro, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText, Link2, KeyRound, GraduationCap, Calculator, ShoppingBag, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Euro, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText, Link2, KeyRound, GraduationCap, Calculator, ShoppingBag, BarChart3, Receipt } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { RUOLI } from "../lib/constants";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -27,6 +27,7 @@ const NAV = [
   { to: "/portali", label: "Portali Operatori", icon: Link2, roles: ["admin"], testid: "nav-portali" },
   { to: "/prezzi", label: "Prezzi Riparazioni", icon: Calculator, roles: ["admin"], testid: "nav-prezzi" },
   { to: "/compensi", label: "Compensi", icon: Euro, roles: ["admin"], testid: "nav-compensi" },
+  { to: "/contabilita", label: "Corrispettivi & Contabilità", icon: Receipt, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-contabilita" },
   { to: "/password", label: "Password", icon: KeyRound, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-password" },
   { to: "/formazione", label: "Formazione", icon: GraduationCap, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-formazione" },
 ];

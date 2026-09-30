@@ -320,9 +320,9 @@ def _assert_safe_email(subject: str, html: str) -> None:
             if not _same_site(m.group(1).lower(), real):
                 raise ValueError(f"Anchor text {m.group(1)!r} != real link host {real!r} (G3)")
 
-async def send_email(*, to: str, subject: str, html: str, reply_to: Optional[str] = None) -> Optional[str]:
+async def send_email(*, to: str, subject: str, html: str, reply_to: Optional[str] = None, from_name: Optional[str] = None) -> Optional[str]:
     _assert_safe_email(subject, html)
-    payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
+    payload = {"to": [to], "subject": subject, "html": html, "from_name": from_name or EMAIL_FROM_NAME}
     if reply_to or EMAIL_REPLY_TO:
         payload["contact_email"] = reply_to or EMAIL_REPLY_TO
     try:
@@ -5780,6 +5780,31 @@ async def cron_obiettivi(request: Request, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(kpi_module.controlla_obiettivi)
     return {"status": "accepted"}
+import contabilita as contabilita_module
+contabilita_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, wa_sessione_connessa=wa_sessione_connessa,
+                         send_email=send_email, put_object=put_object, app_name=APP_NAME)
+api_router.include_router(contabilita_module.router)
+
+@api_router.post("/cron/corrispettivi-giornalieri")
+async def cron_corrispettivi_giornalieri(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(contabilita_module.invia_wa_giornaliero)
+    return {"status": "accepted"}
+
+@api_router.post("/cron/corrispettivi-mensile")
+async def cron_corrispettivi_mensile(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(contabilita_module.invia_email_mensile_tutti)
+    return {"status": "accepted"}
+
 google_drive_module.setup(db=db, get_current_user=get_current_user, get_object=get_object, fernet=_fernet)
 api_router.include_router(google_drive_module.router)
 report_ritiri_module.setup(carica_report_su_drive=google_drive_module.carica_report_su_drive)

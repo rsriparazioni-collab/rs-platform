@@ -35,6 +35,22 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/promemoria-registro"
     method: POST
     enabled: true
+  - name: corrispettivi-giornalieri
+    description: "Alle 20:30 WhatsApp con i corrispettivi del giorno (riparazioni, merce, art.74, fatture, contanti, POS, spese) di ogni negozio al numero impostato"
+    cron: "30 20 * * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/corrispettivi-giornalieri"
+    method: POST
+    enabled: true
+  - name: corrispettivi-mensile
+    description: "Il 1° del mese alle 6:30 invia via email il PDF dei corrispettivi del mese precedente ai commercialisti dei negozi"
+    cron: "30 6 1 * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/corrispettivi-mensile"
+    method: POST
+    enabled: true
   - name: obiettivi-kpi
     description: "Alle 19:00 complimenti WhatsApp per obiettivi raggiunti; dal 15 promemoria se sotto il 40%"
     cron: "0 19 * * *"
