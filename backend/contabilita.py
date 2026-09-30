@@ -165,8 +165,13 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     tot = {k: round(sum(_f(c.get(k)) for c in giorni.values()), 2) for k in keys}
     tot["spese_contanti"] = round(sum(_f(s.get("importo")) for s in spese), 2)
     tot["cassa_netta"] = round(tot["contanti"] - tot["spese_contanti"], 2)
+    extra = await db.corrispettivi_mese.find_one({"store_id": store_id, "anno": anno, "mese": mese}, {"_id": 0}) or {}
+    versati_dopo = extra.get("versati_dopo") or []
+    tot["versati_dopo"] = round(sum(_f(v.get("importo")) for v in versati_dopo), 2)
+    tot["versati_totale"] = round(tot["versati"] + tot["versati_dopo"], 2)
+    tot["da_versare"] = round(tot["cassa_netta"] - tot["versati_totale"], 2)
     tot["giorni_inseriti"] = len(giorni)
-    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "totali": tot}
+    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "totali": tot}
 
 
 @router.get("/corrispettivi")
@@ -209,6 +214,33 @@ async def del_corrispettivo(store_id: str, data: str, request: Request):
     user = await _user(request)
     await _store_completo(user, store_id)
     await _d["db"].corrispettivi.delete_one({"store_id": store_id, "data": data})
+    return {"ok": True}
+
+
+class VersatoDopoInput(BaseModel):
+    data: str
+    importo: float
+    note: str = ""
+
+
+@router.post("/corrispettivi/{store_id}/{anno}/{mese}/versati-dopo")
+async def add_versato_dopo(store_id: str, anno: int, mese: int, body: VersatoDopoInput, request: Request):
+    user = await _user(request)
+    await _store_completo(user, store_id)
+    try:
+        date.fromisoformat(body.data)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data non valida")
+    v = {"id": str(uuid.uuid4()), "data": body.data, "importo": _f(body.importo), "note": body.note[:120], "created_by": user.get("name", "")}
+    await _d["db"].corrispettivi_mese.update_one({"store_id": store_id, "anno": anno, "mese": mese}, {"$push": {"versati_dopo": v}}, upsert=True)
+    return v
+
+
+@router.delete("/corrispettivi/{store_id}/{anno}/{mese}/versati-dopo/{vid}")
+async def del_versato_dopo(store_id: str, anno: int, mese: int, vid: str, request: Request):
+    user = await _user(request)
+    await _store_completo(user, store_id)
+    await _d["db"].corrispettivi_mese.update_one({"store_id": store_id, "anno": anno, "mese": mese}, {"$pull": {"versati_dopo": {"id": vid}}})
     return {"ok": True}
 
 
@@ -293,9 +325,20 @@ def _pdf_mese(store: dict, dati: dict) -> bytes:
         pdf.ln()
     if not dati["spese"]:
         pdf.cell(214, 6, "Nessuna spesa registrata", border=1, new_x="LMARGIN", new_y="NEXT")
+    if dati["versati_dopo"]:
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(0, 6, "Versamenti effettuati dopo la fine del mese (competenza del mese)", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 8)
+        for v in dati["versati_dopo"]:
+            pdf.cell(0, 5, _pdf_txt(f"{v['data'][8:]}/{v['data'][5:7]}/{v['data'][:4]}  {_eur(v['importo'])}  {v.get('note', '')}"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(0, 6, _pdf_txt(f"Totale spese contanti: {_eur(tot['spese_contanti'])}  -  Contanti incassati: {_eur(tot['contanti'])}  -  Cassa netta: {_eur(tot['cassa_netta'])}  -  Giorni inseriti: {tot['giorni_inseriti']}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, _pdf_txt(f"Contanti incassati: {_eur(tot['contanti'])}  -  Spese contanti: {_eur(tot['spese_contanti'])}  -  Cassa netta: {_eur(tot['cassa_netta'])}  -  Versati: {_eur(tot['versati_totale'])}  -  Giorni inseriti: {tot['giorni_inseriti']}"), new_x="LMARGIN", new_y="NEXT")
+    if tot["da_versare"] < 0:
+        pdf.set_text_color(190, 30, 30)
+    pdf.cell(0, 6, _pdf_txt(("AMMANCO: " if tot["da_versare"] < 0 else "Da versare: ") + _eur(tot["da_versare"])), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
     return bytes(pdf.output())
 
 
@@ -391,7 +434,7 @@ async def invia_email_mensile(store_id: str, anno: int, mese: int, extra_to: Opt
             f"<table style='border-collapse:collapse;font-size:13px'>"
             + "".join(f"<tr><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0'>{k}</td><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0;text-align:right'><b>{escape(_eur(v))}</b></td></tr>"
                       for k, v in [("Riparazioni", t["riparazioni"]), ("Merce", t["merce"]), ("Art. 74", t["art74"]), ("Fatture", t["fatture"]), ("TOTALE corrispettivi", t["totale"]),
-                                   ("Contanti", t["contanti"]), ("POS", t["pos"]), ("Versati", t["versati"]), ("IVA 22% scorporata", t["iva"]), ("Spese contanti (prima nota)", t["spese_contanti"])])
+                                   ("Contanti", t["contanti"]), ("POS", t["pos"]), ("Versati (nel mese + dopo)", t["versati_totale"]), ("Spese contanti (prima nota)", t["spese_contanti"]), ("Da versare / ammanco", t["da_versare"]), ("IVA 22% scorporata", t["iva"])])
             + f"</table><p style='font-size:12px;color:#64748b'>Giorni inseriti: {t['giorni_inseriti']}. Inviato da {escape(cfg['email_from'] or 'gestionale')} - RS Riparazioni / CambiaOra.</p></div>")
     email_id = await _d["send_email"](to=to, subject=f"Corrispettivi {store['nome']} - {MESI_IT[mese]} {anno}", html=html,
                                       reply_to=cfg["email_from"] or None, from_name=cfg["email_from"] or None)
