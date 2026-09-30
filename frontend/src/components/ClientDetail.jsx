@@ -428,11 +428,11 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
 
               <div className="rounded-xl border border-slate-200 p-4" data-testid="attachments-card">
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Allegati (bollette, documenti)</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Documenti e bollette (allegati)</p>
                   {attachments.length > 0 && (
                     <Button size="sm" variant="outline" data-testid="merged-pdf-button"
-                            onClick={() => downloadBlob(`/clients/${detail.id}/attachments/merged`, `documenti_${detail.cognome}.pdf`)}>
-                      <FileText className="mr-2 h-4 w-4" /> PDF unico
+                            onClick={() => downloadBlob(`/clients/${detail.id}/attachments/merged`, `fascicolo_${detail.cognome}.pdf`)}>
+                      <FileText className="mr-2 h-4 w-4" /> Fascicolo PDF (dati + documenti)
                     </Button>
                   )}
                 </div>

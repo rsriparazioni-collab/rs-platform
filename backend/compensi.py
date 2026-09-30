@@ -378,6 +378,77 @@ async def calcola(mese: str, per_pagamento: bool = False) -> dict:
     return {"mese": mese, "per_pagamento": per_pagamento, "destinatari": out, "totale_netto": round(sum(d["netto"] for d in out), 2)}
 
 
+@router.get("/compensi/report-pdf")
+async def compensi_report_pdf(anno: int, mese: int, per_pagamento: bool = False, dest_id: str = "", admin: dict = Depends(_admin)):
+    from fpdf import FPDF
+    from fastapi.responses import Response
+    data = await calcola(_mese_str(anno, mese), per_pagamento)
+    dest = [d for d in data["destinatari"] if not dest_id or d["id"] == dest_id]
+    mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+    titolo_mese = f"{mesi[mese - 1]} {anno}"
+
+    def eur(v):
+        return f"{v:,.2f} EUR".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def txt(s) -> str:
+        return str(s).replace("–", "-").replace("—", "-").replace("≥", ">=").replace("€", "EUR").replace("→", "->").encode("latin-1", "replace").decode("latin-1")
+
+    pdf = FPDF(format="A4", unit="mm")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    for d in dest:
+        pdf.add_page()
+        pdf.set_font("helvetica", "B", 16)
+        pdf.cell(0, 9, f"Riepilogo compensi - {titolo_mese}", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 7, txt(f"{'Negozio' if d['tipo'] == 'store' else 'Operatore'}: {d['nome']}  -  {'pagamento nel mese' if per_pagamento else 'competenza del mese'}"), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(3)
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_fill_color(235, 235, 235)
+        for w, t in ((88, "Voce"), (18, "Q.ta"), (24, "Unitario"), (26, "Totale"), (34, "Comp. -> Pag.")):
+            pdf.cell(w, 7, t, border=1, fill=True)
+        pdf.ln()
+        pdf.set_font("helvetica", "", 9)
+        for r in d["righe"]:
+            nome = txt(r["nome"])[:60]
+            if r.get("e_gara") and not r.get("gara_pagata"):
+                nome += " (gara in attesa)"
+            pdf.cell(88, 6.5, nome, border=1)
+            pdf.cell(18, 6.5, str(r["conteggio"]) if r.get("conteggio") is not None else "-", border=1, align="C")
+            pdf.cell(24, 6.5, eur(r["importo_unitario"]) if r.get("importo_unitario") is not None else "-", border=1, align="R")
+            pdf.cell(26, 6.5, eur(r["totale"]), border=1, align="R")
+            pdf.cell(34, 6.5, f"{r['competenza']} -> {r['pagamento']}", border=1, align="C")
+            pdf.ln()
+        pdf.ln(3)
+        pdf.set_font("helvetica", "", 10)
+        righe_tot = [("Lordo maturato", eur(d["lordo"]))]
+        if d["trattenuta_pct"]:
+            righe_tot.append((f"Trattenuta {d['trattenuta_pct']:g}%", "- " + eur(d["trattenuta"])))
+        if d["iva_su_trattenuta"]:
+            righe_tot.append(("IVA 22% sulla trattenuta", "- " + eur(d["iva_su_trattenuta"])))
+        if d.get("addebito_laboratorio"):
+            righe_tot.append(("Addebito laboratorio (ricambi + manodopera)", "- " + eur(d["addebito_laboratorio"])))
+        if d.get("gare_in_attesa"):
+            righe_tot.append(("Gare in attesa di incasso (non incluse)", eur(d["gare_in_attesa"])))
+        if d.get("ricariche_da_richiedere") or d.get("costo_sim"):
+            righe_tot.append(("Da richiedere: ricariche / costo SIM", f"{eur(d['ricariche_da_richiedere'])} / {eur(d['costo_sim'])}"))
+        for lab, val in righe_tot:
+            pdf.cell(150, 6.5, lab, border="B")
+            pdf.cell(40, 6.5, val, border="B", align="R")
+            pdf.ln()
+        pdf.set_font("helvetica", "B", 12)
+        pdf.cell(150, 9, "NETTO DA CORRISPONDERE")
+        pdf.cell(40, 9, eur(d["netto"]), align="R")
+        pdf.ln(12)
+        pdf.set_font("helvetica", "I", 8)
+        pdf.cell(0, 5, f"Generato il {datetime.now(timezone.utc).strftime('%d/%m/%Y')} dal gestionale RS & CambiaOra. Le regole compensi sono consultabili nella sezione Compensi.", new_x="LMARGIN", new_y="NEXT")
+    if not dest:
+        pdf.add_page()
+        pdf.set_font("helvetica", "", 12)
+        pdf.cell(0, 10, f"Nessun compenso maturato per {titolo_mese}.", new_x="LMARGIN", new_y="NEXT")
+    nome_file = f"compensi_{anno}-{mese:02d}" + (f"_{dest[0]['nome']}" if dest_id and dest else "") + ".pdf"
+    return Response(content=bytes(pdf.output()), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{nome_file}"'})
+
+
 @router.get("/compensi/calcolo")
 async def compensi_calcolo(anno: int, mese: int, per_pagamento: bool = False, admin: dict = Depends(_admin)):
     return await calcola(_mese_str(anno, mese), per_pagamento)

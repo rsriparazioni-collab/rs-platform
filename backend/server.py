@@ -2627,22 +2627,49 @@ async def delete_attachment(att_id: str, user: dict = Depends(get_current_user))
 
 @api_router.get("/clients/{client_id}/attachments/merged")
 async def merged_pdf(client_id: str, user: dict = Depends(get_current_user)):
+    """PDF unico del cliente: copertina con anagrafica + tutti gli allegati (PDF e immagini)."""
     from pypdf import PdfWriter, PdfReader
     client_doc = await get_scoped_client(client_id, user)
-    atts = await db.attachments.find({"client_id": client_id, "is_deleted": False,
-                                      "content_type": "application/pdf"}, {"_id": 0}).to_list(200)
-    if not atts:
-        raise HTTPException(status_code=400, detail="Nessun PDF tra gli allegati di questo cliente")
+    atts = await db.attachments.find({"client_id": client_id, "is_deleted": False}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    store = await db.stores.find_one({"id": client_doc.get("venditore_id")}, {"_id": 0, "nome": 1}) or {}
+    cover = _new_pdf("Fascicolo cliente", f"{client_doc.get('cognome', '')} {client_doc.get('nome', '')}".strip())
+    for label, key in (("Telefono", "telefono"), ("Email", "email"), ("Codice fiscale", "codice_fiscale"), ("P.IVA", "p_iva"), ("Indirizzo", "indirizzo"),
+                       ("Tipo bolletta", "tipo_bolletta"), ("POD", "pod"), ("PDR", "pdr"), ("Fornitore provenienza", "fornitore_provenienza"),
+                       ("Nuovo fornitore", "nuovo_fornitore"), ("Data contratto", "data_contratto"), ("Stato pratica", "lavorazione")):
+        if client_doc.get(key):
+            _pdf_field(cover, label, str(client_doc[key]))
+    _pdf_field(cover, "Negozio", store.get("nome", "-"))
+    _pdf_field(cover, "Privacy firmata", "Sì" if client_doc.get("privacy_firmata") else "No")
+    cover.ln(4)
+    cover.set_font("helvetica", "B", 11)
+    cover.cell(0, 7, f"Allegati ({len(atts)})", new_x="LMARGIN", new_y="NEXT")
+    cover.set_font("helvetica", "", 10)
+    for a in atts:
+        cover.cell(0, 6, f"- {a.get('original_filename', '')} ({_fmt_it(a.get('created_at'))})", new_x="LMARGIN", new_y="NEXT")
     writer = PdfWriter()
+    writer.append(PdfReader(io.BytesIO(bytes(cover.output()))))
     for att in atts:
-        data, _ = get_object(att["storage_path"])
-        reader = PdfReader(io.BytesIO(data))
-        for page in reader.pages:
-            writer.add_page(page)
+        try:
+            data, _ = get_object(att["storage_path"])
+        except Exception:
+            continue
+        if att.get("content_type") == "application/pdf":
+            writer.append(PdfReader(io.BytesIO(data)))
+        elif (att.get("content_type") or "").startswith("image/"):
+            from fpdf import FPDF
+            img_pdf = FPDF(format="A4", unit="mm")
+            img_pdf.add_page()
+            img_pdf.set_font("helvetica", "", 9)
+            img_pdf.cell(0, 6, att.get("original_filename", ""), new_x="LMARGIN", new_y="NEXT")
+            try:
+                img_pdf.image(io.BytesIO(data), x=10, y=18, w=190)
+                writer.append(PdfReader(io.BytesIO(bytes(img_pdf.output()))))
+            except Exception:
+                continue
     buf = io.BytesIO()
     writer.write(buf)
     buf.seek(0)
-    fname = f"documenti_{client_doc.get('cognome', 'cliente')}_{client_doc.get('nome', '')}.pdf".replace(" ", "_")
+    fname = f"fascicolo_{client_doc.get('cognome', 'cliente')}_{client_doc.get('nome', '')}.pdf".replace(" ", "_")
     return StreamingResponse(buf, media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
