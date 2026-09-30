@@ -157,8 +157,8 @@ async def importa_tutti(db, fetch) -> list:
                     ex = await db.corrispettivi.find_one({"store_id": store["id"], "data": g["data"]}, {"_id": 0, "fonte": 1})
                     if ex and ex.get("fonte") != "foglio_google":
                         continue
-                    tot = round(g["riparazioni"] + g["merce"] + g["art74"] + g["fatture"], 2)
-                    doc = {**g, "store_id": store["id"], "totale": tot, "incassato": round(g["contanti"] + g["pos"], 2),
+                    tot = round(g["contanti"] + g["pos"] + g["fatture"], 2)
+                    doc = {**g, "store_id": store["id"], "totale": tot, "incassato": round(g["contanti"] + g["pos"], 2), "scontrini": round(g["riparazioni"] + g["merce"] + g["art74"], 2),
                            "iva": round((g["riparazioni"] + g["merce"] + g["fatture"]) * 22 / 122, 2), "note": "", "fonte": "foglio_google", "updated_at": now, "updated_by": "import fogli"}
                     await db.corrispettivi.update_one({"store_id": store["id"], "data": g["data"]}, {"$set": doc, "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
                     ng += 1

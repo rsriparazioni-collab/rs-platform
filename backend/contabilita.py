@@ -103,8 +103,9 @@ def _norm(c: dict) -> dict:
     c["fatture"] = _f(c.get("fatture")) or round(sum(x["importo"] for x in fatt), 2)
     for k in ("riparazioni", "merce", "art74", "contanti", "pos", "versati"):
         c[k] = _f(c.get(k))
-    c["totale"] = round(c["riparazioni"] + c["merce"] + c["art74"] + c["fatture"], 2)
+    c["scontrini"] = round(c["riparazioni"] + c["merce"] + c["art74"], 2)
     c["incassato"] = round(c["contanti"] + c["pos"], 2)
+    c["totale"] = round(c["contanti"] + c["pos"] + c["fatture"], 2)
     c["iva"] = round((c["riparazioni"] + c["merce"] + c["fatture"]) * 22 / 122, 2)
     return c
 
@@ -290,7 +291,7 @@ def _pdf_mese(store: dict, dati: dict) -> bytes:
     pdf.set_font("Helvetica", "", 9)
     pdf.cell(0, 6, _pdf_txt(f"Generato il {date.today().strftime('%d/%m/%Y')} - RS Riparazioni / CambiaOra"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
-    cols = [("Giorno", 16), ("Riparazioni", 26), ("Merce", 24), ("Art. 74", 24), ("Fatture", 24), ("N. fattura / pag.", 48), ("TOTALE", 26), ("Contanti", 24), ("POS", 24), ("Versati", 24), ("IVA 22%", 22)]
+    cols = [("Giorno", 16), ("Riparazioni", 26), ("Merce", 24), ("Art. 74", 24), ("Fatture", 24), ("N. fattura / pag.", 48), ("Contanti", 24), ("POS", 24), ("TOTALE", 26), ("Versati", 24), ("IVA 22%", 22)]
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_fill_color(226, 232, 240)
     for t, w in cols:
@@ -303,12 +304,12 @@ def _pdf_mese(store: dict, dati: dict) -> bytes:
             vals = [g, "", "", "", "", "", "-", "", "", "", ""]
         else:
             fd = ", ".join(f"{x['numero']} {x['pagamento']}".strip() for x in r["fatture_dettaglio"])[:34]
-            vals = [g, _eur(r["riparazioni"]), _eur(r["merce"]), _eur(r["art74"]), _eur(r["fatture"]), fd, _eur(r["totale"]), _eur(r["contanti"]), _eur(r["pos"]), _eur(r["versati"]) if r["versati"] else "", _eur(r["iva"])]
+            vals = [g, _eur(r["riparazioni"]), _eur(r["merce"]), _eur(r["art74"]), _eur(r["fatture"]), fd, _eur(r["contanti"]), _eur(r["pos"]), _eur(r["totale"]), _eur(r["versati"]) if r["versati"] else "", _eur(r["iva"])]
         for (t, w), v in zip(cols, vals):
             pdf.cell(w, 6, _pdf_txt(v), border=1, align="R" if t not in ("Giorno", "N. fattura / pag.") else "L")
         pdf.ln()
     pdf.set_font("Helvetica", "B", 8)
-    vals = ["TOT", _eur(tot["riparazioni"]), _eur(tot["merce"]), _eur(tot["art74"]), _eur(tot["fatture"]), "", _eur(tot["totale"]), _eur(tot["contanti"]), _eur(tot["pos"]), _eur(tot["versati"]), _eur(tot["iva"])]
+    vals = ["TOT", _eur(tot["riparazioni"]), _eur(tot["merce"]), _eur(tot["art74"]), _eur(tot["fatture"]), "", _eur(tot["contanti"]), _eur(tot["pos"]), _eur(tot["totale"]), _eur(tot["versati"]), _eur(tot["iva"])]
     for (t, w), v in zip(cols, vals):
         pdf.cell(w, 7, _pdf_txt(v), border=1, fill=True, align="R" if t != "Giorno" else "L")
     pdf.ln(10)
@@ -361,7 +362,7 @@ def _testo_wa_store(nome: str, c: Optional[dict], spese: list, data: str) -> str
     if c["fatture"]:
         det = ", ".join(f"{x['numero']} {x['pagamento']}".strip() for x in c["fatture_dettaglio"])
         righe.append(f"Fatture: {_eur(c['fatture'])}" + (f" ({det})" if det else ""))
-    righe += [f"*TOTALE: {_eur(c['totale'])}*", f"Contanti: {_eur(c['contanti'])} | POS: {_eur(c['pos'])}"]
+    righe += [f"Contanti: {_eur(c['contanti'])} | POS: {_eur(c['pos'])}", f"*TOTALE (contanti+POS+fatture): {_eur(c['totale'])}*"]
     if c["versati"]:
         righe.append(f"Versati: {_eur(c['versati'])}")
     if spese:
@@ -433,7 +434,7 @@ async def invia_email_mensile(store_id: str, anno: int, mese: int, extra_to: Opt
             f"<p><a href='{link}' style='display:inline-block;padding:10px 16px;background:#0f172a;color:#fff;border-radius:8px;text-decoration:none'>Scarica il PDF completo</a></p>"
             f"<table style='border-collapse:collapse;font-size:13px'>"
             + "".join(f"<tr><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0'>{k}</td><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0;text-align:right'><b>{escape(_eur(v))}</b></td></tr>"
-                      for k, v in [("Riparazioni", t["riparazioni"]), ("Merce", t["merce"]), ("Art. 74", t["art74"]), ("Fatture", t["fatture"]), ("TOTALE corrispettivi", t["totale"]),
+                      for k, v in [("Riparazioni", t["riparazioni"]), ("Merce", t["merce"]), ("Art. 74", t["art74"]), ("Fatture", t["fatture"]), ("TOTALE (contanti + POS + fatture)", t["totale"]),
                                    ("Contanti", t["contanti"]), ("POS", t["pos"]), ("Versati (nel mese + dopo)", t["versati_totale"]), ("Spese contanti (prima nota)", t["spese_contanti"]), ("Da versare / ammanco", t["da_versare"]), ("IVA 22% scorporata", t["iva"])])
             + f"</table><p style='font-size:12px;color:#64748b'>Giorni inseriti: {t['giorni_inseriti']}. Inviato da {escape(cfg['email_from'] or 'gestionale')} - RS Riparazioni / CambiaOra.</p></div>")
     email_id = await _d["send_email"](to=to, subject=f"Corrispettivi {store['nome']} - {MESI_IT[mese]} {anno}", html=html,

@@ -43,7 +43,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6" data-testid="corrispettivi-totali">
-        {[["Totale corrispettivi", t.totale, "text-slate-900"], ["Contanti", t.contanti, "text-emerald-700"], ["POS", t.pos, "text-sky-700"], ["Spese contanti", t.spese_contanti, "text-rose-700"], ["Versati", t.versati_totale, "text-slate-700"], ["IVA 22% scorporata", t.iva, "text-amber-700"]].map(([l, v, c]) => (
+        {[["Totale (contanti+POS+fatture)", t.totale, "text-slate-900"], ["Contanti", t.contanti, "text-emerald-700"], ["POS", t.pos, "text-sky-700"], ["Spese contanti", t.spese_contanti, "text-rose-700"], ["Versati", t.versati_totale, "text-slate-700"], ["IVA 22% scorporata", t.iva, "text-amber-700"]].map(([l, v, c]) => (
           <div key={l} className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase tracking-wide text-slate-500">{l}</p><p className={`mt-1 text-xl font-semibold tabular-nums ${c}`}>{eur(v)}</p></div>
         ))}
       </div>
@@ -54,21 +54,21 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm" data-testid="corrispettivi-table">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr>{["Giorno", "Riparazioni", "Merce", "Art. 74", "Fatture", "Totale", "Contanti", "POS", "Versati", ""].map((h) => <th key={h} className="px-3 py-2 text-right first:text-left">{h}</th>)}</tr>
+            <tr>{["Giorno", "Riparazioni", "Merce", "Art. 74", "Fatture", "Contanti", "POS", "Totale", "Versati", ""].map((h) => <th key={h} className="px-3 py-2 text-right first:text-left">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {dati.righe.map((r) => (
               <tr key={r.data} className={`cursor-pointer hover:bg-sky-50 ${r.vuoto ? "text-slate-400" : ""}`} onClick={() => setGiorno(r)} data-testid={`corr-row-${r.data}`}>
                 <td className="px-3 py-1.5 font-medium">{r.data.slice(8)} {MESI[mese].slice(0, 3)}</td>
                 {r.vuoto ? <td colSpan={8} className="px-3 py-1.5 text-right text-xs">— non inserito —</td> : (
-                  ["riparazioni", "merce", "art74", "fatture", "totale", "contanti", "pos", "versati"].map((k) => <td key={k} className={`px-3 py-1.5 text-right tabular-nums ${k === "totale" ? "font-semibold" : ""}`}>{r[k] ? eur(r[k]) : ""}</td>)
+                  ["riparazioni", "merce", "art74", "fatture", "contanti", "pos", "totale", "versati"].map((k) => <td key={k} className={`px-3 py-1.5 text-right tabular-nums ${k === "totale" ? "font-semibold" : ""}`}>{r[k] ? eur(r[k]) : ""}</td>)
                 )}
                 <td className="px-2 py-1.5 text-right">{!r.vuoto && <button className="text-slate-400 hover:text-emerald-600" title="Invia WhatsApp del giorno" onClick={(e) => { e.stopPropagation(); inviaWa(r.data); }} data-testid={`corr-wa-${r.data}`}><MessageCircle className="h-4 w-4" /></button>}</td>
               </tr>
             ))}
           </tbody>
           <tfoot className="bg-slate-50 font-semibold">
-            <tr><td className="px-3 py-2">Totale</td>{["riparazioni", "merce", "art74", "fatture", "totale", "contanti", "pos", "versati"].map((k) => <td key={k} className="px-3 py-2 text-right tabular-nums" data-testid={`corr-tot-${k}`}>{eur(t[k])}</td>)}<td /></tr>
+            <tr><td className="px-3 py-2">Totale</td>{["riparazioni", "merce", "art74", "fatture", "contanti", "pos", "totale", "versati"].map((k) => <td key={k} className="px-3 py-2 text-right tabular-nums" data-testid={`corr-tot-${k}`}>{eur(t[k])}</td>)}<td /></tr>
           </tfoot>
         </table>
       </div>
