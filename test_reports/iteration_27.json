@@ -1,0 +1,31 @@
+{
+  "summary": "Iter 27 - Frontend testing per features aggiunte in /contabilita: (1) pulsante admin 'Nuovo negozio' + dialog, (2) blocco 'Confronto negozi' nel tab Report fatturato, (3) presenza pulsante 'Importa dai fogli Google' (NON premuto come richiesto). Tutti i 4 test case richiesti sono passati: login admin con 2FA via pyotp OK; creazione TEST_QA_Negozio via dialog -> toast 'creato e attivato' visibile, negozio auto-selezionato nel contabilita-store-select, valori (wa_numero=3888888888, email_to=qa-to@test.local, email_from=qa-from@test.local) persistiti e visibili nel tab Impostazioni; blocco confronto-negozi + confronto-table renderizzato con 3 righe reali (Gravedona € 79.332,69, Morbegno € 136.809,99, Sondrio € 252.286,59 — totali esattamente coerenti con GET /api/contabilita/report/confronto?anno=2026); Corrispettivi Morbegno settembre 2026 mostra 26 giorni compilati e Totale Corrispettivi € 10.261,00. Cleanup DB eseguito: TEST_QA_Negozio rimosso da stores (1) e contabilita_config (1).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "NuovoNegozioDialog / GiornoDialog", "issues": ["Console warning React: 'Missing Description or aria-describedby={undefined} for DialogContent'. Non blocca funzionalità ma è un'a11y minor: aggiungere <DialogDescription> o aria-describedby al DialogContent."]},
+      {"screen": "Corrispettivi totali cards (Contanti/POS/Spese/IVA)", "issues": ["Formato migliaia mancante: '€ 2810,00' invece di '€ 2.810,00' (headless ICU). Già noto da iter 26. Solo la card 'Totale Corrispettivi' mostra separatore corretto (€ 10.261,00) - probabilmente perché ha stile diverso; verificare Intl.NumberFormat unificato in eur()."]},
+      {"screen": "ConfrontoNegozi", "issues": ["Include automaticamente anche negozi appena creati con 0€: durante il test TEST_QA_Negozio è stato incluso come 4a riga (€ 0,00). Il grafico e la tabella hanno resistito bene, ma dopo cleanup DB torna a 3 righe. Nessuna azione, solo nota."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Minor a11y) Aggiungere DialogDescription (o aria-describedby) a NuovoNegozioDialog e agli altri Dialog che emettono la warning.",
+    "(Minor UX) Uniformare formattazione EUR con Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}) in shared.eur() - già segnalato in iter 26."
+  ],
+  "critical_code_review_comments": [
+    "NuovoNegozioDialog.jsx: DialogContent senza DialogDescription genera warning React. Aggiungere descrizione accessibile.",
+    "NuovoNegozioDialog.jsx: valore di default wa_numero=3792773557 hardcoded (numero admin?). Meglio stringa vuota o commento esplicativo.",
+    "NuovoNegozioDialog.jsx: dopo salva onCreated(id) e setStoreId(id) in Contabilita.jsx: ok, ma se la POST fallisce a metà (store creato ma config no) la funzione backend deve essere transazionale o compensare - verificare in contabilita.py nuovo_negozio.",
+    "ConfrontoNegozi.jsx: nasconde il blocco se negozi.length<2 (`return null`). OK. Ma include TUTTI gli store con corrispettivi condivisi, anche negozi appena creati a 0€: forse filtrare lato client i negozi con tot=0 su tutti i mesi, o mostrare badge 'nessun dato'."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skip - backend già verificato dal main agent)", "frontend": "100% (4/4 test case richiesti)"},
+  "test_credentials": "Admin rsriparazioni@gmail.com / EnricoRS@26 + TOTP con secret ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV (via pyotp per UI, /tmp/tok.sh per API).",
+  "seed_data_creation": "TEST_QA_Negozio creato via UI (dialog) e RIMOSSO al termine da collezioni stores (1 doc) e contabilita_config (1 doc). DB pulito.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Feature 'Nuovo negozio', 'Confronto negozi' e presenza pulsante 'Importa dai fogli Google' verificati in UI end-to-end. Il dialog NuovoNegozio ha data-testid: nuovo-negozio-btn/dialog/nome/referente/telefono_avvisi/wa_numero/email_to/email_from/condividi/salva. Il blocco Confronto è confronto-negozi con confronto-table (righe confronto-row-{id}, colonna 'Totale' penultima, 'vs anno-1' ultima). NON premere corrispettivi-importa-fogli né corrispettivi-email-btn come da istruzioni main agent. Attenzione: il pulsante 'Nuovo negozio' aggiunge il negozio anche a Confronto negozi (impatto minore). Store IDs reali invariati da iter 26."
+}
