@@ -456,3 +456,12 @@ Vedi /app/memory/test_credentials.md
 ## 2026-09-30 – Fascicolo cliente PDF + Report Compensi PDF
 - /clients/{id}/attachments/merged ora genera "Fascicolo": copertina anagrafica (telefono, CF, POD/PDR, fornitori, stato, negozio, privacy, elenco allegati) + tutti gli allegati PDF e immagini (immagini convertite in pagina A4). Pulsante in ClientDetail "Fascicolo PDF (dati + documenti)"; sezione rinominata "Documenti e bollette (allegati)" con upload PDF/immagine.
 - GET /api/compensi/report-pdf?anno&mese&per_pagamento&dest_id= → PDF una pagina per destinatario (righe, lordo, trattenuta, IVA, addebito laboratorio, gare in attesa, ricariche/SIM, netto). Bottoni "PDF tutti" e "PDF" per destinatario in CompensiCalcolo. Testo sanificato latin-1.
+
+## Corrispettivi & Contabilità (2026-09-30)
+- Nuovo modulo `backend/contabilita.py` (router `/api/contabilita/*`), pagina `/contabilita` (tab Corrispettivi, Punto di pareggio, Report fatturato, Invii e impostazioni) — componenti in `frontend/src/components/contabilita/`
+- Corrispettivi giornalieri per negozio (riparazioni, merce, art.74, fatture con n°/pagamento, contanti, POS, versati, IVA 22% scorporata) + spese cassa/prima nota; PDF mensile (fpdf2, landscape)
+- Invii: WhatsApp alle 20:30 (cron `corrispettivi-giornalieri`) un messaggio per numero destinatario con tutti i negozi che lo hanno impostato, dal WhatsApp del negozio (default 3792773557 per Morbegno/Gravedona/Sondrio); email il 1° del mese alle 6:30 (cron `corrispettivi-mensile`) con link PDF (60gg) — mittente via servizio Emergent con from_name/reply_to = mail configurata (Sondrio→marisa@ncservizi.it da amministrazioners.gruppo@gmail.com; Morbegno/Gravedona→info@paghesas.it da rscontabilita@gmail.com). Scelta utente: NO SMTP Gmail reale
+- Permessi: negozio vede solo i propri store; admin vede completo solo negozi con `condividi_admin` (default Morbegno/Gravedona/Sondrio), gli altri solo badge attivo/ultimo inserimento. Config per negozio in `contabilita_config`
+- PDP: voci libere per negozio (precaricate dai fogli; set diverso per Sondrio), valori mensili in `pdp`, corrispettivi negozio inseriti automaticamente nelle entrate. Report annuale: fatturato per mese ENEL/Altro vs anno precedente (corrispettivi + entrate PDP), valori storici manuali in `fatturato_storico`
+- Test: iteration_26 — 20/20 backend PASS, frontend E2E PASS. Dati di test ripuliti
+- Backlog: import automatico storico 2025/2026 dai fogli Google del report; notifiche email compensi venditori (P2); refactor server.py (P2)
