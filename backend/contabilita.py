@@ -637,6 +637,56 @@ async def importa_corrispettivi_fogli(request: Request):
     return {"esito": esito, "giorni": sum(e.get("giorni", 0) for e in esito), "spese": sum(e.get("spese", 0) for e in esito), "errori": [e for e in esito if e.get("errore")]}
 
 
+class NuovoNegozioInput(BaseModel):
+    nome: str
+    referente: str = ""
+    telefono_avvisi: str = ""
+    wa_numero: str = ""
+    email_to: str = ""
+    email_from: str = ""
+    condividi_admin: bool = True
+
+
+@router.post("/negozi")
+async def nuovo_negozio(body: NuovoNegozioInput, request: Request):
+    user = await _user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    db = _d["db"]
+    nome = body.nome.strip()
+    if not nome:
+        raise HTTPException(status_code=400, detail="Nome negozio obbligatorio")
+    if await db.stores.find_one({"nome": {"$regex": f"^{re.escape(nome)}$", "$options": "i"}}):
+        raise HTTPException(status_code=400, detail="Esiste già un negozio con questo nome")
+    now = datetime.now(timezone.utc).isoformat()
+    store = {"id": str(uuid.uuid4()), "nome": nome, "referente": body.referente.strip(), "tipo": "negozio", "note": "", "review_link": "",
+             "telefono_avvisi": re.sub(r"\D", "", body.telefono_avvisi), "email_commercialista": body.email_to.strip(), "msg_privacy": "", "msg_pronto": "",
+             "msg_recensione": "", "msg_promemoria": "", "pagato": False, "last_payment_date": None, "created_at": now}
+    await db.stores.insert_one(store)
+    await db.contabilita_config.update_one({"store_id": store["id"]}, {"$set": {
+        "store_id": store["id"], "condividi_admin": body.condividi_admin, "wa_numero": re.sub(r"\D", "", body.wa_numero), "wa_attivo": bool(body.wa_numero),
+        "email_to": body.email_to.strip(), "email_from": body.email_from.strip(), "email_attivo": bool(body.email_to), "updated_at": now}}, upsert=True)
+    return {"id": store["id"], "nome": nome}
+
+
+@router.get("/report/confronto")
+async def report_confronto(anno: int, request: Request):
+    user = await _user(request)
+    negozi = []
+    for store, cfg, completo in await _stores_visibili(user):
+        if not completo:
+            continue
+        mesi = []
+        for m in range(1, 13):
+            cur = await _fatturato_mese(store, anno, m)
+            ap = await _fatturato_mese(store, anno - 1, m)
+            mesi.append({"mese": m, "tot": round(cur["enel"] + cur["altro"], 2), "tot_ap": round(ap["enel"] + ap["altro"], 2)})
+        tot, tot_ap = round(sum(x["tot"] for x in mesi), 2), round(sum(x["tot_ap"] for x in mesi), 2)
+        negozi.append({"id": store["id"], "nome": store["nome"], "mesi": mesi, "tot": tot, "tot_ap": tot_ap,
+                       "pct": round((tot - tot_ap) / tot_ap * 100, 2) if tot_ap and tot else None})
+    return {"anno": anno, "mesi": [MESI_IT[m] for m in range(1, 13)], "negozi": negozi}
+
+
 class StoricoInput(BaseModel):
     enel: float = 0
     altro: float = 0

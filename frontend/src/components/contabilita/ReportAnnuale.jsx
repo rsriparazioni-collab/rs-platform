@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Num, PeriodoPicker, eur } from "./shared";
+import { ConfrontoNegozi } from "./ConfrontoNegozi";
 
 const Pct = ({ v }) => v == null ? <span className="text-slate-300">—</span> : <span className={v >= 0 ? "text-emerald-700" : "text-rose-700"}>{v > 0 ? "+" : ""}{v.toFixed(2)}%</span>;
 
@@ -25,6 +26,7 @@ export const ReportAnnuale = ({ storeId, anno, setAnno, isAdmin }) => {
   const max = Math.max(...r.mesi.map((m) => Math.max(m.tot, m.tot_ap)), 1);
   return (
     <div className="space-y-5" data-testid="report-panel">
+      <ConfrontoNegozi anno={anno} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodoPicker anno={anno} setAnno={setAnno} soloAnno />
         {isAdmin && <Button size="sm" variant="outline" onClick={importa} disabled={importing} data-testid="report-importa-fogli">{importing ? "Importo…" : "Importa storico dai fogli Google"}</Button>}

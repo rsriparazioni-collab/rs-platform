@@ -6,6 +6,7 @@ import { Corrispettivi } from "../components/contabilita/Corrispettivi";
 import { PuntoPareggio } from "../components/contabilita/PuntoPareggio";
 import { ReportAnnuale } from "../components/contabilita/ReportAnnuale";
 import { ContabilitaImpostazioni } from "../components/contabilita/ContabilitaImpostazioni";
+import { NuovoNegozioDialog } from "../components/contabilita/NuovoNegozioDialog";
 
 const oggi = new Date();
 
@@ -32,11 +33,14 @@ export default function Contabilita() {
           <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">Corrispettivi & Contabilità</h1>
           <p className="mt-1 text-sm text-slate-500">Corrispettivi giornalieri, spese di cassa, punto di pareggio e andamento del fatturato per negozio.</p>
         </div>
-        {completi.length > 0 && (
-          <select value={storeId} onChange={(e) => setStoreId(e.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm" data-testid="contabilita-store-select">
-            {completi.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-          </select>
-        )}
+        <div className="flex items-center gap-2">
+          {meta.is_admin && <NuovoNegozioDialog onCreated={(id) => { setStoreId(id); loadMeta(); }} />}
+          {completi.length > 0 && (
+            <select value={storeId} onChange={(e) => setStoreId(e.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm" data-testid="contabilita-store-select">
+              {completi.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
+            </select>
+          )}
+        </div>
       </div>
       {soloStato.length > 0 && (
         <div className="flex flex-wrap gap-2" data-testid="contabilita-stato-altri">
