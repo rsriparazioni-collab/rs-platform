@@ -6,8 +6,14 @@ import { Num, PeriodoPicker, eur } from "./shared";
 
 const Pct = ({ v }) => v == null ? <span className="text-slate-300">—</span> : <span className={v >= 0 ? "text-emerald-700" : "text-rose-700"}>{v > 0 ? "+" : ""}{v.toFixed(2)}%</span>;
 
-export const ReportAnnuale = ({ storeId, anno, setAnno }) => {
+export const ReportAnnuale = ({ storeId, anno, setAnno, isAdmin }) => {
   const [r, setR] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const importa = async () => {
+    setImporting(true);
+    try { const x = await api.post("/contabilita/report/importa-fogli"); toast.success(x.data.esito.map((e) => `${e.negozio}: ${e.errore || e.mesi_importati + " mesi"}`).join(" · ")); load(); }
+    catch (e) { toast.error(apiError(e)); } finally { setImporting(false); }
+  };
   const [edit, setEdit] = useState(null);
   const load = useCallback(() => api.get("/contabilita/report/annuale", { params: { store_id: storeId, anno } }).then((x) => setR(x.data)).catch((e) => toast.error(apiError(e))), [storeId, anno]);
   useEffect(() => { load(); }, [load]);
@@ -21,7 +27,8 @@ export const ReportAnnuale = ({ storeId, anno, setAnno }) => {
     <div className="space-y-5" data-testid="report-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodoPicker anno={anno} setAnno={setAnno} soloAnno />
-        <p className="text-xs text-slate-500">Fatturato = corrispettivi inseriti + entrate del punto di pareggio (ENEL/Energia separato). Clicca un mese per inserire i valori storici quando non ci sono corrispettivi.</p>
+        {isAdmin && <Button size="sm" variant="outline" onClick={importa} disabled={importing} data-testid="report-importa-fogli">{importing ? "Importo…" : "Importa storico dai fogli Google"}</Button>}
+        <p className="w-full text-xs text-slate-500">Fatturato = corrispettivi inseriti + entrate del punto di pareggio (ENEL/Energia separato). Clicca un mese per inserire i valori storici quando non ci sono corrispettivi.</p>
       </div>
       <div className="flex h-40 items-end gap-2 rounded-xl border border-slate-200 bg-white p-4" data-testid="report-grafico">
         {r.mesi.map((m) => (

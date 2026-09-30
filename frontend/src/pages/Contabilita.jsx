@@ -57,7 +57,7 @@ export default function Contabilita() {
           </TabsList>
           <TabsContent value="corrispettivi"><Corrispettivi {...periodo} /></TabsContent>
           <TabsContent value="pdp"><PuntoPareggio {...periodo} /></TabsContent>
-          <TabsContent value="report"><ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} /></TabsContent>
+          <TabsContent value="report"><ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="impostazioni"><ContabilitaImpostazioni meta={meta} storeId={storeId} reload={loadMeta} /></TabsContent>
         </Tabs>
       )}

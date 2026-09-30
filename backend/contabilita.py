@@ -546,6 +546,78 @@ async def report_annuale(store_id: str, anno: int, request: Request):
     return {"store": {"id": store["id"], "nome": store["nome"]}, "anno": anno, "mesi": mesi, "totali": tot}
 
 
+FOGLI_STORICO = {"sondrio": ("1CkU75t1-IR4qibi_Elst24LJJzVhGlLZK4yoAYqNOMc", "0", "tot"),
+                 "morbegno": ("1CkU75t1-IR4qibi_Elst24LJJzVhGlLZK4yoAYqNOMc", "1406738088", "split"),
+                 "gravedona": ("1CkU75t1-IR4qibi_Elst24LJJzVhGlLZK4yoAYqNOMc", "1680449865", "tot")}
+MESI_UP = [m.upper() for m in MESI_IT]
+
+
+def _num_it(v: str) -> float:
+    s = (v or "").strip().replace("€", "").replace(".", "").replace(",", ".")
+    try:
+        return round(float(s), 2)
+    except ValueError:
+        return 0.0
+
+
+def _parse_storico(csv_text: str, modo: str) -> list:
+    import csv
+    import io
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    header = next((r for r in rows if r and r[0].strip().lower() == "fatturato"), None)
+    if not header:
+        return []
+    anni = []
+    for i, h in enumerate(header):
+        m = re.match(r"^\s*(20\d\d)\s*(ENEL|ALTRO|tot)?\s*$", h.strip(), re.I)
+        if m and (modo == "tot" and not m.group(2) or modo == "split" and m.group(2) and m.group(2).lower() != "tot"):
+            anni.append((int(m.group(1)), (m.group(2) or "").lower(), i))
+    out = []
+    for r in rows:
+        nome = (r[0] if r else "").strip().upper()
+        if nome not in MESI_UP or nome == "":
+            continue
+        mese = MESI_UP.index(nome)
+        per_anno: dict = {}
+        for anno, tipo, i in anni:
+            v = _num_it(r[i]) if i < len(r) else 0.0
+            d = per_anno.setdefault(anno, {"enel": 0.0, "altro": 0.0})
+            d["enel" if tipo == "enel" else "altro"] += v
+        for anno, d in per_anno.items():
+            if d["enel"] or d["altro"]:
+                out.append({"anno": anno, "mese": mese, **d})
+    return out
+
+
+@router.post("/report/importa-fogli")
+async def importa_storico_fogli(request: Request):
+    import httpx
+    user = await _user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    db = _d["db"]
+    stores = {_slug(s["nome"]): s async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    esito = []
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        for slug, (sheet_id, gid, modo) in FOGLI_STORICO.items():
+            store = stores.get(slug)
+            if not store:
+                esito.append({"negozio": slug, "errore": "negozio non trovato"})
+                continue
+            resp = await client.get(f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}")
+            if resp.status_code != 200:
+                esito.append({"negozio": store["nome"], "errore": f"foglio non leggibile ({resp.status_code})"})
+                continue
+            righe = _parse_storico(resp.text, modo)
+            for r in righe:
+                await db.fatturato_storico.update_one({"store_id": store["id"], "anno": r["anno"], "mese": r["mese"]},
+                                                      {"$set": {"enel": round(r["enel"], 2), "altro": round(r["altro"], 2), "fonte": "foglio_google",
+                                                                "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+            esito.append({"negozio": store["nome"], "mesi_importati": len(righe), "anni": sorted({r["anno"] for r in righe})})
+    await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "import_storico", "esito": esito, "by": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()})
+    return {"esito": esito}
+
+
 class StoricoInput(BaseModel):
     enel: float = 0
     altro: float = 0
