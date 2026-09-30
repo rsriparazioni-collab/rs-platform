@@ -680,9 +680,13 @@ async def report_confronto(anno: int, request: Request):
         for m in range(1, 13):
             cur = await _fatturato_mese(store, anno, m)
             ap = await _fatturato_mese(store, anno - 1, m)
-            mesi.append({"mese": m, "tot": round(cur["enel"] + cur["altro"], 2), "tot_ap": round(ap["enel"] + ap["altro"], 2)})
+            pdp = await _pdp_calcolo(store, anno, m)
+            ha_pdp = pdp["tot_uscite"] > 0
+            mesi.append({"mese": m, "tot": round(cur["enel"] + cur["altro"], 2), "tot_ap": round(ap["enel"] + ap["altro"], 2),
+                         "pdp_risultato": pdp["risultato"] if ha_pdp else None, "pdp_uscite": pdp["tot_uscite"] if ha_pdp else None})
         tot, tot_ap = round(sum(x["tot"] for x in mesi), 2), round(sum(x["tot_ap"] for x in mesi), 2)
-        negozi.append({"id": store["id"], "nome": store["nome"], "mesi": mesi, "tot": tot, "tot_ap": tot_ap,
+        pdp_tot = round(sum(x["pdp_risultato"] for x in mesi if x["pdp_risultato"] is not None), 2) if any(x["pdp_risultato"] is not None for x in mesi) else None
+        negozi.append({"id": store["id"], "nome": store["nome"], "mesi": mesi, "tot": tot, "tot_ap": tot_ap, "pdp_tot": pdp_tot,
                        "pct": round((tot - tot_ap) / tot_ap * 100, 2) if tot_ap and tot else None})
     return {"anno": anno, "mesi": [MESI_IT[m] for m in range(1, 13)], "negozi": negozi}
 
