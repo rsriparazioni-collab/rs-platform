@@ -447,3 +447,8 @@ Vedi /app/memory/test_credentials.md
 - Bug: `wa_session_cliente` mandava privacy/recensione dei clienti riparazioni/telefonia dal numero CambiaOra (Sondrio) con testo CambiaOra. Fix: clienti non energia → sessione del negozio (laboratorio per riparazioni Morbegno) e testo recensione del negozio (msg_recensione + review_link). ENEL Gravedona → sessione Gravedona; CambiaOra → Sondrio (voluto).
 - GET /api/whatsapp/mappa-invii: per negozio elenco flussi → sessione (nome/numero/connessa) → anteprima testo, con problemi (sessione non collegata, review_link/telefono_avvisi mancanti). UI: Dashboard → Stato invii → "Chi invia cosa" (MappaInviiWhatsApp.jsx).
 - Test dry-run Gravedona: privacy/pronto/recensione riparazione, privacy/recensione telefonia, privacy/recensione ENEL da Gravedona; CambiaOra da Sondrio.
+
+## 2026-09-30 – Addebito laboratorio nei compensi + minuti base + chi ha comprato il ricambio
+- report_laboratorio.calcola: `minuti_minimi` (default 10, param) → manodopera = max(minuti, minuti_minimi)×0,22775; solo manodopera min 15 €. `ricambio_acquistato_da` (nuovo campo servizio: negozio|laboratorio, vuoto=auto: ricambio da magazzino Morbegno → laboratorio, altro magazzino → negozio, ricambio manuale → laboratorio). Addebito ricambio solo se acquistato dal laboratorio. Export xlsx con colonne nuove.
+- `addebiti_negozi(mese)` → compensi.calcola aggiunge riga "Addebito laboratorio" (voce addebito_laboratorio, totale negativo) per negozio ≠ Morbegno; netto = lordo − trattenuta − IVA − addebito (addebito fuori dalla base % trattenuta). UI CompensiCalcolo mostra "Laboratorio −€".
+- ServizioForm: select "Ricambio acquistato da" quando con_ricambio. ReportLaboratorio: input "Minuti base", colonna acquistato da, minuti → calcolati.

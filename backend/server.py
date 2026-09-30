@@ -4145,6 +4145,7 @@ class ServizioInput(BaseModel):
     problema: str = ""
     con_ricambio: bool = False
     tipo_ricambio: str = "altro"
+    ricambio_acquistato_da: str = ""  # negozio | laboratorio (vuoto = dedotto dal magazzino di provenienza)
     costo_componente: Optional[float] = None
     minuti_lavoro: Optional[int] = None
     prodotto: str = ""
@@ -5727,8 +5728,9 @@ api_router.include_router(gara_windtre_module.router)
 trasferimenti_module.setup(db=db, get_current_user=get_current_user, xlsx_response=_xlsx_response)
 api_router.include_router(trasferimenti_module.router)
 import report_laboratorio as report_laboratorio_module
-report_laboratorio_module.setup(db=db, get_current_user=get_current_user, xlsx_response=_xlsx_response, costi_riparazione=costi_riparazione)
+report_laboratorio_module.setup(db=db, get_current_user=get_current_user, xlsx_response=_xlsx_response, costi_riparazione=costi_riparazione, spese_spedizione=SPESE_SPEDIZIONE_PEZZO)
 api_router.include_router(report_laboratorio_module.router)
+compensi_module.setup(addebiti_laboratorio=report_laboratorio_module.addebiti_negozi)
 compensi_module.setup(ricariche_per_store=ricariche_module.ricariche_per_store, ricariche_mapping=ricariche_module._mapping,
                       gara_windtre=gara_windtre_module.generato_per_destinatario)
 

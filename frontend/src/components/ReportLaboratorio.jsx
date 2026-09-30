@@ -18,13 +18,14 @@ export default function ReportLaboratorio({ open, onClose }) {
   const [tecnico, setTecnico] = useState("");
   const [includi, setIncludi] = useState(false);
   const [minMan, setMinMan] = useState(15);
+  const [minMin, setMinMin] = useState(10);
   const [data, setData] = useState(null);
-  const params = { anno, mese, tecnico_id: tecnico, includi_non_attribuite: includi, min_manodopera: minMan };
+  const params = { anno, mese, tecnico_id: tecnico, includi_non_attribuite: includi, min_manodopera: minMan, minuti_minimi: minMin };
 
   const load = useCallback(() => {
     if (!open) return;
     api.get("/riparazioni/report-laboratorio", { params }).then((r) => { setData(r.data); if (!tecnico && r.data.tecnico_id) setTecnico(r.data.tecnico_id); }).catch((e) => toast.error(apiError(e)));
-  }, [open, anno, mese, tecnico, includi, minMan]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, anno, mese, tecnico, includi, minMan, minMin]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
 
   return (
@@ -41,8 +42,9 @@ export default function ReportLaboratorio({ open, onClose }) {
               <SelectContent>{data.tecnici.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select>
           )}
           <label className="flex items-center gap-2 text-sm text-slate-600">Min. manodopera € <Input type="number" step="0.5" className="h-9 w-20" value={minMan} onChange={(e) => setMinMan(parseFloat(e.target.value) || 0)} data-testid="replab-min" /></label>
+          <label className="flex items-center gap-2 text-sm text-slate-600">Minuti base <Input type="number" step="1" className="h-9 w-16" value={minMin} onChange={(e) => setMinMin(parseInt(e.target.value) || 0)} data-testid="replab-minuti" /></label>
           <label className="flex items-center gap-2 text-sm text-slate-600"><Switch checked={includi} onCheckedChange={setIncludi} data-testid="replab-includi" /> Includi riparazioni non attribuite {data?.non_attribuite > 0 && <span className="text-xs text-amber-700">({data.non_attribuite} nel mese)</span>}</label>
-          <Button variant="outline" className="ml-auto gap-2" onClick={() => downloadBlob(`/riparazioni/report-laboratorio/export?anno=${anno}&mese=${mese}&tecnico_id=${tecnico}&includi_non_attribuite=${includi}&min_manodopera=${minMan}`, `report_laboratorio_${anno}-${String(mese).padStart(2, "0")}.xlsx`)} data-testid="replab-export"><FileDown className="h-4 w-4" /> Excel</Button>
+          <Button variant="outline" className="ml-auto gap-2" onClick={() => downloadBlob(`/riparazioni/report-laboratorio/export?anno=${anno}&mese=${mese}&tecnico_id=${tecnico}&includi_non_attribuite=${includi}&min_manodopera=${minMan}&minuti_minimi=${minMin}`, `report_laboratorio_${anno}-${String(mese).padStart(2, "0")}.xlsx`)} data-testid="replab-export"><FileDown className="h-4 w-4" /> Excel</Button>
         </div>
 
         {data && (
@@ -69,8 +71,9 @@ export default function ReportLaboratorio({ open, onClose }) {
                   <tr key={r.id} className={r.attribuita ? "" : "text-slate-500"}>
                     <td className="px-4 py-1.5">{r.data}</td><td className="px-2 py-1.5 font-medium">{r.numero}</td>
                     <td className="px-2 py-1.5">{r.cliente} <span className="text-xs text-slate-500">{r.dispositivo}{r.guasto ? ` · ${r.guasto}` : ""}</span>{!r.attribuita && <span className="ml-1 text-xs text-amber-700">(non attribuita)</span>}</td>
-                    <td className="px-2 py-1.5"><span className={`status-badge ${r.tipo === "ricambio" ? "bg-sky-500/15 text-sky-700 border-sky-300" : "bg-violet-500/15 text-violet-700 border-violet-300"}`}>{r.tipo === "ricambio" ? `Ricambio${r.tipo_ricambio ? ` · ${r.tipo_ricambio}` : ""}` : "Solo manodopera"}</span></td>
-                    <td className="px-2 py-1.5">{r.minuti || "-"}</td><td className="px-2 py-1.5">{eur(r.ricambio)}</td><td className="px-2 py-1.5">{eur(r.manodopera)}</td><td className="px-4 py-1.5 font-semibold">{eur(r.totale)}</td>
+                    <td className="px-2 py-1.5"><span className={`status-badge ${r.tipo === "ricambio" ? "bg-sky-500/15 text-sky-700 border-sky-300" : "bg-violet-500/15 text-violet-700 border-violet-300"}`}>{r.tipo === "ricambio" ? `Ricambio${r.tipo_ricambio ? ` · ${r.tipo_ricambio}` : ""}` : "Solo manodopera"}</span>
+                      {r.tipo === "ricambio" && <p className={`mt-0.5 text-xs ${r.acquistato_da === "laboratorio" ? "text-sky-700" : "text-slate-500"}`} data-testid={`replab-acq-${r.id}`}>{r.acquistato_da === "laboratorio" ? `comprato dal laboratorio (${eur(r.costo_ricambio)})` : `comprato dal negozio: non addebitato`}</p>}</td>
+                    <td className="px-2 py-1.5">{r.minuti || "-"}{r.minuti_calcolati !== r.minuti && <span className="text-xs text-slate-400"> → {r.minuti_calcolati}</span>}</td><td className="px-2 py-1.5">{eur(r.ricambio)}</td><td className="px-2 py-1.5">{eur(r.manodopera)}</td><td className="px-4 py-1.5 font-semibold">{eur(r.totale)}</td>
                   </tr>
                 ))}
               </tbody>

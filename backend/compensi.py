@@ -320,6 +320,7 @@ async def calcola(mese: str, per_pagamento: bool = False) -> dict:
     destinatari = [("store", s["id"], s["nome"], s) for s in stores] + [("user", u["id"], u["name"], u) for u in users]
     ric_csv = await _d["ricariche_per_store"](mese)
     gara_wt = await _d["gara_windtre"](mese)
+    addebiti_lab = await _d["addebiti_laboratorio"](mese)
     out = []
     for tipo, dest_id, nome, obj in destinatari:
         righe = []
@@ -349,6 +350,11 @@ async def calcola(mese: str, per_pagamento: bool = False) -> dict:
                           "totale": round(totale, 2), "competenza": competenza, "pagamento": _shift(competenza, int(r.get("mesi_pagamento") or 0)),
                           "e_gara": bool(r.get("e_gara")), "gara_pagata": pagata})
         ev_mese = await eventi(mese)
+        lab = round(addebiti_lab.get(dest_id, 0.0), 2) if tipo == "store" else 0.0
+        if lab:
+            righe.append({"regola_id": "addebito_laboratorio", "nome": "Addebito laboratorio (riparazioni lavorate da Bruno: ricambi + manodopera)", "voce": "addebito_laboratorio",
+                          "conteggio": None, "importo_unitario": None, "modalita": "trattenuta", "totale": -lab, "competenza": mese, "pagamento": mese, "e_gara": False,
+                          "gara_pagata": True, "soglia": 0, "soglia_raggiunta": True})
         wt = round(gara_wt.get((tipo, dest_id), 0.0), 2)
         if wt:
             righe.append({"regola_id": "gara_windtre", "nome": "Gara WindTre/Very – compensi attivazioni riconosciute", "voce": "gara_windtre", "conteggio": None,
@@ -359,13 +365,15 @@ async def calcola(mese: str, per_pagamento: bool = False) -> dict:
         costo_sim = round(sum(e.get("costo_sim", 0) for e in sim_propri), 2)
         if not righe and not ricariche and not costo_sim:
             continue
-        lordo = round(sum(x["totale"] for x in righe if x["gara_pagata"]), 2)
+        lordo = round(sum(x["totale"] for x in righe if x["gara_pagata"] and x["voce"] != "addebito_laboratorio"), 2)
+        addebito_lab = round(-sum(x["totale"] for x in righe if x["voce"] == "addebito_laboratorio"), 2)
         in_attesa = round(sum(x["totale"] for x in righe if not x["gara_pagata"]), 2)
         pct = float(obj.get("trattenuta_pct") or 0) if tipo == "store" else 0.0
         trattenuta = round(lordo * pct / 100, 2)
         iva = round(trattenuta * 0.22, 2) if tipo == "store" and obj.get("trattenuta_iva") else 0.0
         out.append({"tipo": tipo, "id": dest_id, "nome": nome, "righe": righe, "lordo": lordo, "gare_in_attesa": in_attesa,
-                    "trattenuta_pct": pct, "trattenuta": trattenuta, "iva_su_trattenuta": iva, "netto": round(lordo - trattenuta - iva, 2),
+                    "trattenuta_pct": pct, "trattenuta": trattenuta, "iva_su_trattenuta": iva, "addebito_laboratorio": addebito_lab,
+                    "netto": round(lordo - trattenuta - iva - addebito_lab, 2),
                     "ricariche_da_richiedere": ricariche, "costo_sim": costo_sim})
     return {"mese": mese, "per_pagamento": per_pagamento, "destinatari": out, "totale_netto": round(sum(d["netto"] for d in out), 2)}
 

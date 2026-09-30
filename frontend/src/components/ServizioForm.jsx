@@ -328,6 +328,19 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                 <Switch checked={Boolean(form.con_ricambio)} onCheckedChange={(v) => set("con_ricambio", v)} data-testid="servizio-ricambio-switch" />
                 <Label className="text-sm">Richiede ricambio da ordinare</Label>
               </div>
+              {form.con_ricambio && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ricambio acquistato da</Label>
+                  <Select value={form.ricambio_acquistato_da || "auto"} onValueChange={(v) => set("ricambio_acquistato_da", v === "auto" ? "" : v)}>
+                    <SelectTrigger data-testid="servizio-ricambio-acquistato"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Automatico (dal magazzino di provenienza)</SelectItem>
+                      <SelectItem value="laboratorio">Laboratorio / magazzino Morbegno (addebitato al negozio)</SelectItem>
+                      <SelectItem value="negozio">Negozio (già pagato dal negozio)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {!isEdit ? (
                 <div className="space-y-1.5" data-testid="servizio-ricambio-mag-box">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ricambio dal magazzino</Label>

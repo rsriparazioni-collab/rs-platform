@@ -48,6 +48,7 @@ export const CompensiCalcolo = () => {
             <div className="ml-auto flex flex-wrap gap-4 text-sm">
               <span className="text-slate-500">Lordo <b className="text-slate-900">{eur(d.lordo)}</b></span>
               {d.trattenuta_pct > 0 && <span className="text-slate-500">Trattenuta {d.trattenuta_pct}% <b className="text-rose-700">−{eur(d.trattenuta)}</b>{d.iva_su_trattenuta > 0 && <> + IVA <b className="text-rose-700">−{eur(d.iva_su_trattenuta)}</b></>}</span>}
+              {d.addebito_laboratorio > 0 && <span className="text-slate-500">Laboratorio <b className="text-rose-700" data-testid={`compensi-addebito-lab-${d.id}`}>−{eur(d.addebito_laboratorio)}</b></span>}
               <span className="text-slate-500">Netto <b className="text-emerald-700" data-testid={`compensi-netto-${d.id}`}>{eur(d.netto)}</b></span>
               {d.gare_in_attesa > 0 && <span className="text-amber-700">Gare in attesa {eur(d.gare_in_attesa)}</span>}
               {(d.ricariche_da_richiedere > 0 || d.costo_sim > 0) && <span className="text-slate-500">Da richiedere: ricariche <b>{eur(d.ricariche_da_richiedere)}</b> · SIM <b>{eur(d.costo_sim)}</b></span>}
