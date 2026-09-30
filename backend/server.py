@@ -3359,13 +3359,22 @@ async def whatsapp_coda_stato(user: dict = Depends(get_current_user)):
             "ultimo_giro_coda": (loop or {}).get("last_run"), "dry_run": await wa_dry_run_attivo()}
 
 async def wa_session_cliente(c: dict) -> str:
-    """Sessione WhatsApp per i messaggi ENERGIA di un cliente."""
+    """Sessione WhatsApp per i messaggi di un cliente: CambiaOra → numero dedicato Sondrio; ENEL → Deborah o Gravedona;
+    riparazioni/telefonia (nessuna pratica energia) → numero del negozio (laboratorio per le riparazioni Morbegno)."""
     if is_enel(c):
         grav = await store_id_by_name(ENEL_GRAVEDONA_STORE_NAME)
         return grav if grav and c.get("venditore_id") == grav else ENEL_SESSION_DEBORAH
+    if not cliente_energia(c):
+        sid = c.get("venditore_id") or "default"
+        if c.get("gestione") == "riparazioni" and sid == await store_id_by_name(LAB_STORE_NAME):
+            return LAB_SESSION
+        return sid
     return await store_id_by_name(CAMBIAORA_STORE_NAME) or c.get("venditore_id") or "default"
 
 async def review_msg_cliente(c: dict) -> str:
+    if not cliente_energia(c):
+        store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
+        return store_msg(store, "msg_recensione") if store and store.get("review_link") else REVIEW_MSG
     if not is_enel(c):
         return REVIEW_MSG
     sess = await wa_session_cliente(c)
@@ -3499,6 +3508,58 @@ async def whatsapp_stato_invii(giorni: int = 7, user: dict = Depends(get_current
     out = sorted(gruppi.values(), key=lambda g: (-g["falliti"], g["nome"]))
     return {"giorni": giorni, "dry_run": await wa_dry_run_attivo(), "servizio_ok": bool(connessi), "totale_inviati": sum(g["inviati"] for g in out),
             "totale_falliti": sum(g["falliti"] for g in out), "negozi": out}
+
+@api_router.get("/whatsapp/mappa-invii")
+async def whatsapp_mappa_invii(user: dict = Depends(get_current_user)):
+    """Per ogni negozio: da quale numero parte ogni tipo di messaggio e cosa dice (anteprima)."""
+    stores = await db.stores.find({}, {"_id": 0}).sort("nome", 1).to_list(50)
+    allowed = wa_sessions_allowed(user)
+    connessi: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=5) as http_client:
+            resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
+        for s in resp.json().get("sessions", []):
+            num = ((s.get("user") or {}).get("id") or "").split(":")[0].split("@")[0]
+            connessi[s.get("session")] = {"connessa": bool(s.get("connected")), "numero": num, "nome": (s.get("user") or {}).get("name", "")}
+    except Exception:
+        pass
+    nomi = {s["id"]: s["nome"] for s in stores}
+    nomi.update({LAB_SESSION: "Laboratorio (Bruno)", ENEL_SESSION_DEBORAH: "ENEL Deborah", "default": "Predefinita"})
+    msgs_enel = await messaggi_enel()
+    sondrio = await store_id_by_name(CAMBIAORA_STORE_NAME)
+    grav = await store_id_by_name(ENEL_GRAVEDONA_STORE_NAME)
+    lab_store = await store_id_by_name(LAB_STORE_NAME)
+
+    def sess(sid: str) -> dict:
+        info = connessi.get(sid, {})
+        return {"session": sid, "nome": nomi.get(sid, sid), "numero": info.get("numero", ""), "connessa": info.get("connessa")}
+
+    out = []
+    for s in stores:
+        if allowed is not None and s["id"] not in allowed:
+            continue
+        rip_sess = LAB_SESSION if s["id"] == lab_store else s["id"]
+        enel_sess = grav if s["id"] == grav else ENEL_SESSION_DEBORAH
+        righe = [
+            {"flusso": "CambiaOra – privacy (nuovo cliente luce/gas)", "da": sess(sondrio), "a": "cliente", "testo": store_msg(s, "msg_privacy", nome="Mario")},
+            {"flusso": "CambiaOra – recensione", "da": sess(sondrio), "a": "cliente", "testo": REVIEW_MSG},
+            {"flusso": "ENEL – privacy", "da": sess(enel_sess), "a": "cliente", "testo": store_msg(s, "msg_privacy", nome="Mario")},
+            {"flusso": "ENEL – recensione", "da": sess(enel_sess), "a": "cliente", "testo": msgs_enel["recensione_gravedona" if enel_sess == grav else "recensione_deborah"]},
+            {"flusso": "ENEL – avviso truffe (cron)", "da": sess(enel_sess), "a": "cliente", "testo": msgs_enel["truffe"]},
+            {"flusso": "Riparazione – privacy", "da": sess(rip_sess), "a": "cliente", "testo": store_msg(s, "msg_privacy", nome="Mario")},
+            {"flusso": "Riparazione – pronta in laboratorio (avviso al negozio)", "da": sess(LAB_SESSION if connessi.get(LAB_SESSION, {}).get("connessa") else rip_sess), "a": f"negozio {s['nome']} ({(s.get('telefono_avvisi') or s.get('telefono') or connessi.get(s['id'], {}).get('numero') or 'NESSUN NUMERO')})",
+             "testo": f"Laboratorio: la riparazione N. RT… (dispositivo di Mario Rossi) è PRONTA. Passa a ritirarla dal laboratorio e portala in negozio {s['nome']}; poi metti lo stato 'Pronto da ritirare' per avvisare il cliente."},
+            {"flusso": "Riparazione – pronta da ritirare (al cliente)", "da": sess(rip_sess), "a": "cliente", "testo": store_msg(s, "msg_pronto", nome="Mario", dispositivo="iPhone 12", numero="RT123")},
+            {"flusso": "Riparazione – recensione (alla consegna)", "da": sess(rip_sess), "a": "cliente", "testo": review_message_for_store(s) or "⚠️ Nessun link recensione impostato: messaggio NON inviato"},
+            {"flusso": "Riparazione – promemoria ritiro (cron)", "da": sess(rip_sess), "a": "cliente", "testo": "Promemoria: il tuo dispositivo è pronto da ritirare in negozio…"},
+            {"flusso": "Telefonia (SIM/Internet/Fisso) – privacy", "da": sess(s["id"]), "a": "cliente", "testo": store_msg(s, "msg_privacy", nome="Mario")},
+            {"flusso": "Telefonia – recensione", "da": sess(s["id"]), "a": "cliente", "testo": review_message_for_store(s) or "⚠️ Nessun link recensione impostato: messaggio NON inviato"},
+            {"flusso": "Telefonia – scadenza vincolo / offerta annuale (cron)", "da": sess(s["id"]), "a": "cliente", "testo": store_msg(s, "msg_vincolo", nome="Mario", cognome="Rossi")},
+            {"flusso": "Riparazioni ferme (cron, al negozio)", "da": sess(s["id"]), "a": f"negozio ({s.get('telefono_avvisi') or 'NESSUN telefono avvisi'})", "testo": "Riepilogo riparazioni ferme da più giorni…"},
+        ]
+        problemi = [r["flusso"] for r in righe if r["da"].get("connessa") is not True]
+        out.append({"store_id": s["id"], "negozio": s["nome"], "review_link": bool(s.get("review_link")), "telefono_avvisi": s.get("telefono_avvisi") or "", "righe": righe, "problemi": problemi})
+    return {"negozi": out, "dry_run": await wa_dry_run_attivo()}
 
 @api_router.get("/whatsapp/sessions-summary")
 async def whatsapp_sessions_summary(admin: dict = Depends(require_admin)):

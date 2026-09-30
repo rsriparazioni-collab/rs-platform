@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown } from "lucide-react";
 import api from "../lib/api";
+import MappaInviiWhatsApp from "./MappaInviiWhatsApp";
 import { fmtDateTime } from "../lib/constants";
 
 const TIPI = { privacy: "Privacy", recensione: "Recensione", pronto: "Pronto ritiro", avviso_negozio: "Avviso negozio", scadenza: "Scadenza", digest: "Digest", obiettivo: "Obiettivo", test: "Test" };
@@ -24,6 +25,7 @@ export default function StatoInviiWhatsApp() {
             {!data.servizio_ok && <span className="ml-2 status-badge bg-rose-500/15 text-rose-700 border-rose-300">servizio WhatsApp non raggiungibile</span>}
           </p>
         </div>
+        <MappaInviiWhatsApp />
         <button type="button" onClick={load} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100" data-testid="stato-invii-refresh"><RefreshCw className="h-4 w-4" /></button>
       </div>
       <div className="grid gap-2 p-4 md:grid-cols-2 xl:grid-cols-3">

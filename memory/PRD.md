@@ -442,3 +442,8 @@ Vedi /app/memory/test_credentials.md
 - Bug: cliente creato da Riparazioni/Telefonia riceveva lavorazione "da_quotare" e gestione "cambiaora" (stati energia). Causa: default ClientInput (lavorazione da_quotare, gestione cambiaora, tipo_bolletta luce).
 - Fix server.py: `cliente_energia(c)` (enel/data_contratto/pod/pdr/fornitore/nuovo_fornitore oppure origine non riparazione/telefonia). create_client: se non energia → lavorazione "" e gestione riparazioni|telefonia; log "cliente_inserito". Migrazione startup `migra_stati_clienti_non_energia` (origine riparazione/telefonia + da_quotare senza dati energia).
 - list_clients: `stato_servizio` (ultimo servizio: tipo+stato) per clienti non energia. UI Clienti: colonna Lavorazione mostra "Riparazione: In lavorazione" / "SIM: Attiva" ecc., "Nessuna pratica energia" se nulla; Pagato "-" per non energia. ClientDetail badge "Nessuna pratica luce/gas".
+
+## 2026-09-28 – Fix canali WhatsApp Gravedona + "Mappa invii"
+- Bug: `wa_session_cliente` mandava privacy/recensione dei clienti riparazioni/telefonia dal numero CambiaOra (Sondrio) con testo CambiaOra. Fix: clienti non energia → sessione del negozio (laboratorio per riparazioni Morbegno) e testo recensione del negozio (msg_recensione + review_link). ENEL Gravedona → sessione Gravedona; CambiaOra → Sondrio (voluto).
+- GET /api/whatsapp/mappa-invii: per negozio elenco flussi → sessione (nome/numero/connessa) → anteprima testo, con problemi (sessione non collegata, review_link/telefono_avvisi mancanti). UI: Dashboard → Stato invii → "Chi invia cosa" (MappaInviiWhatsApp.jsx).
+- Test dry-run Gravedona: privacy/pronto/recensione riparazione, privacy/recensione telefonia, privacy/recensione ENEL da Gravedona; CambiaOra da Sondrio.
