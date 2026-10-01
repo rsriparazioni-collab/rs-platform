@@ -6,6 +6,7 @@ import re
 import asyncio
 import hmac
 import magazzino_ricambi as magazzino_ricambi_module
+import vendite_ordine as vendite_ordine_module
 import trasferimenti as trasferimenti_module
 import compensi as compensi_module
 import io
@@ -4212,6 +4213,10 @@ class ServizioInput(BaseModel):
     esito_attivazione: str = "riconosciuta"  # riconosciuta | in_attesa | annullata | respinta | non_riconosciuta | stornata
     magazzino_item_id: str = ""  # accessori/vendita: articolo di magazzino da scaricare
     quantita: int = 1
+    da_ordinare: bool = False  # vendita su ordinazione (prodotto non in magazzino)
+    acconto: Optional[float] = None
+    ordine_fornitore: str = ""
+    ordine_articolo: Optional[dict] = None  # {nome, marca, modello, costo, prezzo_vendita, codice, categoria}
     esito_riparazione: str = ""  # normale | garanzia | ricambio_usato | scheda_madre | non_riparabile | preventivo_rifiutato
 
 SECRET_FIELDS = ("codice_sblocco", "account_password")
@@ -4326,7 +4331,9 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
     data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_at": now, "updated_at": now,
                  "last_payment_date": date.today().isoformat() if data.get("pagato") else None,
                  "privacy_firmata": False, "privacy_msg_sent_at": None, "review_msg_sent_at": None})
-    if data["tipo"] in ("accessori", "vendita") and data.get("magazzino_item_id"):
+    if data["tipo"] in ("accessori", "vendita") and data.get("da_ordinare"):
+        await vendite_ordine_module.apri_ordine(data, user)
+    elif data["tipo"] in ("accessori", "vendita") and data.get("magazzino_item_id"):
         await scarica_articolo_servizio(data, user)
     else:
         data["magazzino_item_id"] = ""
@@ -5750,9 +5757,15 @@ report_ritiri_module.setup(db=db, get_current_user=get_current_user, ritiri_scop
                            put_object=put_object, send_email=send_email, app_name=APP_NAME, build_bolla_pdf=_build_bolla_pdf)
 api_router.include_router(report_ritiri_module.router)
 
+vendite_ordine_module.setup(db=db, wa_send=wa_send, get_scoped_servizio=get_scoped_servizio)
 magazzino_ricambi_module.setup(db=db, get_current_user=get_current_user, get_scoped_servizio=get_scoped_servizio,
-                               magazzino_scope=magazzino_scope, wa_send=wa_send, trasferimenti=trasferimenti_module)
+                               magazzino_scope=magazzino_scope, wa_send=wa_send, trasferimenti=trasferimenti_module,
+                               vendite_arrivato=vendite_ordine_module.arrivato)
 api_router.include_router(magazzino_ricambi_module.router)
+
+@api_router.post("/servizi/{servizio_id}/consegna-ordine")
+async def consegna_ordine(servizio_id: str, user: dict = Depends(get_current_user)):
+    return await vendite_ordine_module.consegna(servizio_id, user)
 
 import google_drive as google_drive_module
 import kpi as kpi_module

@@ -145,8 +145,10 @@ async def arrivo_ricambio(item_id: str, input: ArrivoInput, user: dict = Depends
         upd["$unset"] = {"in_ordine": "", "ordine_at": "", "ordine_servizio_id": "", "ordine_servizio_numero": ""}
     await db.magazzino.update_one({"id": item_id}, upd)
     sbloccate = []
+    vendite_pronte = []
     if nuova >= 0:
         await _d["trasferimenti"].arrivato(item_id)
+        vendite_pronte = await _d["vendite_arrivato"](item_id) if _d.get("vendite_arrivato") else []
         async for s in db.servizi.find({"ricambi_usati": {"$elemMatch": {"item_id": item_id, "in_ordine": True}}}, {"_id": 0, "id": 1, "numero_riparazione": 1, "stato": 1, "ricambi_usati": 1}):
             usati = [{**u, "in_ordine": False, "arrivato_at": now} if u.get("item_id") == item_id else u for u in s.get("ricambi_usati") or []]
             set_ = {"ricambi_usati": usati, "updated_at": now}
@@ -154,7 +156,7 @@ async def arrivo_ricambio(item_id: str, input: ArrivoInput, user: dict = Depends
                 set_["stato"] = "in_lavorazione"
             await db.servizi.update_one({"id": s["id"]}, {"$set": set_})
             sbloccate.append(s.get("numero_riparazione") or s["id"])
-    return {"status": "ok", "quantita": nuova, "in_ordine": nuova < 0, "riparazioni_sbloccate": sbloccate}
+    return {"status": "ok", "quantita": nuova, "in_ordine": nuova < 0, "riparazioni_sbloccate": sbloccate, "vendite_pronte": vendite_pronte}
 
 
 @router.get("/magazzino/da-ordinare")

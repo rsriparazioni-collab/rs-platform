@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import VenditaOrdineBox from "./VenditaOrdineBox";
 import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
@@ -155,6 +156,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
         costo_componente: form.costo_componente === "" || form.costo_componente == null ? null : parseFloat(form.costo_componente),
         minuti_lavoro: form.minuti_lavoro === "" || form.minuti_lavoro == null ? null : parseInt(form.minuti_lavoro),
         importo: form.importo === "" || form.importo == null ? null : parseFloat(form.importo),
+        acconto: form.acconto === "" || form.acconto == null ? null : parseFloat(form.acconto),
         vincolo_mesi: form.vincolo_mesi === "" || form.vincolo_mesi == null ? null : parseInt(form.vincolo_mesi),
         data_attivazione: form.data_attivazione || null,
         data_ingresso: form.data_ingresso || null,
@@ -554,7 +556,8 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
 
           {isShop && (
             <div className="space-y-3">
-              {!isEdit && (
+              {!isEdit && <VenditaOrdineBox form={form} set={set} />}
+              {!isEdit && !form.da_ordinare && (
                 <div className="space-y-1.5" data-testid="servizio-magazzino-box">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Articolo di magazzino (scarico automatico)</Label>
                   {form.magazzino_item_id ? (

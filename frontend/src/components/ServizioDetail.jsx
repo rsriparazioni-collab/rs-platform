@@ -7,6 +7,7 @@ import api, { apiError } from "../lib/api";
 import { PerIproButton } from "./PerIproButton";
 import PortaleBox from "./PortaleBox";
 import OrdinaRicambio from "./OrdinaRicambio";
+import VenditaOrdineStato from "./VenditaOrdineStato";
 import { ripStatoLabel, ripStatoBadge, servizioTipoLabel, fmtDate, RIP_STATI, magazzinoCategoriaLabel, RIP_ESITI, ripEsitoLabel } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
@@ -411,11 +412,12 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                 )}
                 {["accessori", "vendita"].includes(detail.tipo) && (
                   <>
-                    <div><p className="text-xs text-slate-500">Prodotto</p><p className="font-medium">{detail.prodotto || "-"}{detail.magazzino_item_id && <span className="ml-2 status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300" data-testid="servizio-magazzino-badge">Scaricato da magazzino ×{detail.quantita || 1}</span>}</p></div>
+                    <div><p className="text-xs text-slate-500">Prodotto</p><p className="font-medium">{detail.prodotto || "-"}{detail.magazzino_item_id && !detail.ordine_at && <span className="ml-2 status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300" data-testid="servizio-magazzino-badge">Scaricato da magazzino ×{detail.quantita || 1}</span>}</p></div>
                     <div><p className="text-xs text-slate-500">Importo</p><p className="font-medium">€ {detail.importo ?? "-"}</p></div>
                   </>
                 )}
               </div>
+              {["accessori", "vendita"].includes(detail.tipo) && <VenditaOrdineStato detail={detail} refresh={refresh} />}
 
               {isRip && (
                 <>
