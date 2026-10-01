@@ -116,6 +116,148 @@ async def carica_ritiro_su_drive(ritiro_id: str) -> None:
     except Exception as e:
         logger.warning("Drive upload ritiro %s fallito: %s", ritiro_id, e)
         await db.ritiri.update_one({"id": ritiro_id}, {"$set": {"drive_error": str(e)[:300]}})
+    await scrivi_ritiro_su_foglio(ritiro_id)
+
+# ---------------- Foglio Google "Ritiri <Negozio>" (una scheda per anno) ----------------
+SHEET_HEADER = ["N. bolla", "Data", "Cognome", "Nome", "Telefono", "Codice fiscale", "Articolo", "IMEI", "Prezzo ritiro €",
+                "N. documento", "Stato", "N. fattura", "Firma cliente", "Link PDF bolla", "Aggiornato il"]
+STATO_LABEL = {"ritirato": "Ritirato", "in_vendita": "In vendita", "venduto": "Venduto", "pezzi_ricambio": "Pezzi di ricambio", "uso_interno": "Uso interno"}
+
+
+def _sheets(doc: dict):
+    from googleapiclient.discovery import build
+    return build("sheets", "v4", credentials=_credentials(doc), cache_discovery=False)
+
+
+def _riga_ritiro(r: dict) -> list:
+    firma = {"firmata": f"Firmata {(r.get('firma_at') or '')[:10]}", "in_attesa": "In attesa"}.get(r.get("firma_stato") or "", "")
+    return [r.get("numero", ""), (r.get("data_ritiro") or "")[:10], r.get("cognome", ""), r.get("nome", ""), r.get("telefono", ""),
+            r.get("codice_fiscale", ""), r.get("articolo", ""), r.get("imei", ""), r.get("prezzo_ritiro") if r.get("prezzo_ritiro") is not None else "",
+            r.get("numero_documento", ""), STATO_LABEL.get(r.get("stato", ""), r.get("stato", "")), r.get("numero_fattura", ""), firma,
+            r.get("drive_link", ""), datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")]
+
+
+def _sheet_negozio_sync(doc: dict, store: dict, anno: str, righe: list) -> dict:
+    """Crea (se serve) il foglio del negozio e la scheda dell'anno, poi aggiorna/aggiunge le righe per N. bolla."""
+    drive = _service(doc)
+    sheets = _sheets(doc)
+    sheet_id = store.get("ritiri_sheet_id")
+    if sheet_id:
+        try:
+            drive.files().get(fileId=sheet_id, fields="id,trashed").execute()
+        except Exception:
+            sheet_id = None
+    if not sheet_id:
+        parent = None
+        for name in [ROOT_FOLDER, "Ritiri", store["nome"]]:
+            parent = _find_or_create_folder(drive, name, parent)
+        meta = {"name": f"Ritiri {store['nome']}", "mimeType": "application/vnd.google-apps.spreadsheet", "parents": [parent]}
+        sheet_id = drive.files().create(body=meta, fields="id").execute()["id"]
+    ss = sheets.spreadsheets().get(spreadsheetId=sheet_id, fields="sheets(properties(title,sheetId))").execute()
+    titoli = {s["properties"]["title"]: s["properties"]["sheetId"] for s in ss.get("sheets", [])}
+    if anno not in titoli:
+        if len(titoli) == 1 and list(titoli)[0] in ("Foglio1", "Sheet1"):
+            sheets.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={"requests": [
+                {"updateSheetProperties": {"properties": {"sheetId": list(titoli.values())[0], "title": anno}, "fields": "title"}}]}).execute()
+        else:
+            sheets.spreadsheets().batchUpdate(spreadsheetId=sheet_id, body={"requests": [{"addSheet": {"properties": {"title": anno}}}]}).execute()
+        sheets.spreadsheets().values().update(spreadsheetId=sheet_id, range=f"'{anno}'!A1", valueInputOption="USER_ENTERED",
+                                              body={"values": [SHEET_HEADER]}).execute()
+    esistenti = sheets.spreadsheets().values().get(spreadsheetId=sheet_id, range=f"'{anno}'!A:A").execute().get("values", [])
+    if not esistenti:
+        sheets.spreadsheets().values().update(spreadsheetId=sheet_id, range=f"'{anno}'!A1", valueInputOption="USER_ENTERED",
+                                              body={"values": [SHEET_HEADER]}).execute()
+        esistenti = [SHEET_HEADER[:1]]
+    pos = {row[0]: i + 1 for i, row in enumerate(esistenti) if row}
+    updates, nuove = [], []
+    for riga in righe:
+        if riga[0] in pos:
+            updates.append({"range": f"'{anno}'!A{pos[riga[0]]}", "values": [riga]})
+        else:
+            nuove.append(riga)
+    if updates:
+        sheets.spreadsheets().values().batchUpdate(spreadsheetId=sheet_id, body={"valueInputOption": "USER_ENTERED", "data": updates}).execute()
+    if nuove:
+        sheets.spreadsheets().values().append(spreadsheetId=sheet_id, range=f"'{anno}'!A1", valueInputOption="USER_ENTERED",
+                                              insertDataOption="INSERT_ROWS", body={"values": nuove}).execute()
+    return {"sheet_id": sheet_id, "aggiornate": len(updates), "nuove": len(nuove)}
+
+
+async def _salva_sheet_id(store_id: str, res: dict) -> None:
+    await _d["db"].stores.update_one({"id": store_id}, {"$set": {"ritiri_sheet_id": res["sheet_id"],
+                                                                  "ritiri_sheet_url": f"https://docs.google.com/spreadsheets/d/{res['sheet_id']}",
+                                                                  "ritiri_sheet_synced_at": datetime.now(timezone.utc).isoformat()}})
+
+
+async def scrivi_ritiro_su_foglio(ritiro_id: str) -> None:
+    """Scrive/aggiorna la riga della bolla sul foglio Google del negozio."""
+    db = _d["db"]
+    try:
+        doc = await _load_settings()
+        r = await db.ritiri.find_one({"id": ritiro_id}, {"_id": 0})
+        if not doc or not r:
+            return
+        store = await db.stores.find_one({"id": r["store_id"]}, {"_id": 0})
+        if not store:
+            return
+        anno = (r.get("data_ritiro") or "")[:4] or str(datetime.now().year)
+        res = await asyncio.to_thread(_sheet_negozio_sync, doc, store, anno, [_riga_ritiro(r)])
+        await _salva_sheet_id(store["id"], res)
+        await db.ritiri.update_one({"id": ritiro_id}, {"$set": {"sheet_synced_at": datetime.now(timezone.utc).isoformat()}, "$unset": {"sheet_error": ""}})
+    except Exception as e:
+        logger.warning("Sheet ritiro %s fallito: %s", ritiro_id, e)
+        await db.ritiri.update_one({"id": ritiro_id}, {"$set": {"sheet_error": str(e)[:300]}})
+
+
+async def riallinea_fogli_ritiri() -> dict:
+    """Riscrive tutto lo storico dei ritiri sui fogli dei negozi (per negozio e anno)."""
+    db = _d["db"]
+    doc = await _load_settings()
+    rep = {"negozi": [], "errori": []}
+    if not doc:
+        return rep
+    now = datetime.now(timezone.utc).isoformat()
+    async for store in db.stores.find({}, {"_id": 0}):
+        ritiri = await db.ritiri.find({"store_id": store["id"]}, {"_id": 0}).sort("data_ritiro", 1).to_list(20000)
+        if not ritiri:
+            continue
+        per_anno: dict = {}
+        for r in ritiri:
+            per_anno.setdefault((r.get("data_ritiro") or "")[:4] or str(datetime.now().year), []).append(r)
+        for anno, lst in sorted(per_anno.items()):
+            try:
+                res = await asyncio.to_thread(_sheet_negozio_sync, doc, store, anno, [_riga_ritiro(r) for r in lst])
+                store["ritiri_sheet_id"] = res["sheet_id"]
+                await _salva_sheet_id(store["id"], res)
+                await db.ritiri.update_many({"id": {"$in": [r["id"] for r in lst]}}, {"$set": {"sheet_synced_at": now}, "$unset": {"sheet_error": ""}})
+                rep["negozi"].append({"negozio": store["nome"], "anno": anno, **res})
+            except Exception as e:
+                logger.warning("Riallineamento foglio %s/%s fallito: %s", store["nome"], anno, e)
+                rep["errori"].append({"negozio": store["nome"], "anno": anno, "errore": str(e)[:300]})
+    await db.settings.update_one({"key": "fogli_ritiri_sync"}, {"$set": {"key": "fogli_ritiri_sync", "at": now, "report": rep}}, upsert=True)
+    return rep
+
+
+@router.post("/google-drive/riallinea-fogli-ritiri")
+async def riallinea_fogli(background_tasks: BackgroundTasks, user: dict = Depends(_current_user)):
+    _solo_admin(user)
+    if not await _load_settings():
+        raise HTTPException(status_code=400, detail="Google Drive non collegato")
+    n = await _d["db"].ritiri.count_documents({})
+    background_tasks.add_task(riallinea_fogli_ritiri)
+    return {"avviati": n}
+
+
+@router.get("/google-drive/fogli-ritiri")
+async def fogli_ritiri_status(user: dict = Depends(_current_user)):
+    db = _d["db"]
+    stores = await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1, "ritiri_sheet_url": 1, "ritiri_sheet_synced_at": 1}).to_list(200)
+    ultimo = await db.settings.find_one({"key": "fogli_ritiri_sync"}, {"_id": 0})
+    return {"connected": bool(await _load_settings()), "negozi": stores, "ultimo_riallineamento": ultimo,
+            "non_sincronizzati": await db.ritiri.count_documents({"sheet_synced_at": {"$exists": False}}),
+            "errori": await db.ritiri.count_documents({"sheet_error": {"$exists": True}})}
+
+
 
 
 async def carica_report_su_drive(store_nome: str, anno: int, mese: int, pdf: bytes, zip_data: bytes) -> None:

@@ -5930,7 +5930,7 @@ async def cron_corrispettivi_fine_mese(request: Request, background_tasks: Backg
 
 google_drive_module.setup(db=db, get_current_user=get_current_user, get_object=get_object, fernet=_fernet)
 api_router.include_router(google_drive_module.router)
-report_ritiri_module.setup(carica_report_su_drive=google_drive_module.carica_report_su_drive)
+report_ritiri_module.setup(carica_report_su_drive=google_drive_module.carica_report_su_drive, sheet_sync=google_drive_module.scrivi_ritiro_su_foglio)
 
 app.include_router(api_router)
 

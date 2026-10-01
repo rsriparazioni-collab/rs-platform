@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Recycle, FileDown, Trash2, Wrench, Paperclip, Package, PenLine, KeyRound, MessageCircle } from "lucide-react";
+import { Plus, Search, Recycle, FileDown, Trash2, Wrench, Paperclip, Package, PenLine, KeyRound, MessageCircle, Camera } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
 import { uploadRitiroDocumenti } from "../components/RitiroDaRiparazione";
@@ -364,8 +364,12 @@ export default function Ritiri() {
               <Input placeholder="Codice fiscale" value={form.codice_fiscale} onChange={(e) => setForm({ ...form, codice_fiscale: e.target.value.toUpperCase() })} data-testid="ritiro-form-cf" />
               <Input placeholder="Telefono cliente * (per la firma via WhatsApp)" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} data-testid="ritiro-form-telefono" />
               <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm" data-testid="ritiro-form-documenti">
-                <label className="flex cursor-pointer items-center gap-2 font-medium text-slate-700"><Paperclip className="h-4 w-4" /> Allega subito documenti (carta d'identità, ecc.) — salvati anche sulla scheda cliente
-                  <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])])} data-testid="ritiro-form-documenti-input" /></label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex cursor-pointer items-center gap-2 font-medium text-slate-700"><Paperclip className="h-4 w-4" /> Allega subito documenti (carta d'identità, ecc.) — salvati anche sulla scheda cliente
+                    <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])]); e.target.value = ""; }} data-testid="ritiro-form-documenti-input" /></label>
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100"><Camera className="h-4 w-4" /> Fotografa documento
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])]); e.target.value = ""; }} data-testid="ritiro-form-camera-input" /></label>
+                </div>
                 {nuoviDoc.length > 0 && <ul className="mt-2 space-y-1 text-xs text-slate-600">{nuoviDoc.map((f, i) => <li key={i} className="flex justify-between"><span>{f.name}</span><button type="button" className="text-rose-600" onClick={() => setNuoviDoc(nuoviDoc.filter((_, j) => j !== i))}>rimuovi</button></li>)}</ul>}
               </div>
             </div>

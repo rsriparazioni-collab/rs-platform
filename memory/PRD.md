@@ -488,3 +488,8 @@ Vedi /app/memory/test_credentials.md
 - Ritiri: se la bolla viene creata senza cliente in anagrafica, il backend crea il cliente al volo (origine 'ritiro'); i documenti caricati sulla bolla vengono copiati anche negli allegati del cliente (visibili in ClientDetail, riutilizzabili).
 - Clienti: nel form Nuovo/Modifica cliente è possibile allegare documenti (PDF/JPG/PNG/WEBP) che vengono caricati su /clients/{id}/attachments dopo il salvataggio.
 - Testato: backend via curl (creazione ritiro senza client_id → cliente + allegato), UI form Clienti via screenshot.
+
+## 2026-10-01 — Sync Fogli Ritiri + Scanner documento + Totale giornata corrispettivi
+- Fogli Google ritiri (google_drive.py): per ogni negozio viene creato "Ritiri <Negozio>" in Drive `Gestionale RS/Ritiri/<Negozio>`, una scheda per anno, 15 colonne; riga upsert per N. bolla ad ogni creazione/documenti/firma/cambio stato (hook in carica_ritiro_su_drive e report_ritiri.aggiorna_stato_ritiro). Endpoint: POST /api/google-drive/riallinea-fogli-ritiri (admin), GET /api/google-drive/fogli-ritiri. Pulsante "Riallinea fogli" + link ai fogli nella GoogleDriveCard (pagina Ritiri). Usa lo scope drive.file già autorizzato (Sheets API su file creati dall'app). Testato con mock (/tmp/test_sheet.py); in preview Drive non è collegato.
+- Scanner documento: tasto "Fotografa documento" (input capture=environment) in ClientDetail, ClientForm e form Ritiri.
+- Corrispettivi: totale giornata = (contanti+POS se inseriti, altrimenti scontrini) + fatture (fix "non vedo il totale" quando non si inseriscono contanti/POS); card "Incassato oggi"; colonna Totale sempre mostrata.

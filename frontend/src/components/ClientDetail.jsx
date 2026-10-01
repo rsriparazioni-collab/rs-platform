@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen, ArrowLeftRight, ShoppingBag, Phone, Package } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen, ArrowLeftRight, ShoppingBag, Phone, Package, Camera } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { PerIproButton } from "./PerIproButton";
 import WhatsAppLog from "./WhatsAppLog";
@@ -454,12 +454,20 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   ))}
                   {attachments.length === 0 && <p className="text-xs text-slate-400">Nessun allegato</p>}
                 </div>
-                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 transition-colors hover:border-sky-400 hover:text-sky-700"
-                       data-testid="attachment-upload-label">
-                  <Upload className="h-4 w-4" /> Carica PDF o immagine
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={uploadAttachment}
-                         data-testid="attachment-upload-input" />
-                </label>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 transition-colors hover:border-sky-400 hover:text-sky-700"
+                         data-testid="attachment-upload-label">
+                    <Upload className="h-4 w-4" /> Carica PDF o immagine
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={uploadAttachment}
+                           data-testid="attachment-upload-input" />
+                  </label>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-800 transition-colors hover:bg-sky-100"
+                         data-testid="attachment-camera-label">
+                    <Camera className="h-4 w-4" /> Fotografa documento
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={uploadAttachment}
+                           data-testid="attachment-camera-input" />
+                  </label>
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">

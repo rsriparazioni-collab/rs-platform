@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Camera } from "lucide-react";
 import api, { apiError } from "../lib/api";
 import { apriPortaleDopoSalvataggio } from "./PortaleBox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -423,9 +423,14 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
               </Field>
             </div>
             <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3 text-sm" data-testid="client-form-documenti">
-              <label className="flex cursor-pointer items-center gap-2 font-medium text-slate-700"><Paperclip className="h-4 w-4" /> Allega documenti (carta d'identità, bollette, ecc.)
-                <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden"
-                       onChange={(e) => { setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])]); e.target.value = ""; }} data-testid="client-form-documenti-input" /></label>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex cursor-pointer items-center gap-2 font-medium text-slate-700"><Paperclip className="h-4 w-4" /> Allega documenti (carta d'identità, bollette, ecc.)
+                  <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden"
+                         onChange={(e) => { setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])]); e.target.value = ""; }} data-testid="client-form-documenti-input" /></label>
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100"><Camera className="h-4 w-4" /> Fotografa documento
+                  <input type="file" accept="image/*" capture="environment" className="hidden"
+                         onChange={(e) => { setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])]); e.target.value = ""; }} data-testid="client-form-camera-input" /></label>
+              </div>
               {nuoviDoc.length > 0 && <ul className="mt-2 space-y-1 text-xs text-slate-600" data-testid="client-form-documenti-list">{nuoviDoc.map((f, i) => <li key={i} className="flex justify-between"><span>{f.name}</span><button type="button" className="text-rose-600" onClick={() => setNuoviDoc(nuoviDoc.filter((_, j) => j !== i))}>rimuovi</button></li>)}</ul>}
             </div>
           </section>

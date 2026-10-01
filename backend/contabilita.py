@@ -112,7 +112,7 @@ def _norm(c: dict) -> dict:
         c[k] = _f(c.get(k))
     c["scontrini"] = round(c["riparazioni"] + c["merce"] + c["art74"], 2)
     c["incassato"] = round(c["contanti"] + c["pos"], 2)
-    c["totale"] = round(c["contanti"] + c["pos"] + c["fatture"], 2)
+    c["totale"] = round((c["incassato"] if c["incassato"] else c["scontrini"]) + c["fatture"], 2)
     c["iva"] = round((c["riparazioni"] + c["merce"] + c["fatture"]) * 22 / 122, 2)
     return c
 

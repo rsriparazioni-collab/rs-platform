@@ -31,10 +31,18 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
   if (!dati) return null;
   const t = dati.totali;
   const oggi = new Date().toISOString().slice(0, 10);
+  const rigaOggi = dati.righe.find((r) => r.data === oggi && !r.vuoto);
   return (
     <div className="space-y-6" data-testid="corrispettivi-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodoPicker anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} />
+        {rigaOggi && (
+          <div className="flex items-baseline gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2" data-testid="corrispettivi-oggi-totale">
+            <span className="text-xs uppercase tracking-wide text-emerald-700">Incassato oggi</span>
+            <span className="text-xl font-bold tabular-nums text-emerald-800">{eur(rigaOggi.totale)}</span>
+            <span className="text-xs text-emerald-700">scontrini {eur(rigaOggi.scontrini)} · fatture {eur(rigaOggi.fatture)}</span>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           {isAdmin && <Button size="sm" variant="outline" onClick={importaFogli} disabled={importing} data-testid="corrispettivi-importa-fogli">{importing ? "Importo…" : "Importa dai fogli Google"}</Button>}
           <Button size="sm" onClick={() => setGiorno(dati.righe.find((r) => r.data === oggi) || dati.righe[0])} data-testid="corrispettivo-oggi-btn">+ Corrispettivo di oggi</Button>
@@ -43,7 +51,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6" data-testid="corrispettivi-totali">
-        {[["Totale (contanti+POS+fatture)", t.totale, "text-slate-900"], ["Contanti", t.contanti, "text-emerald-700"], ["POS", t.pos, "text-sky-700"], ["Spese contanti", t.spese_contanti, "text-rose-700"], ["Versati", t.versati_totale, "text-slate-700"], ["IVA 22% scorporata", t.iva, "text-amber-700"]].map(([l, v, c]) => (
+        {[["Totale incassato (scontrini+fatture)", t.totale, "text-slate-900"], ["Contanti", t.contanti, "text-emerald-700"], ["POS", t.pos, "text-sky-700"], ["Spese contanti", t.spese_contanti, "text-rose-700"], ["Versati", t.versati_totale, "text-slate-700"], ["IVA 22% scorporata", t.iva, "text-amber-700"]].map(([l, v, c]) => (
           <div key={l} className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase tracking-wide text-slate-500">{l}</p><p className={`mt-1 text-xl font-semibold tabular-nums ${c}`}>{eur(v)}</p></div>
         ))}
       </div>
@@ -61,7 +69,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
               <tr key={r.data} className={`cursor-pointer hover:bg-sky-50 ${r.vuoto ? "text-slate-400" : ""}`} onClick={() => setGiorno(r)} data-testid={`corr-row-${r.data}`}>
                 <td className="px-3 py-1.5 font-medium">{r.data.slice(8)} {MESI[mese].slice(0, 3)}</td>
                 {r.vuoto ? <td colSpan={8} className="px-3 py-1.5 text-right text-xs">— non inserito —</td> : (
-                  ["riparazioni", "merce", "art74", "fatture", "contanti", "pos", "totale", "versati"].map((k) => <td key={k} className={`px-3 py-1.5 text-right tabular-nums ${k === "totale" ? "font-semibold" : ""}`}>{r[k] ? eur(r[k]) : ""}</td>)
+                  ["riparazioni", "merce", "art74", "fatture", "contanti", "pos", "totale", "versati"].map((k) => <td key={k} className={`px-3 py-1.5 text-right tabular-nums ${k === "totale" ? "font-semibold" : ""}`}>{r[k] || k === "totale" ? eur(r[k]) : ""}</td>)
                 )}
                 <td className="px-2 py-1.5 text-right">{!r.vuoto && <button className="text-slate-400 hover:text-emerald-600" title="Invia WhatsApp del giorno" onClick={(e) => { e.stopPropagation(); inviaWa(r.data); }} data-testid={`corr-wa-${r.data}`}><MessageCircle className="h-4 w-4" /></button>}</td>
               </tr>

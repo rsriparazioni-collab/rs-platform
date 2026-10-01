@@ -1,3 +1,4 @@
+import asyncio
 import calendar
 import io
 import os
@@ -61,6 +62,8 @@ async def aggiorna_stato_ritiro(ritiro_id: str, stato: str, numero_fattura: str 
     if stato == "venduto":
         upd["venduto_at"] = now
     await _d["db"].ritiri.update_one({"id": ritiro_id}, {"$set": upd, "$push": {"stato_log": {"stato": stato, "at": now, "by": user_name}}})
+    if _d.get("sheet_sync"):
+        asyncio.create_task(_d["sheet_sync"](ritiro_id))
 
 
 class StatoRitiroInput(BaseModel):

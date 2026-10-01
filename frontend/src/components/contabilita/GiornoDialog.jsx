@@ -14,9 +14,9 @@ export const GiornoDialog = ({ storeId, riga, onClose, onSaved }) => {
   const [saving, setSaving] = useState(false);
   const n = (k) => parseFloat(f[k]) || 0;
   const fatture = f.fatture_dettaglio.reduce((a, x) => a + (parseFloat(x.importo) || 0), 0);
-  const totale = n("contanti") + n("pos") + fatture;
   const scontrini = n("riparazioni") + n("merce") + n("art74");
   const incassato = n("contanti") + n("pos");
+  const totale = (incassato || scontrini) + fatture;
   const setFatt = (i, k, v) => setF({ ...f, fatture_dettaglio: f.fatture_dettaglio.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
   const salva = async () => {
     setSaving(true);
@@ -49,7 +49,7 @@ export const GiornoDialog = ({ storeId, riga, onClose, onSaved }) => {
         </div>
         <Input placeholder="Note" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} data-testid="giorno-note" />
         <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-          <span>Totale (contanti + POS + fatture) <b data-testid="giorno-totale">{eur(totale)}</b></span>
+          <span>Totale giornata (scontrini + fatture) <b data-testid="giorno-totale">{eur(totale)}</b></span>
           <span className={incassato && Math.abs(incassato - scontrini) > 0.01 ? "text-amber-600" : "text-slate-500"} data-testid="giorno-quadratura">Scontrini {eur(scontrini)} / incassato {eur(incassato)}{incassato && Math.abs(incassato - scontrini) > 0.01 ? " ≠" : ""}</span>
         </div>
         <div className="flex justify-between">
