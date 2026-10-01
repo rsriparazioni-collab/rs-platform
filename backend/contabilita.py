@@ -53,7 +53,14 @@ async def _user(request: Request):
 
 
 def _is_admin(user: dict) -> bool:
-    return user["role"] == "admin" or bool(user.get("can_view_all"))
+    return user["role"] == "admin"
+
+
+def _miei_store(user: dict) -> list:
+    """Per la contabilità vale l'override `contabilita_store_ids` (es. Deborah → solo Morbegno), altrimenti gli store_ids dell'utente."""
+    if user.get("contabilita_store_ids") is not None:
+        return user["contabilita_store_ids"]
+    return user.get("store_ids") or []
 
 
 async def _config(store: dict) -> dict:
@@ -67,11 +74,11 @@ async def _config(store: dict) -> dict:
 async def _stores_visibili(user: dict) -> list:
     """Ritorna [(store, config, completo)]: completo=False → admin vede solo attivo/ultimo inserimento."""
     db = _d["db"]
-    q = {} if _is_admin(user) else {"id": {"$in": user.get("store_ids") or []}}
+    q = {} if _is_admin(user) else {"id": {"$in": _miei_store(user)}}
     out = []
     async for s in db.stores.find(q, {"_id": 0, "id": 1, "nome": 1, "telefono_avvisi": 1}).sort("nome", 1):
         cfg = await _config(s)
-        completo = (s["id"] in (user.get("store_ids") or [])) or (_is_admin(user) and cfg["condividi_admin"])
+        completo = (s["id"] in _miei_store(user)) or (_is_admin(user) and cfg["condividi_admin"])
         out.append((s, cfg, completo))
     return out
 
@@ -125,6 +132,36 @@ async def meta(request: Request):
     return {"stores": out, "is_admin": _is_admin(user), "categorie": CATEGORIE, "numero_amministrazione": NUMERO_AMMINISTRAZIONE}
 
 
+@router.get("/utenti")
+async def utenti_accessi(request: Request):
+    user = await _user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    db = _d["db"]
+    stores = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    out = []
+    async for u in db.users.find({"role": {"$ne": "admin"}, "attivo": {"$ne": False}}, {"_id": 0, "id": 1, "name": 1, "email": 1, "role": 1, "store_ids": 1, "contabilita_store_ids": 1}).sort("name", 1):
+        eff = u["contabilita_store_ids"] if u.get("contabilita_store_ids") is not None else (u.get("store_ids") or [])
+        out.append({**u, "override": u.get("contabilita_store_ids") is not None, "store_ids_effettivi": eff, "negozi": [stores.get(s, s) for s in eff]})
+    return {"utenti": out, "stores": [{"id": k, "nome": v} for k, v in sorted(stores.items(), key=lambda x: x[1])]}
+
+
+class AccessoInput(BaseModel):
+    contabilita_store_ids: Optional[list] = None
+
+
+@router.patch("/utenti/{user_id}")
+async def patch_utente_accesso(user_id: str, body: AccessoInput, request: Request):
+    user = await _user(request)
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    upd = {"$set": {"contabilita_store_ids": body.contabilita_store_ids}} if body.contabilita_store_ids is not None else {"$unset": {"contabilita_store_ids": ""}}
+    r = await _d["db"].users.update_one({"id": user_id}, upd)
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    return {"ok": True}
+
+
 class ConfigInput(BaseModel):
     condividi_admin: Optional[bool] = None
     wa_numero: Optional[str] = None
@@ -137,7 +174,7 @@ class ConfigInput(BaseModel):
 @router.patch("/config/{store_id}")
 async def patch_config(store_id: str, body: ConfigInput, request: Request):
     user = await _user(request)
-    mio = store_id in (user.get("store_ids") or [])
+    mio = store_id in _miei_store(user)
     if not mio and not _is_admin(user):
         raise HTTPException(status_code=403, detail="Negozio non accessibile")
     if not mio and body.condividi_admin is not None and user["role"] != "admin":

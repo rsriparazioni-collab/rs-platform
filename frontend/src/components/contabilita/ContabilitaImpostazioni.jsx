@@ -4,6 +4,7 @@ import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
+import { AccessiContabilita } from "./AccessiContabilita";
 
 export const ContabilitaImpostazioni = ({ meta, storeId, reload }) => {
   const store = meta.stores.find((s) => s.id === storeId);
@@ -46,6 +47,7 @@ export const ContabilitaImpostazioni = ({ meta, storeId, reload }) => {
           {!log.length && <li className="px-4 py-3 text-slate-400">Nessun invio registrato</li>}
         </ul>
       </div>
+      {meta.is_admin && <AccessiContabilita />}
     </div>
   );
 };
