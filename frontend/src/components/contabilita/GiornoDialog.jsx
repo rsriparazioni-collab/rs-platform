@@ -10,17 +10,20 @@ import { Num, eur } from "./shared";
 const CAMPI = [["riparazioni", "Riparazioni"], ["merce", "Merce"], ["art74", "Art. 74"], ["contanti", "Contanti"], ["pos", "POS"], ["versati", "Versati"]];
 
 export const GiornoDialog = ({ storeId, riga, onClose, onSaved }) => {
-  const [f, setF] = useState({ riparazioni: riga.riparazioni || "", merce: riga.merce || "", art74: riga.art74 || "", contanti: riga.contanti || "", pos: riga.pos || "", versati: riga.versati || "", note: riga.note || "", fatture_dettaglio: riga.fatture_dettaglio || [] });
+  const [f, setF] = useState({ riparazioni: riga.riparazioni || "", merce: riga.merce || "", art74: riga.art74 || "", contanti: riga.contanti || "", pos: riga.pos || "", versati: riga.versati || "", non_riscosso: riga.non_riscosso || "", non_riscosso_note: riga.non_riscosso_note || "", note: riga.note || "", fatture_dettaglio: riga.fatture_dettaglio || [] });
   const [saving, setSaving] = useState(false);
   const n = (k) => parseFloat(f[k]) || 0;
   const fatture = f.fatture_dettaglio.reduce((a, x) => a + (parseFloat(x.importo) || 0), 0);
   const scontrini = n("riparazioni") + n("merce") + n("art74");
   const incassato = n("contanti") + n("pos");
-  const totale = (incassato || scontrini) + fatture;
+  const nonRiscosso = n("non_riscosso");
+  const diff = scontrini - incassato - nonRiscosso;
+  const nonQuadra = incassato > 0 && Math.abs(diff) >= 1;
+  const totale = (incassato ? incassato + nonRiscosso : scontrini) + fatture;
   const setFatt = (i, k, v) => setF({ ...f, fatture_dettaglio: f.fatture_dettaglio.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
   const salva = async () => {
     setSaving(true);
-    try { await api.put(`/contabilita/corrispettivi/${storeId}/${riga.data}`, { ...f, riparazioni: n("riparazioni"), merce: n("merce"), art74: n("art74"), contanti: n("contanti"), pos: n("pos"), versati: n("versati"), fatture }); toast.success("Corrispettivo salvato"); onSaved(); }
+    try { await api.put(`/contabilita/corrispettivi/${storeId}/${riga.data}`, { ...f, riparazioni: n("riparazioni"), merce: n("merce"), art74: n("art74"), contanti: n("contanti"), pos: n("pos"), versati: n("versati"), non_riscosso: nonRiscosso, fatture }); toast.success(nonQuadra ? "Corrispettivo salvato · avviso quadratura inviato al negozio" : "Corrispettivo salvato"); onSaved(); }
     catch (e) { toast.error(apiError(e)); } finally { setSaving(false); }
   };
   const elimina = async () => {
@@ -48,10 +51,18 @@ export const GiornoDialog = ({ storeId, riga, onClose, onSaved }) => {
           ))}
         </div>
         <Input placeholder="Note" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} data-testid="giorno-note" />
+        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3" data-testid="giorno-non-riscosso-box">
+          <p className="text-xs font-semibold uppercase text-amber-800">Non riscosso (es. saldo telefono con operatore, compensato da cessione credito)</p>
+          <div className="mt-2 grid grid-cols-[1fr_2fr] gap-2">
+            <Num value={f.non_riscosso} onChange={(v) => setF({ ...f, non_riscosso: v })} testid="giorno-non-riscosso" />
+            <Input placeholder="Motivo (es. iPhone 15 WindTre, saldo da cessione credito)" value={f.non_riscosso_note} onChange={(e) => setF({ ...f, non_riscosso_note: e.target.value })} className="h-8" data-testid="giorno-non-riscosso-note" />
+          </div>
+        </div>
         <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
           <span>Totale giornata (scontrini + fatture) <b data-testid="giorno-totale">{eur(totale)}</b></span>
-          <span className={incassato && Math.abs(incassato - scontrini) > 0.01 ? "text-amber-600" : "text-slate-500"} data-testid="giorno-quadratura">Scontrini {eur(scontrini)} / incassato {eur(incassato)}{incassato && Math.abs(incassato - scontrini) > 0.01 ? " ≠" : ""}</span>
+          <span className={nonQuadra ? "font-medium text-amber-600" : "text-slate-500"} data-testid="giorno-quadratura">Scontrini {eur(scontrini)} / incassato {eur(incassato)}{nonRiscosso ? ` + non riscosso ${eur(nonRiscosso)}` : ""}{nonQuadra ? ` ≠ (diff. ${eur(diff)})` : " ✓"}</span>
         </div>
+        {nonQuadra && <p className="text-xs text-amber-700" data-testid="giorno-quadratura-avviso">Al salvataggio il negozio riceverà un WhatsApp di avviso sulla differenza.</p>}
         <div className="flex justify-between">
           {!riga.vuoto ? <Button variant="ghost" className="text-rose-600" onClick={elimina} data-testid="giorno-elimina">Elimina</Button> : <span />}
           <div className="flex gap-2"><Button variant="outline" onClick={onClose}>Annulla</Button><Button onClick={salva} disabled={saving} data-testid="giorno-salva">Salva</Button></div>

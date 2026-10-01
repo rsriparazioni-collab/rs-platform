@@ -32,7 +32,7 @@ from cryptography.fernet import Fernet
 import pandas as pd
 import pymupdf as fitz
 from dateutil.relativedelta import relativedelta
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, BackgroundTasks, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, BackgroundTasks, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
@@ -3299,7 +3299,7 @@ def _merge_bolla_documenti(bolla: bytes, docs: list) -> bytes:
     return out.tobytes()
 
 @api_router.post("/ritiri/{ritiro_id}/documenti")
-async def upload_ritiro_documenti(ritiro_id: str, files: List[UploadFile] = File(...), user: dict = Depends(get_current_user)):
+async def upload_ritiro_documenti(ritiro_id: str, files: List[UploadFile] = File(...), sostituisci: bool = Form(False), user: dict = Depends(get_current_user)):
     scope = ritiri_scope(user)
     scope["id"] = ritiro_id
     r = await db.ritiri.find_one(scope, {"_id": 0})
@@ -3327,11 +3327,49 @@ async def upload_ritiro_documenti(ritiro_id: str, files: List[UploadFile] = File
         "$push": {"documenti": {"$each": [{"nome": n, "at": now, "by": user["id"]} for n in names]}}})
     if r.get("client_id"):
         try:
+            if sostituisci:
+                await db.attachments.update_many({"client_id": r["client_id"], "origine": "ritiro", "is_deleted": False},
+                                                 {"$set": {"is_deleted": True, "sostituito_at": now, "sostituito_da_ritiro": r["numero"]}})
             await salva_documenti_cliente(r["client_id"], [(n, ct, c) for n, (ct, c) in zip(names, docs)], user["id"])
         except Exception as e:
             logger.warning(f"Copia documenti ritiro su cliente {r['client_id']} fallita: {e}")
     asyncio.create_task(google_drive_module.carica_ritiro_su_drive(ritiro_id))
     return {"status": "ok", "documenti": (r.get("documenti") or []) + [{"nome": n, "at": now} for n in names]}
+
+class DocumentiDaClienteInput(BaseModel):
+    attachment_ids: List[str]
+
+@api_router.post("/ritiri/{ritiro_id}/documenti-da-cliente")
+async def riusa_documenti_cliente(ritiro_id: str, body: DocumentiDaClienteInput, user: dict = Depends(get_current_user)):
+    """Allega alla bolla documenti già presenti sulla scheda cliente, senza ricaricarli."""
+    scope = ritiri_scope(user)
+    scope["id"] = ritiro_id
+    r = await db.ritiri.find_one(scope, {"_id": 0})
+    if not r or not r.get("client_id"):
+        raise HTTPException(status_code=404, detail="Ritiro non trovato o senza cliente in anagrafica")
+    atts = await db.attachments.find({"id": {"$in": body.attachment_ids}, "client_id": r["client_id"], "is_deleted": False}, {"_id": 0}).to_list(50)
+    if not atts:
+        raise HTTPException(status_code=400, detail="Nessun documento valido selezionato")
+    docs, names = [], []
+    for a in atts:
+        content, ct = get_object(a["storage_path"])
+        ct = (a.get("content_type") or ct or "").lower()
+        if ct not in RITIRO_DOC_TYPES:
+            continue
+        docs.append((ct, content))
+        names.append(a.get("original_filename") or "documento")
+    if not docs:
+        raise HTTPException(status_code=400, detail="I documenti selezionati non sono PDF o immagini")
+    current, _ = get_object(r["storage_path"])
+    merged = _merge_bolla_documenti(current, docs)
+    version = len(r.get("documenti") or []) + 1
+    result = put_object(f"{APP_NAME}/ritiri/{r['numero']}_v{version}.pdf", merged, "application/pdf")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.ritiri.update_one({"id": ritiro_id}, {
+        "$set": {"storage_path": result["path"], "updated_at": now},
+        "$push": {"documenti": {"$each": [{"nome": n, "at": now, "by": user["id"], "riusato": True} for n in names]}}})
+    asyncio.create_task(google_drive_module.carica_ritiro_su_drive(ritiro_id))
+    return {"status": "ok", "documenti": (r.get("documenti") or []) + [{"nome": n, "at": now, "riusato": True} for n in names]}
 
 @api_router.get("/ritiri/{ritiro_id}/pdf")
 async def download_bolla(ritiro_id: str, user: dict = Depends(get_current_user)):

@@ -8,9 +8,10 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
 
-export const uploadRitiroDocumenti = async (ritiroId, files) => {
+export const uploadRitiroDocumenti = async (ritiroId, files, sostituisci = false) => {
   const fd = new FormData();
   files.forEach((f) => fd.append("files", f));
+  fd.append("sostituisci", sostituisci ? "true" : "false");
   return api.post(`/ritiri/${ritiroId}/documenti`, fd, { headers: { "Content-Type": "multipart/form-data" } });
 };
 

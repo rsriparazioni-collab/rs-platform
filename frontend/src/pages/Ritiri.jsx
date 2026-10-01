@@ -35,6 +35,14 @@ export default function Ritiri() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [nuoviDoc, setNuoviDoc] = useState([]);
+  const [docCliente, setDocCliente] = useState([]);
+  const [riusaIds, setRiusaIds] = useState([]);
+  const [sostituisci, setSostituisci] = useState(true);
+  useEffect(() => {
+    setRiusaIds([]);
+    if (!form.client_id) { setDocCliente([]); return; }
+    api.get(`/clients/${form.client_id}/attachments`).then((r) => setDocCliente(r.data)).catch(() => setDocCliente([]));
+  }, [form.client_id]);
   const [otpRow, setOtpRow] = useState(null);
   const [otpCode, setOtpCode] = useState("");
   const reinviaFirma = async (r) => {
@@ -122,13 +130,18 @@ export default function Ritiri() {
         data_ritiro: form.data_ritiro || null,
       };
       const res = await api.post("/ritiri", payload);
+      const esiti = [];
       if (nuoviDoc.length) {
-        try { await uploadRitiroDocumenti(res.data.id, nuoviDoc); toast.success(`Bolla ${res.data.numero} generata con ${nuoviDoc.length} documenti allegati · firma inviata via WhatsApp`); }
+        try { await uploadRitiroDocumenti(res.data.id, nuoviDoc, sostituisci); esiti.push(`${nuoviDoc.length} documenti nuovi`); }
         catch (e) { toast.error(apiError(e, "Bolla creata ma documenti non caricati: allegali dalla lista")); }
-      } else {
-        toast.success(`Bolla di ritiro ${res.data.numero} generata · richiesta di firma inviata via WhatsApp`);
       }
+      if (riusaIds.length) {
+        try { await api.post(`/ritiri/${res.data.id}/documenti-da-cliente`, { attachment_ids: riusaIds }); esiti.push(`${riusaIds.length} documenti riusati dalla scheda cliente`); }
+        catch (e) { toast.error(apiError(e, "Documenti del cliente non allegati")); }
+      }
+      toast.success(`Bolla ${res.data.numero} generata${esiti.length ? ` con ${esiti.join(" e ")}` : ""} · firma inviata via WhatsApp`);
       setNuoviDoc([]);
+      setRiusaIds([]);
       setFormOpen(false);
       load();
     } catch (err) {
@@ -371,6 +384,27 @@ export default function Ritiri() {
                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])]); e.target.value = ""; }} data-testid="ritiro-form-camera-input" /></label>
                 </div>
                 {nuoviDoc.length > 0 && <ul className="mt-2 space-y-1 text-xs text-slate-600">{nuoviDoc.map((f, i) => <li key={i} className="flex justify-between"><span>{f.name}</span><button type="button" className="text-rose-600" onClick={() => setNuoviDoc(nuoviDoc.filter((_, j) => j !== i))}>rimuovi</button></li>)}</ul>}
+                {nuoviDoc.length > 0 && form.client_id && docCliente.length > 0 && (
+                  <label className="mt-2 flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={sostituisci} onChange={(e) => setSostituisci(e.target.checked)} data-testid="ritiro-form-sostituisci" /> Sostituisci sulla scheda cliente i documenti dei ritiri precedenti (potrebbero essere scaduti)</label>
+                )}
+                {form.client_id && docCliente.length > 0 && (
+                  <div className="mt-3 border-t border-dashed border-slate-200 pt-2" data-testid="ritiro-doc-cliente">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Documenti già sulla scheda cliente</p>
+                    <ul className="mt-1 space-y-1 text-xs">
+                      {docCliente.map((a) => {
+                        const sel = riusaIds.includes(a.id);
+                        const vecchio = (Date.now() - new Date(a.created_at).getTime()) > 365 * 24 * 3600 * 1000 * 5;
+                        return (
+                          <li key={a.id} className="flex items-center justify-between gap-2">
+                            <span className="truncate text-slate-700">{a.original_filename} <span className="text-slate-400">· {new Date(a.created_at).toLocaleDateString("it-IT")}</span>{vecchio && <span className="ml-1 text-amber-600">(oltre 5 anni: verifica scadenza)</span>}</span>
+                            <button type="button" className={`rounded px-2 py-0.5 font-medium ${sel ? "bg-emerald-600 text-white" : "border border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                                    onClick={() => setRiusaIds(sel ? riusaIds.filter((x) => x !== a.id) : [...riusaIds, a.id])} data-testid={`ritiro-riusa-${a.id}`}>{sel ? "Allegato ✓" : "Allega alla bolla"}</button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

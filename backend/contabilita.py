@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -108,11 +109,13 @@ def _norm(c: dict) -> dict:
     fatt = [{"numero": (x.get("numero") or "")[:30], "importo": _f(x.get("importo")), "pagamento": (x.get("pagamento") or "")[:20]} for x in (c.get("fatture_dettaglio") or []) if x.get("numero") or x.get("importo")]
     c["fatture_dettaglio"] = fatt
     c["fatture"] = _f(c.get("fatture")) or round(sum(x["importo"] for x in fatt), 2)
-    for k in ("riparazioni", "merce", "art74", "contanti", "pos", "versati"):
+    for k in ("riparazioni", "merce", "art74", "contanti", "pos", "versati", "non_riscosso"):
         c[k] = _f(c.get(k))
+    c["non_riscosso_note"] = (c.get("non_riscosso_note") or "")[:200]
     c["scontrini"] = round(c["riparazioni"] + c["merce"] + c["art74"], 2)
     c["incassato"] = round(c["contanti"] + c["pos"], 2)
-    c["totale"] = round((c["incassato"] if c["incassato"] else c["scontrini"]) + c["fatture"], 2)
+    c["quadratura_diff"] = round(c["scontrini"] - c["incassato"] - c["non_riscosso"], 2)
+    c["totale"] = round((c["incassato"] + c["non_riscosso"] if c["incassato"] else c["scontrini"]) + c["fatture"], 2)
     c["iva"] = round((c["riparazioni"] + c["merce"] + c["fatture"]) * 22 / 122, 2)
     return c
 
@@ -199,7 +202,7 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     for g in range(1, n + 1):
         d = f"{pref}-{g:02d}"
         righe.append(giorni.get(d) or {"data": d, "vuoto": True})
-    keys = ("riparazioni", "merce", "art74", "fatture", "totale", "contanti", "pos", "incassato", "versati", "iva")
+    keys = ("riparazioni", "merce", "art74", "fatture", "totale", "contanti", "pos", "incassato", "versati", "iva", "non_riscosso")
     tot = {k: round(sum(_f(c.get(k)) for c in giorni.values()), 2) for k in keys}
     tot["spese_contanti"] = round(sum(_f(s.get("importo")) for s in spese), 2)
     tot["cassa_netta"] = round(tot["contanti"] - tot["spese_contanti"], 2)
@@ -247,7 +250,33 @@ class CorrispettivoInput(BaseModel):
     contanti: float = 0
     pos: float = 0
     versati: float = 0
+    non_riscosso: float = 0
+    non_riscosso_note: str = ""
     note: str = ""
+
+
+QUADRATURA_TOLLERANZA = 1.0
+
+
+async def avviso_quadratura(store_id: str, c: dict) -> None:
+    """WhatsApp immediato al negozio se scontrini ≠ contanti+POS+non riscosso."""
+    db = _d["db"]
+    diff = c.get("quadratura_diff") or 0
+    if abs(diff) < QUADRATURA_TOLLERANZA or not c.get("incassato"):
+        return
+    s = await db.stores.find_one({"id": store_id}, {"_id": 0, "id": 1, "nome": 1, "telefono_avvisi": 1})
+    numero = re.sub(r"\D", "", (s or {}).get("telefono_avvisi") or "")
+    if not numero:
+        return
+    d = c["data"]
+    testo = (f"⚠️ *{s['nome']}* - corrispettivo del {d[8:]}/{d[5:7]}/{d[:4]} NON quadra\n"
+             f"Scontrini (riparazioni+merce+art.74): {_eur(c['scontrini'])}\n"
+             f"Contanti {_eur(c['contanti'])} + POS {_eur(c['pos'])}" + (f" + non riscosso {_eur(c['non_riscosso'])}" if c.get("non_riscosso") else "") + f" = {_eur(c['incassato'] + c.get('non_riscosso', 0))}\n"
+             f"Differenza: *{_eur(diff)}* ({'mancano' if diff > 0 else 'in più'} rispetto agli scontrini). Controlla e correggi il corrispettivo.")
+    try:
+        await _d["wa_send"](numero, testo, session=store_id, tipo="corrispettivi_quadratura")
+    except Exception as e:
+        logger.warning("Avviso quadratura %s non inviato: %s", s["nome"], e)
 
 
 @router.put("/corrispettivi/{store_id}/{data}")
@@ -261,6 +290,7 @@ async def put_corrispettivo(store_id: str, data: str, body: CorrispettivoInput, 
     doc = _norm(body.model_dump())
     doc.update({"store_id": store_id, "data": data, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("name", "")})
     await _d["db"].corrispettivi.update_one({"store_id": store_id, "data": data}, {"$set": doc, "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
+    asyncio.create_task(avviso_quadratura(store_id, doc))
     return await _d["db"].corrispettivi.find_one({"store_id": store_id, "data": data}, {"_id": 0})
 
 
@@ -476,6 +506,10 @@ def _testo_wa_store(nome: str, c: Optional[dict], spese: list, data: str) -> str
         det = ", ".join(f"{x['numero']} {x['pagamento']}".strip() for x in c["fatture_dettaglio"])
         righe.append(f"Fatture: {_eur(c['fatture'])}" + (f" ({det})" if det else ""))
     righe += [f"Contanti: {_eur(c['contanti'])} | POS: {_eur(c['pos'])}", f"*TOTALE (contanti+POS+fatture): {_eur(c['totale'])}*"]
+    if c.get("non_riscosso"):
+        righe.append(f"Non riscosso: {_eur(c['non_riscosso'])}" + (f" ({c['non_riscosso_note']})" if c.get("non_riscosso_note") else ""))
+    if c.get("incassato") and abs(c.get("quadratura_diff") or 0) >= QUADRATURA_TOLLERANZA:
+        righe.append(f"⚠️ Non quadra: differenza {_eur(c['quadratura_diff'])} tra scontrini e incasso")
     if c["versati"]:
         righe.append(f"Versati: {_eur(c['versati'])}")
     if spese:
