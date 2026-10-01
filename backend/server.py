@@ -3192,6 +3192,28 @@ async def list_ritiri(user: dict = Depends(get_current_user), venditore_id: str 
         r["store_name"] = smap.get(r.get("store_id", ""), "-")
     return ritiri
 
+async def crea_cliente_da_ritiro(data: dict, user: dict) -> str:
+    """Crea l'anagrafica cliente al volo dalla bolla di ritiro (così i documenti restano sul cliente)."""
+    now = datetime.now(timezone.utc).isoformat()
+    c = {"id": str(uuid.uuid4()), "nome": data["nome"].strip(), "cognome": data["cognome"].strip(), "tipo_cliente": "privato",
+         "codice_fiscale": (data.get("codice_fiscale") or "").strip().upper(), "telefono": data.get("telefono") or "",
+         "venditore_id": data["store_id"], "gestione": "telefonia", "lavorazione": "", "origine": "ritiro",
+         "pagato": False, "last_payment_date": None, "created_by": user["id"], "created_at": now, "updated_at": now}
+    await db.clients.insert_one(c)
+    await log_lavorazione(c, user, "cliente_inserito", "Cliente inserito da bolla di ritiro")
+    return c["id"]
+
+async def salva_documenti_cliente(client_id: str, files: list, user_id: str) -> None:
+    """Copia i documenti della bolla anche sull'anagrafica cliente (riutilizzabili nei ritiri futuri)."""
+    now = datetime.now(timezone.utc).isoformat()
+    for name, ct, content in files:
+        ext = name.split(".")[-1].lower() if "." in name else ("pdf" if ct == "application/pdf" else "jpg")
+        path = f"{APP_NAME}/attachments/{client_id}/{uuid.uuid4()}.{ext}"
+        result = put_object(path, content, ct)
+        await db.attachments.insert_one({"id": str(uuid.uuid4()), "client_id": client_id, "storage_path": result["path"],
+                                         "original_filename": name, "content_type": ct, "size": result["size"],
+                                         "is_deleted": False, "uploaded_by": user_id, "created_at": now, "origine": "ritiro"})
+
 @api_router.post("/ritiri")
 async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_user)):
     ritiri_scope(user)
@@ -3203,6 +3225,8 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
     if not data["nome"].strip() or not data["cognome"].strip() or not data["articolo"].strip():
         raise HTTPException(status_code=400, detail="Nome, cognome e articolo sono obbligatori")
     data["telefono"] = firma_ritiro_module.normalizza_telefono(data.get("telefono"))
+    if not data.get("client_id"):
+        data["client_id"] = await crea_cliente_da_ritiro(data, user)
     data["firma_negozio"] = user.get("name", "")
     firma_ritiro_module.prepara_firma(data)
     data["numero"] = await next_numero("ritiro", data["store_id"])
@@ -3301,6 +3325,11 @@ async def upload_ritiro_documenti(ritiro_id: str, files: List[UploadFile] = File
     await db.ritiri.update_one({"id": ritiro_id}, {
         "$set": {"storage_path": result["path"], "updated_at": now},
         "$push": {"documenti": {"$each": [{"nome": n, "at": now, "by": user["id"]} for n in names]}}})
+    if r.get("client_id"):
+        try:
+            await salva_documenti_cliente(r["client_id"], [(n, ct, c) for n, (ct, c) in zip(names, docs)], user["id"])
+        except Exception as e:
+            logger.warning(f"Copia documenti ritiro su cliente {r['client_id']} fallita: {e}")
     asyncio.create_task(google_drive_module.carica_ritiro_su_drive(ritiro_id))
     return {"status": "ok", "documenti": (r.get("documenti") or []) + [{"nome": n, "at": now} for n in names]}
 

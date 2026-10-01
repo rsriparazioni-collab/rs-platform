@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Paperclip } from "lucide-react";
 import api, { apiError } from "../lib/api";
 import { apriPortaleDopoSalvataggio } from "./PortaleBox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -67,6 +68,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
   const [venditori, setVenditori] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [nuovoFornitore, setNuovoFornitore] = useState(null);
+  const [nuoviDoc, setNuoviDoc] = useState([]);
 
   useEffect(() => {
     api.get("/venditori").then((r) => setVenditori(r.data.filter((v) => v.attivo !== false))).catch(() => {});
@@ -164,14 +166,27 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
     NUM_FIELDS.forEach((k) => { payload[k] = payload[k] === "" ? null : parseFloat(payload[k]); });
     DATE_FIELDS.forEach((k) => { payload[k] = payload[k] || null; });
     try {
+      let clientId = client?.id;
       if (isEdit) {
         await api.patch(`/clients/${client.id}`, payload);
         toast.success("Cliente aggiornato");
       } else {
-        await api.post("/clients", payload);
+        const r = await api.post("/clients", payload);
+        clientId = r.data.id;
         toast.success("Cliente inserito");
         if (payload.nuovo_fornitore) api.get("/portali").then((r) => apriPortaleDopoSalvataggio(r.data, "energia", payload.nuovo_fornitore)).catch(() => {});
       }
+      if (nuoviDoc.length && clientId) {
+        try {
+          for (const f of nuoviDoc) {
+            const fd = new FormData();
+            fd.append("file", f);
+            await api.post(`/clients/${clientId}/attachments`, fd);
+          }
+          toast.success(`${nuoviDoc.length} documenti allegati al cliente`);
+        } catch (e) { toast.error(apiError(e, "Cliente salvato ma documenti non caricati: allegali dalla scheda")); }
+      }
+      setNuoviDoc([]);
       setForm(EMPTY);
       setBaseline(EMPTY);
       localStorage.removeItem(draftKey);
@@ -406,6 +421,12 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
               <Field label="Note" testid="note">
                 <Textarea rows={3} value={form.note} onChange={(e) => set("note", e.target.value)} data-testid="input-note" />
               </Field>
+            </div>
+            <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3 text-sm" data-testid="client-form-documenti">
+              <label className="flex cursor-pointer items-center gap-2 font-medium text-slate-700"><Paperclip className="h-4 w-4" /> Allega documenti (carta d'identità, bollette, ecc.)
+                <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden"
+                       onChange={(e) => { setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])]); e.target.value = ""; }} data-testid="client-form-documenti-input" /></label>
+              {nuoviDoc.length > 0 && <ul className="mt-2 space-y-1 text-xs text-slate-600" data-testid="client-form-documenti-list">{nuoviDoc.map((f, i) => <li key={i} className="flex justify-between"><span>{f.name}</span><button type="button" className="text-rose-600" onClick={() => setNuoviDoc(nuoviDoc.filter((_, j) => j !== i))}>rimuovi</button></li>)}</ul>}
             </div>
           </section>
 
