@@ -138,7 +138,7 @@ export default function Magazzino() {
         </div>
       </div>
 
-      <DaOrdinare key={daOrdinareKey} onChanged={() => { load(); setDaOrdinareKey((k) => k + 1); }} />
+      <DaOrdinare key={`ordini-${daOrdinareKey}`} onChanged={() => { load(); setDaOrdinareKey((k) => k + 1); }} />
       <TrasferimentiNegozi />
 
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="magazzino-filters">
@@ -258,7 +258,7 @@ export default function Magazzino() {
         </div>
       </div>
 
-      <RigeneratiVenduti key={venditeKey} canSeeAll={canSeeAll} />
+      <RigeneratiVenduti key={`venduti-${venditeKey}`} canSeeAll={canSeeAll} />
 
       <Dialog open={!!vendita} onOpenChange={(o) => !o && setVendita(null)}>
         <DialogContent className="max-w-sm" data-testid="vendita-dialog">

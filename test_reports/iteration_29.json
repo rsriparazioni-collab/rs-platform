@@ -1,0 +1,28 @@
+{
+  "summary": "Iter 29 - Retest frontend 'Vendita su ordinazione' dopo fix di iter 28. Login admin + 2FA (pyotp) OK. FIX #1 VERIFICATO: in Clienti → sheet 'Fontana Luca' (Sondrio) il pulsante 'Vendita' [data-testid=aggiungi-vendita-button] ora APRE ServizioForm con TIPO=Vendita e il box 'Prodotto da ordinare' [servizio-ordine-box] correttamente visibile (prima navigava a /vendite). FLUSSO COMPLETO END-TO-END OK: spuntato servizio-da-ordinare, compilati fornitore=Miwo, marca=Samsung, modello='A55 QA2', costo=280, acconto=100, prodotto='Samsung A55 QA2', importo=350, negozio=Sondrio → submit → toast 'Servizio inserito'. In client-servizi-collegati appare riga 'Vendita · Samsung A55 QA2' con badge 'In ordine'. FIX #2 VERIFICATO: click sulla riga [data-testid^=client-servizio-] (ora cliccabile) apre ServizioDetail con card 'Vendita su ordinazione' [vendita-ordine-card] visibile, stato 'In ordine dal fornitore', 'Fornitore Miwo · Acconto € 100 · Saldo € 250.00'. Click 'Arrivato' [vendita-ordine-arrivato] → toast 'Arrivo registrato: cliente avvisato via WhatsApp' + badge 'Arrivato: pronto per il ritiro' + 'WhatsApp \"arrivato\" inviato'. Click 'Consegnato e saldato' [vendita-ordine-consegna] → toast 'Consegnato: incassato saldo € 250.00' + badge 'Consegnato e saldato', importo pagato, header 'Pagato'. FIX #3 (key duplicata DaOrdinare) NON COMPLETAMENTE RISOLTO: su pagina Magazzino persistono 5 warning React 'Encountered two children with the same key, 0'. La modifica di DaOrdinare.jsx a `key={m.id || i}` da sola non copre tutti i casi: probabilmente il backend restituisce più item di magazzino con lo stesso id OPPURE la sorgente del warning non è DaOrdinare ma un'altra .map in Magazzino.jsx/componenti figli. Il flusso principale non è bloccato. Cleanup DB OK: servizio f47e...391, magazzino item 701e...969 e wa_log eliminati (verificato 404/deletedCount:1).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Magazzino", "issues": ["React warning 'Encountered two children with the same key, 0' ancora presente (5 occorrenze al load della pagina). Il fix su DaOrdinare.jsx (`key={m.id || i}`) non è sufficiente: investigare altre .map senza key univoca (es. Magazzino.jsx tr key={m.id} se il backend restituisce id duplicati, o componenti figli nascosti). Non blocca la feature."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FIX (minor): warning React 'two children with the same key, 0' su pagina Magazzino ancora presente nonostante la patch su DaOrdinare.jsx. Ispezionare tutte le .map renderizzate sulla pagina (incluso Magazzino.jsx riga 201 `items.map((m,i)) <tr key={m.id}>`): verificare se GET /api/magazzino può restituire record con id duplicati o mancanti; in tal caso usare `key={m.id || i}` anche lì, oppure correggere la deduplicazione lato backend."
+  ],
+  "critical_code_review_comments": [
+    "DaOrdinare.jsx:26 `key={m.id || i}` è ok ma non risolve warning: verificare se il warning venga da `<tr key={m.id}>` in Magazzino.jsx:202 quando il backend ritorna duplicati (es. due 'MOTO BUDS (usato SO10)' visibili nello screenshot — se condividono lo stesso id reale è un bug di dati, altrimenti serve fallback a indice).",
+    "ClientDetail.jsx: ora le righe client-servizio-<id> sono cliccabili e aprono ServizioDetail cross-tipo — ottimo. Suggerimento: aggiungere stato visivo (cursor-pointer) e aria-label per accessibilità (già presente classe hover:bg-sky-50, va bene).",
+    "VenditaOrdineBox.jsx: parseFloat sui campi acconto/costo con virgola italiana ('2,5') restituisce NaN — persistente da iter 28 (non critico ora, ma consigliato replace(',','.'))."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skip)", "frontend": "95% (2 fix HIGH confermati; residua minor warning console su Magazzino)"},
+  "test_credentials": "Admin rsriparazioni@gmail.com + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV (pyotp).",
+  "seed_data_creation": "Creato in UI: servizio vendita f47e0691-6fc8-4634-badc-3f845651f391 + magazzino item 701e571b-8935-4831-9c5c-b6ba7e21e969 + wa_log arrivo. TUTTO ELIMINATO (DELETE 200 su /servizi e /magazzino, mongo deletedCount:1 su wa_log, GET successivo = 404).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Feature 'Vendita su ordinazione' lato UI è ora completamente navigabile dal flusso pulito richiesto dalle specifiche (Clienti → sheet → Vendita → form con box ordine → save → riga Servizi collegati cliccabile → ServizioDetail con VenditaOrdineStato → Arrivato → Consegnato). Gli unici residui sono (a) warning React 'same key 0' su Magazzino (minor, da indagare oltre DaOrdinare) e (b) i commenti di code review non critici ereditati da iter 28 (parseFloat virgola italiana, modifica di servizi vendita già in_ordine).",
+  "rca of the issue": "FIX #1: Clienti.jsx riga 315-320 ora delega sempre a setServizioForm({tipo,client}) per tipo='vendita' (rimosso navigate('/vendite')). FIX #2: ClientDetail.jsx riga 378 usa `<button onClick={() => onNuovoServizio('apri_servizio', s)}>` sulle righe client-servizio-<id>; Clienti.jsx intercetta tipo='apri_servizio' e apre ServizioDetail (riga 318). Entrambi i fix funzionano correttamente nel browser. FIX #3 (key duplicata): patch su DaOrdinare.jsx insufficiente — l'origine del warning potrebbe essere la tabella magazzino principale con id duplicati nei dati seed (visibili 2 'MOTO BUDS (usato SO10)' e 2 'MOTOROLA MOTO G17 (usato SO10)' nello screenshot), oppure altre .map in componenti figli."
+}
