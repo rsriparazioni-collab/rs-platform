@@ -6,6 +6,7 @@ import { Button } from "../ui/button";
 import { MESI, Num, PeriodoPicker, eur } from "./shared";
 import { CentriCostoEditor } from "./CentriCostoEditor";
 import { FattureAde } from "./FattureAde";
+import { PdpAnalisi } from "./PdpAnalisi";
 
 const CAT = [["entrate", "Entrate", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse modificabili", "text-amber-700"], ["fornitori", "Fornitori / acquisti", "text-slate-700"]];
 
@@ -30,8 +31,9 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
   const salvaVoci = async (v) => { try { await api.put(`/contabilita/pdp/voci/${centroId}`, v); setVoci(v); } catch (e) { toast.error(apiError(e)); } };
   if (!centroId) return <p className="text-sm text-slate-500" data-testid="pdp-nessun-centro">Nessun centro di costo disponibile.</p>;
   if (!d || !voci) return null;
-  const AUTO = { entrate: ["Corrispettivi negozi", "Fatture emesse (AdE)"], fornitori: ["Fatture ricevute (AdE)"] };
-  const autoVal = (cat) => (AUTO[cat] || []).reduce((a, k) => a + ((cat === "entrate" ? d.entrate[k] : d.sezioni[cat][k]) || 0), 0);
+  const AUTO = { entrate: ["Corrispettivi negozi", "Fatture emesse (AdE)"], fornitori: ["Fatture ricevute non abbinate (AdE)"] };
+  const adeF = d.ade_fornitori || {};
+  const autoVal = (cat) => (AUTO[cat] || []).reduce((a, k) => a + ((cat === "entrate" ? d.entrate[k] : d.sezioni[cat][k]) || 0), 0) + (cat === "fornitori" ? Object.values(adeF).reduce((a, v) => a + v, 0) : 0);
   const somma = (cat) => voci[cat].reduce((a, v) => a + (parseFloat(valori[`${cat}|${v}`]) || 0), 0);
   const entrate = autoVal("entrate") + somma("entrate");
   const uscite = somma("spese_fisse") + somma("spese_semifisse") + somma("fornitori") + autoVal("fornitori");
@@ -63,6 +65,7 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
           <div className="mt-2 h-2 rounded-full bg-slate-100"><div className={`h-2 rounded-full ${ris >= 0 ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${Math.min(100, uscite ? entrate / uscite * 100 : 0)}%` }} /></div></div>
       </div>
       <FattureAde centroId={centroId} anno={anno} mese={mese} onChanged={load} />
+      <PdpAnalisi centroId={centroId} anno={anno} mese={mese} />
       <div className="grid gap-4 lg:grid-cols-2">
         {CAT.map(([cat, label, color]) => (
           <div key={cat} className="rounded-xl border border-slate-200 bg-white" data-testid={`pdp-sezione-${cat}`}>
@@ -70,10 +73,10 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
             <div className="divide-y divide-slate-50 px-4">
               {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Corrispettivi negozi <span className="text-xs text-slate-400">(automatico: {d.centro.negozi.join(" + ")})</span></span><span className="tabular-nums font-medium" data-testid="pdp-corrispettivi-auto">{eur(d.entrate["Corrispettivi negozi"])}</span></div>}
               {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture emesse <span className="text-xs text-slate-400">(automatico da Agenzia Entrate)</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-emesse-auto">{eur(d.entrate["Fatture emesse (AdE)"])}</span></div>}
-              {cat === "fornitori" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture ricevute <span className="text-xs text-slate-400">(automatico da Agenzia Entrate)</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-ricevute-auto">{eur(d.sezioni.fornitori["Fatture ricevute (AdE)"])}</span></div>}
+              {cat === "fornitori" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture ricevute non abbinate <span className="text-xs text-slate-400">(automatico da Agenzia Entrate{d.ade_non_abbinate?.length ? `: ${d.ade_non_abbinate.slice(0, 4).map((x) => x.controparte).join(", ")}${d.ade_non_abbinate.length > 4 ? "…" : ""}` : ""})</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-ricevute-auto">{eur(d.sezioni.fornitori["Fatture ricevute non abbinate (AdE)"])}</span></div>}
               {voci[cat].map((v) => (
                 <div key={v} className="flex items-center gap-2 py-1.5 text-sm">
-                  <span className="flex-1 text-slate-600">{v}</span>
+                  <span className="flex-1 text-slate-600">{v}{cat === "fornitori" && adeF[v] ? <span className="ml-1.5 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700" data-testid={`pdp-ade-${v.replace(/\W/g, "_")}`}>fatture {eur(adeF[v])}{parseFloat(valori[`${cat}|${v}`]) ? " + manuale" : ""}</span> : null}</span>
                   <div className="w-32"><Num value={valori[`${cat}|${v}`]} onChange={(x) => setValori({ ...valori, [`${cat}|${v}`]: x })} testid={`pdp-val-${cat}-${v.replace(/\W/g, "_")}`} /></div>
                   <button onClick={() => salvaVoci({ ...voci, [cat]: voci[cat].filter((x) => x !== v) })} className="text-slate-300 hover:text-rose-600" title="Rimuovi voce" data-testid={`pdp-del-${cat}-${v.replace(/\W/g, "_")}`}><X className="h-3.5 w-3.5" /></button>
                 </div>

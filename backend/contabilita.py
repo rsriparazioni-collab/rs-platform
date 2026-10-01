@@ -650,6 +650,36 @@ async def put_voci(centro_id: str, body: VociInput, request: Request):
     return doc
 
 
+STOP_WORDS = {"spa", "srl", "snc", "sas", "s.p.a.", "s.r.l.", "italia", "italy", "group", "energia", "express", "payments", "di", "e", "&", "c", "the"}
+
+
+def _tokens(s: str) -> set:
+    return {t for t in re.split(r"[^a-z0-9]+", (s or "").lower()) if len(t) >= 3 and t not in STOP_WORDS}
+
+
+async def _ricevute_per_fornitore(centro_id: str, anno: int, mese: int, voci_fornitori: list) -> tuple:
+    """Raggruppa le fatture ricevute AdE per controparte e le abbina alle voci fornitori del PDP."""
+    gruppi: dict = {}
+    async for f in _d["db"].fatture_ade.find({"centro_id": centro_id, "anno": anno, "mese": mese, "direzione": "ricevute"}, {"_id": 0, "controparte": 1, "totale": 1}):
+        k = (f.get("controparte") or "Sconosciuto").strip()
+        gruppi[k] = round(gruppi.get(k, 0.0) + _f(f.get("totale")), 2)
+    abbinati: dict = {}
+    non_abbinate = []
+    voci_tok = [(v, _tokens(v)) for v in voci_fornitori]
+    for contro, tot in sorted(gruppi.items(), key=lambda x: -abs(x[1])):
+        ct = _tokens(contro)
+        match = None
+        for v, vt in voci_tok:
+            if vt and (vt <= ct or any(any(a.startswith(b) or b.startswith(a) for a in ct) for b in vt if len(b) >= 4)):
+                match = v
+                break
+        if match:
+            abbinati[match] = round(abbinati.get(match, 0.0) + tot, 2)
+        else:
+            non_abbinate.append({"controparte": contro, "totale": tot})
+    return abbinati, non_abbinate
+
+
 async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     db = _d["db"]
     voci = await _voci(centro)
@@ -692,12 +722,16 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     sezioni = {}
     for cat in ("spese_fisse", "spese_semifisse", "fornitori"):
         sezioni[cat] = {v: _f(valori.get(f"{cat}|{v}")) for v in voci[cat]}
-    sezioni["fornitori"] = {"Fatture ricevute (AdE)": ade["ricevute"], **sezioni["fornitori"]}
+    ade_fornitori, non_abbinate = await _ricevute_per_fornitore(centro["id"], anno, mese, voci["fornitori"])
+    for v, imp in ade_fornitori.items():
+        sezioni["fornitori"][v] = round(sezioni["fornitori"].get(v, 0.0) + imp, 2)
+    tot_non_abb = round(sum(x["totale"] for x in non_abbinate), 2)
+    sezioni["fornitori"] = {"Fatture ricevute non abbinate (AdE)": tot_non_abb, **sezioni["fornitori"]}
     tot_entrate = round(sum(entrate.values()), 2)
     tot_spese = {cat: round(sum(d.values()), 2) for cat, d in sezioni.items()}
     tot_uscite = round(sum(tot_spese.values()), 2)
     return {"centro": {"id": centro["id"], "nome": centro["nome"], "negozi": centro["negozi"]}, "anno": anno, "mese": mese, "voci": voci, "valori": valori,
-            "entrate": entrate, "corrispettivi_per_negozio": per_negozio, "ade": ade, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
+            "entrate": entrate, "corrispettivi_per_negozio": per_negozio, "ade": ade, "ade_fornitori": ade_fornitori, "ade_non_abbinate": non_abbinate, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
             "punto_pareggio": tot_uscite, "risultato": round(tot_entrate - tot_uscite, 2),
             "copertura_pct": round(tot_entrate / tot_uscite * 100, 1) if tot_uscite else None, "note": doc.get("note", ""), "ereditato_da": ereditato_da,
             "compilato": bool(doc) or (anno, mese) in SEED_PDP.get(centro["id"], {})}
