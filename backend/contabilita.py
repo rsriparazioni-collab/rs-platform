@@ -173,7 +173,19 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     tot["riporto"] = _f(extra.get("riporto"))
     tot["da_versare"] = round(tot["riporto"] + tot["cassa_netta"] - tot["versati_totale"], 2)
     tot["giorni_inseriti"] = len(giorni)
-    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "riporto": tot["riporto"], "riporto_note": extra.get("riporto_note", ""), "totali": tot}
+    prev_a, prev_m = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
+    prev_ex = await db.corrispettivi_mese.find_one({"store_id": store_id, "anno": prev_a, "mese": prev_m}, {"_id": 0, "riporto": 1, "versati_dopo": 1})
+    prev_pref = f"{prev_a:04d}-{prev_m:02d}"
+    prev_cont = 0.0
+    prev_vers = 0.0
+    async for c in db.corrispettivi.find({"store_id": store_id, "data": {"$regex": f"^{prev_pref}"}}, {"_id": 0, "contanti": 1, "versati": 1}):
+        prev_cont += _f(c.get("contanti"))
+        prev_vers += _f(c.get("versati"))
+    prev_spese = sum([_f(s.get("importo")) async for s in db.spese_cassa.find({"store_id": store_id, "data": {"$regex": f"^{prev_pref}"}}, {"_id": 0, "importo": 1})])
+    prev_vers += sum(_f(v.get("importo")) for v in ((prev_ex or {}).get("versati_dopo") or []))
+    riporto_proposto = round(_f((prev_ex or {}).get("riporto")) + prev_cont - prev_spese - prev_vers, 2)
+    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "riporto": tot["riporto"], "riporto_note": extra.get("riporto_note", ""),
+            "riporto_proposto": riporto_proposto, "riporto_proposto_mese": f"{MESI_IT[prev_m]} {prev_a}", "totali": tot}
 
 
 @router.get("/corrispettivi")
