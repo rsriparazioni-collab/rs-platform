@@ -171,7 +171,6 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     tot["versati_dopo"] = round(sum(_f(v.get("importo")) for v in versati_dopo), 2)
     tot["versati_totale"] = round(tot["versati"] + tot["versati_dopo"], 2)
     tot["riporto"] = _f(extra.get("riporto"))
-    tot["da_versare"] = round(tot["riporto"] + tot["cassa_netta"] - tot["versati_totale"], 2)
     tot["giorni_inseriti"] = len(giorni)
     prev_a, prev_m = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
     prev_ex = await db.corrispettivi_mese.find_one({"store_id": store_id, "anno": prev_a, "mese": prev_m}, {"_id": 0, "riporto": 1, "versati_dopo": 1})
@@ -183,9 +182,14 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
         prev_vers += _f(c.get("versati"))
     prev_spese = sum([_f(s.get("importo")) async for s in db.spese_cassa.find({"store_id": store_id, "data": {"$regex": f"^{prev_pref}"}}, {"_id": 0, "importo": 1})])
     prev_vers += sum(_f(v.get("importo")) for v in ((prev_ex or {}).get("versati_dopo") or []))
-    riporto_proposto = round(_f((prev_ex or {}).get("riporto")) + prev_cont - prev_spese - prev_vers, 2)
-    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "riporto": tot["riporto"], "riporto_note": extra.get("riporto_note", ""),
-            "riporto_proposto": riporto_proposto, "riporto_proposto_mese": f"{MESI_IT[prev_m]} {prev_a}", "totali": tot}
+    riporto_proposto = round(_f((prev_ex or {}).get("riporto")) + prev_cont - prev_spese - prev_vers, 2) if (prev_cont or prev_ex) else 0.0
+    riporto_auto = "riporto" not in extra or extra.get("riporto_fonte") == "auto"
+    if riporto_auto and riporto_proposto > 0:
+        tot["riporto"] = riporto_proposto
+    tot["da_versare"] = round(tot["riporto"] + tot["cassa_netta"] - tot["versati_totale"], 2)
+    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "riporto": tot["riporto"],
+            "riporto_note": extra.get("riporto_note") or (f"riporto automatico non versato {MESI_IT[prev_m]} {prev_a}" if riporto_auto and tot["riporto"] else ""),
+            "riporto_auto": riporto_auto, "riporto_proposto": riporto_proposto, "riporto_proposto_mese": f"{MESI_IT[prev_m]} {prev_a}", "totali": tot}
 
 
 @router.get("/corrispettivi")
@@ -241,8 +245,53 @@ async def put_riporto(store_id: str, anno: int, mese: int, body: RiportoInput, r
     user = await _user(request)
     await _store_completo(user, store_id)
     await _d["db"].corrispettivi_mese.update_one({"store_id": store_id, "anno": anno, "mese": mese},
-                                                 {"$set": {"riporto": _f(body.riporto), "riporto_note": body.riporto_note[:120], "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+                                                 {"$set": {"riporto": _f(body.riporto), "riporto_note": body.riporto_note[:120], "riporto_fonte": "manuale", "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
     return {"ok": True, "riporto": _f(body.riporto)}
+
+
+@router.delete("/corrispettivi/{store_id}/{anno}/{mese}/riporto")
+async def reset_riporto(store_id: str, anno: int, mese: int, request: Request):
+    user = await _user(request)
+    await _store_completo(user, store_id)
+    await _d["db"].corrispettivi_mese.update_one({"store_id": store_id, "anno": anno, "mese": mese}, {"$unset": {"riporto": "", "riporto_note": "", "riporto_fonte": ""}})
+    return {"ok": True}
+
+
+async def avviso_fine_mese(giorno: Optional[str] = None) -> list:
+    """Alle 18 dell'ultimo giorno del mese: avvisa il negozio del non versato che passa al mese successivo."""
+    db = _d["db"]
+    oggi = date.fromisoformat(giorno) if giorno else date.today()
+    if (oggi + timedelta(days=1)).day != 1:
+        return [{"skip": "non è l'ultimo giorno del mese"}]
+    esiti = []
+    async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1, "telefono_avvisi": 1}):
+        dati = await _mese_dati(s["id"], oggi.year, oggi.month)
+        t = dati["totali"]
+        if not t["giorni_inseriti"] or t["da_versare"] <= 0:
+            continue
+        succ = oggi + timedelta(days=1)
+        numero = re.sub(r"\D", "", s.get("telefono_avvisi") or "")
+        testo = (f"⚠️ *{s['nome']}* - chiusura {MESI_IT[oggi.month]} {oggi.year}\n"
+                 f"Non hai ancora versato *{_eur(t['da_versare'])}* (riporto {_eur(t['riporto'])} + contanti {_eur(t['contanti'])} - spese {_eur(t['spese_contanti'])} - versati {_eur(t['versati_totale'])}).\n"
+                 f"La cifra verrà riportata automaticamente su {MESI_IT[succ.month]} {succ.year} e dovrà risultare versata.")
+        if not numero:
+            esiti.append({"negozio": s["nome"], "ok": False, "error": "telefono avvisi negozio mancante", "da_versare": t["da_versare"]})
+            continue
+        try:
+            await _d["wa_send"](numero, testo, session=s["id"], tipo="corrispettivi_fine_mese")
+            esiti.append({"negozio": s["nome"], "numero": numero, "ok": True, "da_versare": t["da_versare"]})
+        except Exception as e:
+            esiti.append({"negozio": s["nome"], "numero": numero, "ok": False, "error": str(getattr(e, "detail", e)), "da_versare": t["da_versare"]})
+    await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "wa_fine_mese", "giorno": oggi.isoformat(), "esiti": esiti, "at": datetime.now(timezone.utc).isoformat()})
+    return esiti
+
+
+@router.post("/corrispettivi/avviso-fine-mese")
+async def avviso_fine_mese_manuale(giorno: str, request: Request):
+    user = await _user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    return await avviso_fine_mese(giorno)
 
 
 class VersatoDopoInput(BaseModel):

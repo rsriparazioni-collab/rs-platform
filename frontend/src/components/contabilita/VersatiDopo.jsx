@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Num, eur } from "./shared";
 
-export const VersatiDopo = ({ storeId, anno, mese, versati, totali, riporto, riportoNote, proposto, propostoMese, reload }) => {
+export const VersatiDopo = ({ storeId, anno, mese, versati, totali, riporto, riportoNote, riportoAuto, proposto, propostoMese, reload }) => {
   const [f, setF] = useState({ data: new Date().toISOString().slice(0, 10), importo: "", note: "" });
   const [rip, setRip] = useState({ riporto: riporto || "", riporto_note: riportoNote || "" });
   useEffect(() => { setRip({ riporto: riporto || "", riporto_note: riportoNote || "" }); }, [riporto, riportoNote]);
@@ -14,7 +14,8 @@ export const VersatiDopo = ({ storeId, anno, mese, versati, totali, riporto, rip
     try { await api.put(`/contabilita/corrispettivi/${storeId}/${anno}/${mese}/riporto`, { riporto: valore, riporto_note: note }); toast.success("Riporto salvato"); reload(); }
     catch (e) { toast.error(apiError(e)); }
   };
-  const propostaDiversa = proposto != null && Math.abs(proposto - (parseFloat(riporto) || 0)) > 0.01;
+  const propostaDiversa = !riportoAuto && proposto != null && Math.abs(proposto - (parseFloat(riporto) || 0)) > 0.01;
+  const resetAuto = async () => { try { await api.delete(`/contabilita/corrispettivi/${storeId}/${anno}/${mese}/riporto`); toast.success("Riporto automatico ripristinato"); reload(); } catch (e) { toast.error(apiError(e)); } };
   const add = async () => {
     if (!f.importo) return toast.error("Importo obbligatorio");
     try { await api.post(`/contabilita/corrispettivi/${storeId}/${anno}/${mese}/versati-dopo`, { ...f, importo: parseFloat(f.importo) }); setF({ ...f, importo: "", note: "" }); toast.success("Versamento registrato"); reload(); }
@@ -32,10 +33,11 @@ export const VersatiDopo = ({ storeId, anno, mese, versati, totali, riporto, rip
         </div>
       </div>
       <div className="grid gap-2 border-b border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-[150px_120px_1fr_auto]" data-testid="riporto-box">
-        <span className="self-center text-sm font-medium text-slate-700">Riporto contanti dal mese precedente</span>
+        <span className="self-center text-sm font-medium text-slate-700">Riporto contanti dal mese precedente {riportoAuto && <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-700" data-testid="riporto-auto-badge">automatico</span>}</span>
         <Num value={rip.riporto} onChange={(v) => setRip({ ...rip, riporto: v })} testid="riporto-importo" />
         <Input placeholder="Note (es. cassa non versata di agosto)" value={rip.riporto_note} onChange={(e) => setRip({ ...rip, riporto_note: e.target.value })} className="h-8" data-testid="riporto-note" />
-        <Button size="sm" variant="outline" onClick={() => salvaRiporto()} data-testid="riporto-salva">Salva riporto</Button>
+        <div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => salvaRiporto()} data-testid="riporto-salva">Salva riporto</Button>
+          {!riportoAuto && <Button size="sm" variant="ghost" onClick={resetAuto} title="Torna al riporto automatico" data-testid="riporto-reset-auto">Auto</Button>}</div>
       </div>
       {propostaDiversa && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900" data-testid="riporto-proposta">

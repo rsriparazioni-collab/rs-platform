@@ -51,6 +51,14 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/corrispettivi-mensile"
     method: POST
     enabled: true
+  - name: corrispettivi-fine-mese
+    description: "Alle 18:00 di ogni giorno; agisce solo l'ultimo giorno del mese: WhatsApp al negozio con il non versato che passa al mese successivo"
+    cron: "0 18 * * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/corrispettivi-fine-mese"
+    method: POST
+    enabled: true
   - name: obiettivi-kpi
     description: "Alle 19:00 complimenti WhatsApp per obiettivi raggiunti; dal 15 promemoria se sotto il 40%"
     cron: "0 19 * * *"

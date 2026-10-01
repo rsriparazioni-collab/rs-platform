@@ -73,7 +73,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
         </table>
       </div>
       <SpeseCassa storeId={storeId} anno={anno} mese={mese} spese={dati.spese} reload={load} />
-      <VersatiDopo storeId={storeId} anno={anno} mese={mese} versati={dati.versati_dopo} totali={t} riporto={dati.riporto} riportoNote={dati.riporto_note} proposto={dati.riporto_proposto} propostoMese={dati.riporto_proposto_mese} reload={load} />
+      <VersatiDopo storeId={storeId} anno={anno} mese={mese} versati={dati.versati_dopo} totali={t} riporto={dati.riporto} riportoNote={dati.riporto_note} riportoAuto={dati.riporto_auto} proposto={dati.riporto_proposto} propostoMese={dati.riporto_proposto_mese} reload={load} />
       {giorno && <GiornoDialog storeId={storeId} riga={giorno} onClose={() => setGiorno(null)} onSaved={() => { setGiorno(null); load(); }} />}
     </div>
   );
