@@ -684,16 +684,20 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
         per_negozio[sid] = t
         corr += t
     entrate = {"Corrispettivi negozi": round(corr, 2)}
+    import fatture_ade
+    ade = await fatture_ade.totali_mese(centro["id"], anno, mese)
+    entrate["Fatture emesse (AdE)"] = ade["emesse"]
     for v in voci["entrate"]:
         entrate[v] = _f(valori.get(f"entrate|{v}"))
     sezioni = {}
     for cat in ("spese_fisse", "spese_semifisse", "fornitori"):
         sezioni[cat] = {v: _f(valori.get(f"{cat}|{v}")) for v in voci[cat]}
+    sezioni["fornitori"] = {"Fatture ricevute (AdE)": ade["ricevute"], **sezioni["fornitori"]}
     tot_entrate = round(sum(entrate.values()), 2)
     tot_spese = {cat: round(sum(d.values()), 2) for cat, d in sezioni.items()}
     tot_uscite = round(sum(tot_spese.values()), 2)
     return {"centro": {"id": centro["id"], "nome": centro["nome"], "negozi": centro["negozi"]}, "anno": anno, "mese": mese, "voci": voci, "valori": valori,
-            "entrate": entrate, "corrispettivi_per_negozio": per_negozio, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
+            "entrate": entrate, "corrispettivi_per_negozio": per_negozio, "ade": ade, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
             "punto_pareggio": tot_uscite, "risultato": round(tot_entrate - tot_uscite, 2),
             "copertura_pct": round(tot_entrate / tot_uscite * 100, 1) if tot_uscite else None, "note": doc.get("note", ""), "ereditato_da": ereditato_da,
             "compilato": bool(doc) or (anno, mese) in SEED_PDP.get(centro["id"], {})}

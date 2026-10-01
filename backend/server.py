@@ -5784,6 +5784,9 @@ import contabilita as contabilita_module
 contabilita_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, wa_sessione_connessa=wa_sessione_connessa,
                          send_email=send_email, put_object=put_object, app_name=APP_NAME)
 api_router.include_router(contabilita_module.router)
+import fatture_ade as fatture_ade_module
+fatture_ade_module.setup(db=db, get_current_user=get_current_user, centro=contabilita_module._centro)
+api_router.include_router(fatture_ade_module.router)
 
 @api_router.post("/cron/corrispettivi-giornalieri")
 async def cron_corrispettivi_giornalieri(request: Request, background_tasks: BackgroundTasks):

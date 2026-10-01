@@ -5,6 +5,7 @@ import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
 import { MESI, Num, PeriodoPicker, eur } from "./shared";
 import { CentriCostoEditor } from "./CentriCostoEditor";
+import { FattureAde } from "./FattureAde";
 
 const CAT = [["entrate", "Entrate", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse modificabili", "text-amber-700"], ["fornitori", "Fornitori / acquisti", "text-slate-700"]];
 
@@ -29,9 +30,11 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
   const salvaVoci = async (v) => { try { await api.put(`/contabilita/pdp/voci/${centroId}`, v); setVoci(v); } catch (e) { toast.error(apiError(e)); } };
   if (!centroId) return <p className="text-sm text-slate-500" data-testid="pdp-nessun-centro">Nessun centro di costo disponibile.</p>;
   if (!d || !voci) return null;
+  const AUTO = { entrate: ["Corrispettivi negozi", "Fatture emesse (AdE)"], fornitori: ["Fatture ricevute (AdE)"] };
+  const autoVal = (cat) => (AUTO[cat] || []).reduce((a, k) => a + ((cat === "entrate" ? d.entrate[k] : d.sezioni[cat][k]) || 0), 0);
   const somma = (cat) => voci[cat].reduce((a, v) => a + (parseFloat(valori[`${cat}|${v}`]) || 0), 0);
-  const entrate = d.entrate["Corrispettivi negozi"] + somma("entrate");
-  const uscite = somma("spese_fisse") + somma("spese_semifisse") + somma("fornitori");
+  const entrate = autoVal("entrate") + somma("entrate");
+  const uscite = somma("spese_fisse") + somma("spese_semifisse") + somma("fornitori") + autoVal("fornitori");
   const ris = entrate - uscite;
   return (
     <div className="space-y-5" data-testid="pdp-panel">
@@ -59,12 +62,15 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
         <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">Copertura</p><p className="mt-1 text-xl font-semibold" data-testid="pdp-copertura">{uscite ? `${(entrate / uscite * 100).toFixed(1)}%` : "—"}</p>
           <div className="mt-2 h-2 rounded-full bg-slate-100"><div className={`h-2 rounded-full ${ris >= 0 ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${Math.min(100, uscite ? entrate / uscite * 100 : 0)}%` }} /></div></div>
       </div>
+      <FattureAde centroId={centroId} anno={anno} mese={mese} onChanged={load} />
       <div className="grid gap-4 lg:grid-cols-2">
         {CAT.map(([cat, label, color]) => (
           <div key={cat} className="rounded-xl border border-slate-200 bg-white" data-testid={`pdp-sezione-${cat}`}>
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5"><h3 className={`text-sm font-semibold ${color}`}>{label}</h3><span className="text-sm font-semibold tabular-nums">{eur(somma(cat) + (cat === "entrate" ? d.entrate["Corrispettivi negozi"] : 0))}</span></div>
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5"><h3 className={`text-sm font-semibold ${color}`}>{label}</h3><span className="text-sm font-semibold tabular-nums">{eur(somma(cat) + autoVal(cat))}</span></div>
             <div className="divide-y divide-slate-50 px-4">
               {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Corrispettivi negozi <span className="text-xs text-slate-400">(automatico: {d.centro.negozi.join(" + ")})</span></span><span className="tabular-nums font-medium" data-testid="pdp-corrispettivi-auto">{eur(d.entrate["Corrispettivi negozi"])}</span></div>}
+              {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture emesse <span className="text-xs text-slate-400">(automatico da Agenzia Entrate)</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-emesse-auto">{eur(d.entrate["Fatture emesse (AdE)"])}</span></div>}
+              {cat === "fornitori" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture ricevute <span className="text-xs text-slate-400">(automatico da Agenzia Entrate)</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-ricevute-auto">{eur(d.sezioni.fornitori["Fatture ricevute (AdE)"])}</span></div>}
               {voci[cat].map((v) => (
                 <div key={v} className="flex items-center gap-2 py-1.5 text-sm">
                   <span className="flex-1 text-slate-600">{v}</span>
