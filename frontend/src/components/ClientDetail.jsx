@@ -375,14 +375,16 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Servizi collegati (riparazioni, telefonia)</p>
                   <div className="space-y-1.5">
                     {servizi.map((s) => (
-                      <div key={s.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                      <button type="button" key={s.id} onClick={() => onNuovoServizio("apri_servizio", s)} className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-left text-xs hover:bg-sky-50" data-testid={`client-servizio-${s.id}`}>
                         <span className="font-medium text-slate-800">
-                          {servizioTipoLabel(s.tipo)}{s.dispositivo ? ` · ${s.dispositivo}` : ""}{s.operatore_tel ? ` · ${s.operatore_tel}` : ""}
+                          {servizioTipoLabel(s.tipo)}{s.dispositivo ? ` · ${s.dispositivo}` : ""}{s.prodotto ? ` · ${s.prodotto}` : ""}{s.operatore_tel ? ` · ${s.operatore_tel}` : ""}
                         </span>
                         {s.tipo === "riparazione"
                           ? <span className={`status-badge ${ripStatoBadge(s.stato)}`}>{ripStatoLabel(s.stato)}</span>
-                          : <span className={`status-badge ${s.pagato ? "bg-emerald-500/15 text-emerald-700 border-emerald-300" : "bg-rose-500/15 text-rose-700 border-rose-300"}`}>{s.pagato ? "Pagato" : "Non pagato"}</span>}
-                      </div>
+                          : s.ordine_at && s.stato !== "consegnato"
+                            ? <span className={`status-badge ${s.stato === "in_ordine" ? "bg-rose-500/15 text-rose-700 border-rose-300" : "bg-teal-500/15 text-teal-700 border-teal-300"}`}>{s.stato === "in_ordine" ? "In ordine" : "Arrivato, da ritirare"}</span>
+                            : <span className={`status-badge ${s.pagato ? "bg-emerald-500/15 text-emerald-700 border-emerald-300" : "bg-rose-500/15 text-rose-700 border-rose-300"}`}>{s.pagato ? "Pagato" : "Non pagato"}</span>}
+                      </button>
                     ))}
                   </div>
                 </div>

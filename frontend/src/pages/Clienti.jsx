@@ -16,6 +16,7 @@ const TIPI_SERVIZI = {
 import ClientForm from "../components/ClientForm";
 import ClientDetail from "../components/ClientDetail";
 import ServizioForm from "../components/ServizioForm";
+import ServizioDetail from "../components/ServizioDetail";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -35,6 +36,7 @@ export default function Clienti() {
   const [editing, setEditing] = useState(null);
   const [prefill, setPrefill] = useState(null);
   const [servizioForm, setServizioForm] = useState(null);
+  const [servizioDetail, setServizioDetail] = useState(null);
   const navigate = useNavigate();
   const [detailRow, setDetailRow] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -313,9 +315,11 @@ export default function Clienti() {
                     onNuovoServizio={(tipo, d) => {
                       if (tipo === "apri_utenza") { setDetailRow(d); return; }
                       if (tipo === "ritiro") { navigate(`/ritiri?cliente=${d.id}`); return; }
-                      if (tipo === "vendita") { navigate(`/vendite?cliente=${d.id}`); return; }
+                      if (tipo === "apri_servizio") { setServizioDetail(d); return; }
                       setServizioForm({ tipo, client: { id: d.id, label: `${d.cognome} ${d.nome}` } });
                     }} />
+      <ServizioDetail servizio={servizioDetail} onClose={() => setServizioDetail(null)} onChanged={() => { load(); setDetailRow((r) => (r ? { ...r } : r)); }}
+                      onEdit={() => {}} isAdmin={user.role === "admin"} />
       <ServizioForm open={Boolean(servizioForm)} onClose={() => setServizioForm(null)} servizio={null}
                     defaultTipo={servizioForm?.tipo} presetClient={servizioForm?.client} meta={meta}
                     onSaved={() => { setServizioForm(null); load(); setDetailRow((r) => (r ? { ...r } : r)); }} />

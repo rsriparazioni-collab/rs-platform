@@ -23,7 +23,7 @@ export default function DaOrdinare({ onChanged }) {
       <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-rose-800"><AlertTriangle className="h-4 w-4" /> Da ordinare dai fornitori ({items.length})</p>
       <div className="grid gap-2 md:grid-cols-2">
         {items.map((m, i) => (
-          <div key={m.id} className="flex items-center justify-between rounded-lg border border-rose-100 bg-white px-3 py-2 text-sm" data-testid={`da-ordinare-row-${i}`}>
+          <div key={m.id || i} className="flex items-center justify-between rounded-lg border border-rose-100 bg-white px-3 py-2 text-sm" data-testid={`da-ordinare-row-${i}`}>
             <div>
               <p className="font-medium text-slate-900">{m.nome} <span className="text-xs font-semibold text-rose-700">x{m.da_ordinare}</span></p>
               <p className="text-[11px] text-slate-500">{m.store_name}{m.fornitore ? ` · ${m.fornitore}` : ""}{m.ordine_servizio_numero ? ` · ${m.ordine_servizio_numero.startsWith("Vendita") ? m.ordine_servizio_numero : `riparazione ${m.ordine_servizio_numero}`}` : ""}{m.ordine_at ? ` · dal ${new Date(m.ordine_at).toLocaleDateString("it-IT")}` : ""}</p>
