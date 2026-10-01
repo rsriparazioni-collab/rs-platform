@@ -3342,8 +3342,16 @@ LAB_SESSION = "laboratorio"
 LAB_STORE_NAME = "Morbegno"
 
 async def wa_session_servizio(svc: dict) -> str:
-    """Riparazioni del negozio Morbegno → WhatsApp del laboratorio (Bruno); altrimenti numero del negozio."""
-    sid = svc.get("venditore_id") or "default"
+    """Riparazioni del negozio Morbegno → WhatsApp del laboratorio (Bruno); altrimenti numero del negozio.
+    Se il servizio non ha negozio, usa quello del cliente (mai la sessione inesistente 'default')."""
+    sid = svc.get("venditore_id")
+    if not sid:
+        c = await db.clients.find_one({"id": svc.get("client_id")}, {"_id": 0, "venditore_id": 1})
+        sid = (c or {}).get("venditore_id")
+        if sid:
+            await db.servizi.update_one({"id": svc["id"]}, {"$set": {"venditore_id": sid}})
+            logger.warning(f"Servizio {svc.get('id')} senza negozio: sessione WhatsApp presa dal cliente ({sid})")
+    sid = sid or "default"
     if svc.get("tipo") == "riparazione" and sid == await store_id_by_name(LAB_STORE_NAME):
         return LAB_SESSION
     return sid
@@ -4306,6 +4314,8 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
     data = input.model_dump()
     if user["role"] in ("negozio",) and user.get("store_ids"):
         data["venditore_id"] = user["store_ids"][0]
+    if not data.get("venditore_id"):
+        data["venditore_id"] = client_doc.get("venditore_id") or (user.get("store_ids") or [""])[0]
     if data["tipo"] == "riparazione" and data["stato"] not in RIP_STATI:
         data["stato"] = "ingresso"
     if data["tipo"] == "riparazione":
@@ -4418,8 +4428,13 @@ async def resend_whatsapp_log(log_id: str, user: dict = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Messaggio non trovato")
     if log.get("client_id"):
         await get_scoped_client(log["client_id"], user)
+    session = log.get("session") or "default"
+    if session == "default" and log.get("servizio_id"):
+        svc = await db.servizi.find_one({"id": log["servizio_id"]}, {"_id": 0})
+        if svc:
+            session = await wa_session_servizio(svc)
     try:
-        await wa_send(log["phone"], log["message"], session=log.get("session") or "default", tipo=log.get("tipo", ""),
+        await wa_send(log["phone"], log["message"], session=session, tipo=log.get("tipo", ""),
                       client_id=log.get("client_id", ""), servizio_id=log.get("servizio_id", ""))
     except HTTPException as e:
         raise HTTPException(status_code=400, detail=f"WhatsApp: {e.detail}")
@@ -5094,11 +5109,14 @@ async def invia_avviso_pronto(svc: dict) -> None:
     if not client_doc or not client_doc.get("telefono"):
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_error": "Cliente senza numero di telefono"}})
         return
+    sessione = await wa_session_servizio(svc)
+    if not svc.get("venditore_id"):
+        svc = await db.servizi.find_one({"id": svc["id"]}, {"_id": 0}) or svc
     store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
     msg = store_msg(store, "msg_pronto", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", "dispositivo"),
                     numero=svc.get("numero_riparazione", "-"))
     try:
-        await wa_send(client_doc["telefono"], msg, session=await wa_session_servizio(svc), tipo="pronto", client_id=svc["client_id"], servizio_id=svc["id"])
+        await wa_send(client_doc["telefono"], msg, session=sessione, tipo="pronto", client_id=svc["client_id"], servizio_id=svc["id"])
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_sent_at": datetime.now(timezone.utc).isoformat(),
                                                                  "pronto_msg_error": None}})
     except HTTPException as e:
