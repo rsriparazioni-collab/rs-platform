@@ -7,6 +7,7 @@ import asyncio
 import hmac
 import magazzino_ricambi as magazzino_ricambi_module
 import vendite_ordine as vendite_ordine_module
+import firma_ritiro as firma_ritiro_module
 import trasferimenti as trasferimenti_module
 import compensi as compensi_module
 import io
@@ -3096,6 +3097,7 @@ def _build_bolla_pdf(r: dict) -> bytes:
     _pdf_field(pdf, "Nome", r.get("nome"))
     _pdf_field(pdf, "Cognome", r.get("cognome"))
     _pdf_field(pdf, "Codice Fiscale", r.get("codice_fiscale"))
+    _pdf_field(pdf, "Telefono", r.get("telefono"))
     _pdf_field(pdf, "Numero documento", r.get("numero_documento"))
     pdf.ln(3)
     pdf.set_font("helvetica", "B", 10); pdf.set_text_color(90, 90, 90)
@@ -3124,8 +3126,27 @@ def _build_bolla_pdf(r: dict) -> bytes:
     pdf.ln(10)
     pdf.cell(95, 8, "Firma negozio")
     pdf.cell(0, 8, "Firma cliente", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(95, 8, "_______________________________")
-    pdf.cell(0, 8, "_______________________________", new_x="LMARGIN", new_y="NEXT")
+    y = pdf.get_y()
+    pdf.set_font("helvetica", "I", 11)
+    pdf.cell(95, 8, str(r.get("firma_negozio") or "_______________________________"))
+    if r.get("firma_stato") == "firmata" and r.get("firma_png"):
+        try:
+            png, _ = get_object(r["firma_png"])
+            pdf.image(io.BytesIO(png), x=pdf.get_x(), y=y - 6, w=55)
+        except Exception as e:
+            logger.warning(f"Firma immagine non caricata: {e}")
+        pdf.ln(8)
+    elif r.get("firma_stato") == "firmata":
+        pdf.cell(0, 8, "Firmato con codice OTP", new_x="LMARGIN", new_y="NEXT")
+    else:
+        pdf.cell(0, 8, "_______________________________", new_x="LMARGIN", new_y="NEXT")
+    if r.get("firma_stato") == "firmata":
+        pdf.ln(4)
+        pdf.set_font("helvetica", "", 8); pdf.set_text_color(90, 90, 90)
+        metodo = "firma grafometrica tramite link inviato via WhatsApp" if r.get("firma_metodo") == "link" else "codice OTP monouso inviato via WhatsApp e verificato in negozio"
+        pdf.multi_cell(0, 4, f"Firma elettronica del cliente acquisita il {_fmt_it((r.get('firma_at') or '')[:10])} alle {(r.get('firma_at') or '')[11:16]} UTC "
+                             f"mediante {metodo} al numero {r.get('telefono', '')}. Operatore: {r.get('firma_negozio', '')}.", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
     return bytes(pdf.output())
 
 class RitiroInput(BaseModel):
@@ -3145,6 +3166,7 @@ class RitiroInput(BaseModel):
     servizio_id: str = ""
     costo_ricambi: Optional[float] = None  # costo a nostro carico (es. display), NON in bolla
     crea_rigenerato: bool = True
+    telefono: str = ""
 
 def ritiri_scope(user: dict) -> dict:
     if "riparazioni" not in user_sections(user):
@@ -3180,6 +3202,9 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
         raise HTTPException(status_code=400, detail="Negozio obbligatorio")
     if not data["nome"].strip() or not data["cognome"].strip() or not data["articolo"].strip():
         raise HTTPException(status_code=400, detail="Nome, cognome e articolo sono obbligatori")
+    data["telefono"] = firma_ritiro_module.normalizza_telefono(data.get("telefono"))
+    data["firma_negozio"] = user.get("name", "")
+    firma_ritiro_module.prepara_firma(data)
     data["numero"] = await next_numero("ritiro", data["store_id"])
     data["stato"] = "in_vendita" if data.get("crea_rigenerato", True) else "ritirato"
     data["numero_fattura"] = ""
@@ -3214,7 +3239,26 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
                                     {"$set": {"ritiro_id": data["id"], "ritiro_numero": data["numero"],
                                               "updated_at": now}})
     asyncio.create_task(google_drive_module.carica_ritiro_su_drive(data["id"]))
+    asyncio.create_task(firma_ritiro_module.invia_richiesta_firma(data))
+    if data.get("client_id"):
+        await db.clients.update_one({"id": data["client_id"], "$or": [{"telefono": ""}, {"telefono": None}]}, {"$set": {"telefono": data["telefono"]}})
     return data
+
+@api_router.post("/ritiri/{ritiro_id}/firma-otp")
+async def ritiro_firma_otp(ritiro_id: str, body: firma_ritiro_module.OtpInput, user: dict = Depends(get_current_user)):
+    scope = ritiri_scope(user)
+    scope["id"] = ritiro_id
+    if not await db.ritiri.find_one(scope, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Ritiro non trovato")
+    return await firma_ritiro_module.firma_otp(ritiro_id, body.codice, user)
+
+@api_router.post("/ritiri/{ritiro_id}/firma-reinvia")
+async def ritiro_firma_reinvia(ritiro_id: str, user: dict = Depends(get_current_user)):
+    scope = ritiri_scope(user)
+    scope["id"] = ritiro_id
+    if not await db.ritiri.find_one(scope, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Ritiro non trovato")
+    return await firma_ritiro_module.reinvia(ritiro_id)
 
 RITIRO_DOC_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
 
@@ -5758,6 +5802,9 @@ report_ritiri_module.setup(db=db, get_current_user=get_current_user, ritiri_scop
 api_router.include_router(report_ritiri_module.router)
 
 vendite_ordine_module.setup(db=db, wa_send=wa_send, get_scoped_servizio=get_scoped_servizio)
+firma_ritiro_module.setup(db=db, wa_send=wa_send, put_object=put_object, get_object=get_object, app_name=APP_NAME,
+                          build_bolla=_build_bolla_pdf, drive_upload=lambda rid: google_drive_module.carica_ritiro_su_drive(rid))
+api_router.include_router(firma_ritiro_module.router)
 magazzino_ricambi_module.setup(db=db, get_current_user=get_current_user, get_scoped_servizio=get_scoped_servizio,
                                magazzino_scope=magazzino_scope, wa_send=wa_send, trasferimenti=trasferimenti_module,
                                vendite_arrivato=vendite_ordine_module.arrivato)

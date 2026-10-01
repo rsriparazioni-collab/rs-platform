@@ -24,6 +24,7 @@ import PrezziRiparazioni from "./pages/PrezziRiparazioni";
 import Kpi from "./pages/Kpi";
 import Compensi from "./pages/Compensi";
 import Contabilita from "./pages/Contabilita";
+import FirmaRitiro from "./pages/FirmaRitiro";
 import ResetPassword from "./pages/ResetPassword";
 import Presentazione from "./pages/Presentazione";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -66,6 +67,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/firma/:token" element={<FirmaRitiro />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/formazione/presentazione" element={<Presentazione />} />
           <Route path="/" element={<Protected><Layout /></Protected>}>

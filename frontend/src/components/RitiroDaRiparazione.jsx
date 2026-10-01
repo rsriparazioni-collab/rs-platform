@@ -52,6 +52,7 @@ export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated
         nome: c.nome || "",
         cognome: c.cognome || "",
         codice_fiscale: c.codice_fiscale || "",
+        telefono: form.telefono || c.telefono || "",
         articolo: `${form.marca} ${form.modello}`.trim() || servizio.dispositivo || "",
         marca: form.marca,
         modello: form.modello,
@@ -107,6 +108,10 @@ export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">N° documento</Label>
               <Input value={form.numero_documento} onChange={(e) => set("numero_documento", e.target.value)} data-testid="ritiro-rip-documento" />
+            </div>
+            <div className="space-y-1">
+              <Label>Telefono cliente * (firma via WhatsApp)</Label>
+              <Input value={form.telefono ?? (c.telefono || "")} onChange={(e) => set("telefono", e.target.value)} data-testid="ritiro-rip-telefono" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Costo ricambi a nostro carico €</Label>

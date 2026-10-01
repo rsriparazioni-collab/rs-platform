@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Recycle, FileDown, Trash2, Wrench, Paperclip, Package } from "lucide-react";
+import { Plus, Search, Recycle, FileDown, Trash2, Wrench, Paperclip, Package, PenLine, KeyRound, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
 import { uploadRitiroDocumenti } from "../components/RitiroDaRiparazione";
@@ -23,7 +23,7 @@ import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
-const EMPTY = { store_id: "", client_id: "", nome: "", cognome: "", codice_fiscale: "",
+const EMPTY = { store_id: "", client_id: "", nome: "", cognome: "", codice_fiscale: "", telefono: "",
                 articolo: "", imei: "", prezzo_ritiro: "", numero_documento: "", n_allegati: 2, data_ritiro: "" };
 
 export default function Ritiri() {
@@ -34,6 +34,17 @@ export default function Ritiri() {
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [nuoviDoc, setNuoviDoc] = useState([]);
+  const [otpRow, setOtpRow] = useState(null);
+  const [otpCode, setOtpCode] = useState("");
+  const reinviaFirma = async (r) => {
+    try { const res = await api.post(`/ritiri/${r.id}/firma-reinvia`); res.data.ok ? toast.success("Link e OTP reinviati via WhatsApp") : toast.error(res.data.error || "Invio non riuscito"); load(); }
+    catch (e) { toast.error(apiError(e)); }
+  };
+  const confermaOtp = async () => {
+    try { await api.post(`/ritiri/${otpRow.id}/firma-otp`, { codice: otpCode }); toast.success(`Bolla ${otpRow.numero} firmata con OTP`); setOtpRow(null); setOtpCode(""); load(); }
+    catch (e) { toast.error(apiError(e)); }
+  };
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
   const canSeeAll = user.role === "admin" || user.can_view_all;
@@ -64,7 +75,7 @@ export default function Ritiri() {
 
   const pickClient = (c) => {
     setForm((f) => ({ ...f, client_id: c.id, nome: c.nome || "", cognome: c.cognome || "",
-                      codice_fiscale: c.codice_fiscale || "" }));
+                      codice_fiscale: c.codice_fiscale || "", telefono: c.telefono || f.telefono || "" }));
     setResults([]);
   };
 
@@ -95,7 +106,7 @@ export default function Ritiri() {
     if (!clienteParam || !meta.stores.length) return;
     api.get(`/clients/${clienteParam}`).then((r) => {
       const c = r.data;
-      setForm({ ...EMPTY, store_id: c.venditore_id || meta.stores[0]?.id || "", client_id: c.id, nome: c.nome || "", cognome: c.cognome || "", codice_fiscale: c.codice_fiscale || "" });
+      setForm({ ...EMPTY, store_id: c.venditore_id || meta.stores[0]?.id || "", client_id: c.id, nome: c.nome || "", cognome: c.cognome || "", codice_fiscale: c.codice_fiscale || "", telefono: c.telefono || "" });
       setFormOpen(true);
     }).catch(() => {});
   }, [clienteParam, meta.stores]);
@@ -111,7 +122,13 @@ export default function Ritiri() {
         data_ritiro: form.data_ritiro || null,
       };
       const res = await api.post("/ritiri", payload);
-      toast.success(`Bolla di ritiro ${res.data.numero} generata`);
+      if (nuoviDoc.length) {
+        try { await uploadRitiroDocumenti(res.data.id, nuoviDoc); toast.success(`Bolla ${res.data.numero} generata con ${nuoviDoc.length} documenti allegati · firma inviata via WhatsApp`); }
+        catch (e) { toast.error(apiError(e, "Bolla creata ma documenti non caricati: allegali dalla lista")); }
+      } else {
+        toast.success(`Bolla di ritiro ${res.data.numero} generata · richiesta di firma inviata via WhatsApp`);
+      }
+      setNuoviDoc([]);
       setFormOpen(false);
       load();
     } catch (err) {
@@ -241,6 +258,9 @@ export default function Ritiri() {
                       {(r.documenti || []).length > 0 && <span className="rounded bg-sky-50 px-1.5 text-[10px] font-semibold text-sky-700" data-testid={`ritiro-docs-badge-${i}`}><Paperclip className="inline h-3 w-3" /> {r.documenti.length} doc.</span>}
                       {r.drive_link && <a href={r.drive_link} target="_blank" rel="noopener noreferrer" className="rounded bg-emerald-50 px-1.5 text-[10px] font-semibold text-emerald-700 hover:underline" data-testid={`ritiro-drive-badge-${i}`}>Drive</a>}
                       {r.magazzino_id && <span className="rounded bg-violet-50 px-1.5 text-[10px] font-semibold text-violet-700" data-testid={`ritiro-rigenerato-badge-${i}`}><Package className="inline h-3 w-3" /> rigenerato</span>}
+                      {r.firma_stato === "firmata"
+                        ? <span className="rounded bg-emerald-50 px-1.5 text-[10px] font-semibold text-emerald-700" data-testid={`ritiro-firma-badge-${i}`}><PenLine className="inline h-3 w-3" /> firmata ({r.firma_metodo === "otp" ? "OTP" : "link"})</span>
+                        : r.firma_token && <span className="rounded bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700" data-testid={`ritiro-firma-badge-${i}`}><PenLine className="inline h-3 w-3" /> firma in attesa</span>}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -272,6 +292,12 @@ export default function Ritiri() {
                       <Button variant="ghost" size="icon" title="Allega documenti alla bolla" onClick={() => allegaDocumenti(r)} data-testid={`ritiro-docs-${i}`}>
                         <Paperclip className="h-4 w-4 text-slate-500" />
                       </Button>
+                      {r.firma_token && r.firma_stato !== "firmata" && (
+                        <>
+                          <Button variant="ghost" size="icon" title="Firma con codice OTP del cliente" onClick={() => setOtpRow(r)} data-testid={`ritiro-otp-${i}`}><KeyRound className="h-4 w-4 text-amber-600" /></Button>
+                          <Button variant="ghost" size="icon" title="Reinvia link/OTP via WhatsApp" onClick={() => reinviaFirma(r)} data-testid={`ritiro-firma-reinvia-${i}`}><MessageCircle className="h-4 w-4 text-emerald-600" /></Button>
+                        </>
+                      )}
                       {user.role === "admin" && (
                         <Button variant="ghost" size="icon" onClick={() => remove(r)} data-testid={`ritiro-del-${i}`}>
                           <Trash2 className="h-4 w-4 text-rose-500" />
@@ -336,6 +362,12 @@ export default function Ritiri() {
                 <Input placeholder="Cognome *" value={form.cognome} onChange={(e) => setForm({ ...form, cognome: e.target.value })} data-testid="ritiro-form-cognome" />
               </div>
               <Input placeholder="Codice fiscale" value={form.codice_fiscale} onChange={(e) => setForm({ ...form, codice_fiscale: e.target.value.toUpperCase() })} data-testid="ritiro-form-cf" />
+              <Input placeholder="Telefono cliente * (per la firma via WhatsApp)" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} data-testid="ritiro-form-telefono" />
+              <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm" data-testid="ritiro-form-documenti">
+                <label className="flex cursor-pointer items-center gap-2 font-medium text-slate-700"><Paperclip className="h-4 w-4" /> Allega subito documenti (carta d'identità, ecc.)
+                  <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])])} data-testid="ritiro-form-documenti-input" /></label>
+                {nuoviDoc.length > 0 && <ul className="mt-2 space-y-1 text-xs text-slate-600">{nuoviDoc.map((f, i) => <li key={i} className="flex justify-between"><span>{f.name}</span><button type="button" className="text-rose-600" onClick={() => setNuoviDoc(nuoviDoc.filter((_, j) => j !== i))}>rimuovi</button></li>)}</ul>}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-1.5">
@@ -368,12 +400,23 @@ export default function Ritiri() {
             </div>
             <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
               <Button type="button" variant="outline" onClick={() => setFormOpen(false)} data-testid="ritiro-form-cancel">Annulla</Button>
-              <Button type="submit" disabled={saving || !form.nome.trim() || !form.cognome.trim() || !form.articolo.trim() || !form.store_id}
+              <Button type="submit" disabled={saving || !form.nome.trim() || !form.cognome.trim() || !form.articolo.trim() || !form.store_id || (form.telefono || "").replace(/\D/g, "").length < 9}
                       className="bg-slate-900 hover:bg-slate-800" data-testid="ritiro-form-submit">
                 {saving ? "Generazione bolla..." : "Genera bolla PDF"}
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(otpRow)} onOpenChange={(o) => { if (!o) { setOtpRow(null); setOtpCode(""); } }}>
+        <DialogContent className="max-w-sm" data-testid="otp-dialog">
+          <DialogHeader><DialogTitle>Firma con codice OTP</DialogTitle></DialogHeader>
+          <p className="text-sm text-slate-600">Chiedi al cliente il codice a 6 cifre ricevuto su WhatsApp per la bolla <b>{otpRow?.numero}</b> ({otpRow?.telefono}).</p>
+          <Input value={otpCode} onChange={(e) => setOtpCode(e.target.value)} placeholder="000000" inputMode="numeric" maxLength={6} className="text-center text-2xl tracking-[0.5em]" data-testid="otp-input" />
+          <div className="flex justify-between gap-2">
+            <Button variant="ghost" onClick={() => otpRow && reinviaFirma(otpRow)} data-testid="otp-reinvia">Reinvia codice</Button>
+            <Button onClick={confermaOtp} disabled={otpCode.replace(/\D/g, "").length !== 6} data-testid="otp-conferma">Conferma firma</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
