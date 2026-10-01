@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { eur } from "./shared";
@@ -31,24 +31,24 @@ export const ConfrontoNegozi = ({ anno }) => {
           <thead className="text-slate-500"><tr><th className="px-2 py-1 text-left">Negozio</th>{d.mesi.map((m) => <th key={m} className="px-2 py-1 text-right">{m.slice(0, 3)}</th>)}<th className="px-2 py-1 text-right">Totale</th><th className="px-2 py-1 text-right">vs {anno - 1}</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {d.negozi.map((n, i) => (
-              <Fragment key={n.id}>
-                <tr data-testid={`confronto-row-${n.id}`}>
-                  <td className="px-2 py-1.5 font-medium"><span className={`mr-1.5 inline-block h-2 w-2 rounded-sm ${COLORI[i % COLORI.length]}`} />{n.nome}</td>
-                  {n.mesi.map((m) => <td key={m.mese} className="px-2 py-1.5 text-right tabular-nums">{m.tot ? eur(m.tot).replace("€ ", "") : ""}</td>)}
-                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{eur(n.tot)}</td>
-                  <td className={`px-2 py-1.5 text-right ${n.pct == null ? "text-slate-300" : n.pct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{n.pct == null ? "—" : `${n.pct > 0 ? "+" : ""}${n.pct.toFixed(1)}%`}</td>
-                </tr>
-                <tr className="bg-slate-50/60 text-[11px]" data-testid={`confronto-pdp-${n.id}`}>
-                  <td className="px-2 py-1 pl-6 text-slate-500">Guadagno netto PDP</td>
-                  {n.mesi.map((m) => <td key={m.mese} className={`px-2 py-1 text-right tabular-nums ${m.pdp_risultato == null ? "text-slate-300" : m.pdp_risultato >= 0 ? "text-emerald-700" : "text-rose-700"}`} title={m.pdp_uscite != null ? `Pareggio: ${eur(m.pdp_uscite)}` : "PDP non compilato"}>{m.pdp_risultato == null ? "·" : eur(m.pdp_risultato).replace("€ ", "")}</td>)}
-                  <td className={`px-2 py-1 text-right font-semibold tabular-nums ${n.pdp_tot == null ? "text-slate-300" : n.pdp_tot >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{n.pdp_tot == null ? "—" : eur(n.pdp_tot)}</td>
-                  <td />
-                </tr>
-              </Fragment>
+              <tr key={n.id} data-testid={`confronto-row-${n.id}`}>
+                <td className="px-2 py-1.5 font-medium"><span className={`mr-1.5 inline-block h-2 w-2 rounded-sm ${COLORI[i % COLORI.length]}`} />{n.nome}</td>
+                {n.mesi.map((m) => <td key={m.mese} className="px-2 py-1.5 text-right tabular-nums">{m.tot ? eur(m.tot).replace("€ ", "") : ""}</td>)}
+                <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{eur(n.tot)}</td>
+                <td className={`px-2 py-1.5 text-right ${n.pct == null ? "text-slate-300" : n.pct >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{n.pct == null ? "—" : `${n.pct > 0 ? "+" : ""}${n.pct.toFixed(1)}%`}</td>
+              </tr>
+            ))}
+            {(d.centri || []).map((c) => (
+              <tr key={c.id} className="bg-slate-50/60 text-[11px]" data-testid={`confronto-pdp-${c.id}`}>
+                <td className="px-2 py-1 text-slate-600">Guadagno netto PDP · <b>{c.nome}</b></td>
+                {c.mesi.map((m) => <td key={m.mese} className={`px-2 py-1 text-right tabular-nums ${m.risultato == null ? "text-slate-300" : m.risultato >= 0 ? "text-emerald-700" : "text-rose-700"}`} title={m.uscite != null ? `Entrate ${eur(m.entrate)} − pareggio ${eur(m.uscite)}` : "PDP non compilato"}>{m.risultato == null ? "·" : eur(m.risultato).replace("€ ", "")}</td>)}
+                <td className={`px-2 py-1 text-right font-semibold tabular-nums ${c.tot == null ? "text-slate-300" : c.tot >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{c.tot == null ? "—" : eur(c.tot)}</td>
+                <td />
+              </tr>
             ))}
           </tbody>
         </table>
-        <p className="mt-2 text-[11px] text-slate-400">Guadagno netto = entrate − uscite del Punto di pareggio del mese; "·" = PDP non ancora compilato per quel mese.</p>
+        <p className="mt-2 text-[11px] text-slate-400">Guadagno netto = entrate − uscite del Punto di pareggio del centro di costo nel mese; "·" = PDP non ancora compilato.</p>
       </div>
     </div>
   );

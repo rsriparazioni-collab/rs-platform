@@ -92,7 +92,15 @@ def parse_foglio(csv_text: str) -> dict:
     if hi is None:
         return {"errore": "intestazione non trovata", "negozi": {}}
     blocchi = _blocchi(rows[hi], rows)
-    negozi = {b["nome"]: {"giorni": [], "spese": []} for b in blocchi}
+    negozi = {b["nome"]: {"giorni": [], "spese": [], "riporto": 0.0} for b in blocchi}
+    for b in blocchi:
+        ci = b["idx"].get("contanti")
+        if ci is None:
+            continue
+        for r in rows[:hi]:
+            v = r[ci].strip()
+            if re.match(r"^[\d.,€\s]+$", v) and num(v):
+                negozi[b["nome"]]["riporto"] = num(v)
     i = hi + 1
     while i < len(rows) and rows[i][0].strip().isdigit():
         g = int(rows[i][0])
@@ -163,9 +171,14 @@ async def importa_tutti(db, fetch) -> list:
                     await db.corrispettivi.update_one({"store_id": store["id"], "data": g["data"]}, {"$set": doc, "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
                     ng += 1
                 pref = f"{p['anno']}-{p['mese']:02d}"
+                if dati.get("riporto"):
+                    ex_m = await db.corrispettivi_mese.find_one({"store_id": store["id"], "anno": p["anno"], "mese": p["mese"]}, {"_id": 0, "riporto_fonte": 1, "riporto": 1})
+                    if not ex_m or not ex_m.get("riporto") or ex_m.get("riporto_fonte") == "foglio_google":
+                        await db.corrispettivi_mese.update_one({"store_id": store["id"], "anno": p["anno"], "mese": p["mese"]},
+                                                               {"$set": {"riporto": dati["riporto"], "riporto_note": "riporto dal foglio", "riporto_fonte": "foglio_google"}}, upsert=True)
                 await db.spese_cassa.delete_many({"store_id": store["id"], "fonte": "foglio_google", "foglio_mese": pref})
                 for s in dati["spese"]:
                     await db.spese_cassa.insert_one({**s, "id": str(uuid.uuid4()), "store_id": store["id"], "fonte": "foglio_google", "foglio_mese": pref, "created_at": now, "created_by": "import fogli"})
                     ns += 1
-                esito.append({"negozio": store["nome"], "mese": pref, "giorni": ng, "spese": ns})
+                esito.append({"negozio": store["nome"], "mese": pref, "giorni": ng, "spese": ns, "riporto": dati.get("riporto", 0)})
     return esito

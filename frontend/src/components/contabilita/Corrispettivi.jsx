@@ -48,7 +48,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
         ))}
       </div>
       <div className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 ${Math.abs(t.da_versare) < 0.01 ? "border-emerald-200 bg-emerald-50" : t.da_versare < 0 ? "border-rose-300 bg-rose-50" : "border-amber-200 bg-amber-50"}`} data-testid="corrispettivi-da-versare">
-        <span className="text-sm text-slate-700">Contanti {eur(t.contanti)} − spese {eur(t.spese_contanti)} − versati {eur(t.versati_totale)}</span>
+        <span className="text-sm text-slate-700">Riporto {eur(t.riporto)} + contanti {eur(t.contanti)} − spese {eur(t.spese_contanti)} − versati {eur(t.versati_totale)}</span>
         <span className={`text-lg font-bold tabular-nums ${Math.abs(t.da_versare) < 0.01 ? "text-emerald-700" : t.da_versare < 0 ? "text-rose-700" : "text-amber-700"}`}>{Math.abs(t.da_versare) < 0.01 ? "Tutto versato ✓" : t.da_versare < 0 ? `Ammanco ${eur(t.da_versare)}` : `Da versare ${eur(t.da_versare)}`}</span>
       </div>
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
@@ -73,7 +73,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
         </table>
       </div>
       <SpeseCassa storeId={storeId} anno={anno} mese={mese} spese={dati.spese} reload={load} />
-      <VersatiDopo storeId={storeId} anno={anno} mese={mese} versati={dati.versati_dopo} totali={t} reload={load} />
+      <VersatiDopo storeId={storeId} anno={anno} mese={mese} versati={dati.versati_dopo} totali={t} riporto={dati.riporto} riportoNote={dati.riporto_note} reload={load} />
       {giorno && <GiornoDialog storeId={storeId} riga={giorno} onClose={() => setGiorno(null)} onSaved={() => { setGiorno(null); load(); }} />}
     </div>
   );

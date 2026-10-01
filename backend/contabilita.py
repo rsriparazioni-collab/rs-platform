@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from html import escape
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -170,9 +170,10 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     versati_dopo = extra.get("versati_dopo") or []
     tot["versati_dopo"] = round(sum(_f(v.get("importo")) for v in versati_dopo), 2)
     tot["versati_totale"] = round(tot["versati"] + tot["versati_dopo"], 2)
-    tot["da_versare"] = round(tot["cassa_netta"] - tot["versati_totale"], 2)
+    tot["riporto"] = _f(extra.get("riporto"))
+    tot["da_versare"] = round(tot["riporto"] + tot["cassa_netta"] - tot["versati_totale"], 2)
     tot["giorni_inseriti"] = len(giorni)
-    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "totali": tot}
+    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "riporto": tot["riporto"], "riporto_note": extra.get("riporto_note", ""), "totali": tot}
 
 
 @router.get("/corrispettivi")
@@ -216,6 +217,20 @@ async def del_corrispettivo(store_id: str, data: str, request: Request):
     await _store_completo(user, store_id)
     await _d["db"].corrispettivi.delete_one({"store_id": store_id, "data": data})
     return {"ok": True}
+
+
+class RiportoInput(BaseModel):
+    riporto: float = 0
+    riporto_note: str = ""
+
+
+@router.put("/corrispettivi/{store_id}/{anno}/{mese}/riporto")
+async def put_riporto(store_id: str, anno: int, mese: int, body: RiportoInput, request: Request):
+    user = await _user(request)
+    await _store_completo(user, store_id)
+    await _d["db"].corrispettivi_mese.update_one({"store_id": store_id, "anno": anno, "mese": mese},
+                                                 {"$set": {"riporto": _f(body.riporto), "riporto_note": body.riporto_note[:120], "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    return {"ok": True, "riporto": _f(body.riporto)}
 
 
 class VersatoDopoInput(BaseModel):
@@ -335,7 +350,7 @@ def _pdf_mese(store: dict, dati: dict) -> bytes:
             pdf.cell(0, 5, _pdf_txt(f"{v['data'][8:]}/{v['data'][5:7]}/{v['data'][:4]}  {_eur(v['importo'])}  {v.get('note', '')}"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(0, 6, _pdf_txt(f"Contanti incassati: {_eur(tot['contanti'])}  -  Spese contanti: {_eur(tot['spese_contanti'])}  -  Cassa netta: {_eur(tot['cassa_netta'])}  -  Versati: {_eur(tot['versati_totale'])}  -  Giorni inseriti: {tot['giorni_inseriti']}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, _pdf_txt(f"Riporto mese precedente: {_eur(tot['riporto'])}  -  Contanti incassati: {_eur(tot['contanti'])}  -  Spese contanti: {_eur(tot['spese_contanti'])}  -  Cassa netta: {_eur(tot['cassa_netta'])}  -  Versati: {_eur(tot['versati_totale'])}  -  Giorni inseriti: {tot['giorni_inseriti']}"), new_x="LMARGIN", new_y="NEXT")
     if tot["da_versare"] < 0:
         pdf.set_text_color(190, 30, 30)
     pdf.cell(0, 6, _pdf_txt(("AMMANCO: " if tot["da_versare"] < 0 else "Da versare: ") + _eur(tot["da_versare"])), new_x="LMARGIN", new_y="NEXT")
@@ -387,7 +402,7 @@ async def invia_wa_giornaliero(giorno: Optional[str] = None, solo_store: Optiona
         gruppi.setdefault(cfg["wa_numero"], []).append((s, _norm(c) if c else None, spese))
     esiti = []
     for numero, items in gruppi.items():
-        testo = f"📊 *Corrispettivi del giorno*\n\n" + "\n\n".join(_testo_wa_store(s["nome"], c, sp, giorno) for s, c, sp in items)
+        testo = "📊 *Corrispettivi del giorno*\n\n" + "\n\n".join(_testo_wa_store(s["nome"], c, sp, giorno) for s, c, sp in items)
         session = items[0][0]["id"]
         for s, c, sp in items:
             if await _d["wa_sessione_connessa"](s["id"]):
@@ -435,7 +450,7 @@ async def invia_email_mensile(store_id: str, anno: int, mese: int, extra_to: Opt
             f"<table style='border-collapse:collapse;font-size:13px'>"
             + "".join(f"<tr><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0'>{k}</td><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0;text-align:right'><b>{escape(_eur(v))}</b></td></tr>"
                       for k, v in [("Riparazioni", t["riparazioni"]), ("Merce", t["merce"]), ("Art. 74", t["art74"]), ("Fatture", t["fatture"]), ("TOTALE (contanti + POS + fatture)", t["totale"]),
-                                   ("Contanti", t["contanti"]), ("POS", t["pos"]), ("Versati (nel mese + dopo)", t["versati_totale"]), ("Spese contanti (prima nota)", t["spese_contanti"]), ("Da versare / ammanco", t["da_versare"]), ("IVA 22% scorporata", t["iva"])])
+                                   ("Contanti", t["contanti"]), ("POS", t["pos"]), ("Riporto mese precedente", t["riporto"]), ("Versati (nel mese + dopo)", t["versati_totale"]), ("Spese contanti (prima nota)", t["spese_contanti"]), ("Da versare / ammanco", t["da_versare"]), ("IVA 22% scorporata", t["iva"])])
             + f"</table><p style='font-size:12px;color:#64748b'>Giorni inseriti: {t['giorni_inseriti']}. Inviato da {escape(cfg['email_from'] or 'gestionale')} - RS Riparazioni / CambiaOra.</p></div>")
     email_id = await _d["send_email"](to=to, subject=f"Corrispettivi {store['nome']} - {MESI_IT[mese]} {anno}", html=html,
                                       reply_to=cfg["email_from"] or None, from_name=cfg["email_from"] or None)
@@ -475,12 +490,86 @@ async def log_invii(request: Request):
     return await _d["db"].contabilita_log.find(q, {"_id": 0}).sort("at", -1).to_list(60)
 
 
-# ---------------- Punto di pareggio ----------------
-async def _voci(store: dict) -> dict:
-    doc = await _d["db"].pdp_voci.find_one({"store_id": store["id"]}, {"_id": 0})
+# ---------------- Punto di pareggio (per centro di costo) ----------------
+SEED_PDP = {"morbegno+gravedona": {(2026, 8): {
+    "entrate|Eolo": 6640.0, "entrate|Energia / Enel": 8200.35, "entrate|Telefonia": 523.0, "entrate|Pacchi": 181.08,
+    "spese_fisse|Stipendi": 7100.0, "spese_fisse|Contributi": 4000.0, "spese_fisse|Condominio": 540.0, "spese_fisse|Affitti": 1300.0,
+    "spese_fisse|Utenze": 450.0, "spese_fisse|Commercialista": 950.0,
+    "fornitori|Sifar": 5380.0, "fornitori|Enel": 8684.08, "fornitori|Eolo": 8808.40, "fornitori|Fastweb": 377.90, "fornitori|Wind": 681.98,
+    "fornitori|Iliad": 711.24, "fornitori|DHL": 241.07, "fornitori|UPS": 114.96, "fornitori|Mooney": 58.56, "fornitori|Nexi": 36.60,
+    "fornitori|W3": 59.66, "fornitori|Phoneclik": 689.0, "fornitori|Miwo": 721.15, "fornitori|Raffaella": 1662.13}}}
+
+
+async def _centri(user: dict) -> list:
+    """Centri di costo visibili all'utente. Default: Morbegno+Gravedona insieme, Sondrio da solo, gli altri singoli."""
+    db = _d["db"]
+    stores_all = {s["id"]: s async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    centri = await db.pdp_centri.find({}, {"_id": 0}).to_list(100)
+    assegnati = {sid for c in centri for sid in c["store_ids"]}
+    if not centri:
+        mg = [s["id"] for s in stores_all.values() if _slug(s["nome"]) in ("morbegno", "gravedona")]
+        if mg:
+            centri.append({"id": "morbegno+gravedona", "nome": "Morbegno + Gravedona", "store_ids": mg})
+            assegnati |= set(mg)
+    for sid, s in stores_all.items():
+        if sid not in assegnati:
+            centri.append({"id": f"store:{sid}", "nome": s["nome"], "store_ids": [sid]})
+    if not await db.pdp_centri.count_documents({}):
+        for c in centri:
+            await db.pdp_centri.update_one({"id": c["id"]}, {"$set": c}, upsert=True)
+    visibili = {s["id"] for s, _, completo in await _stores_visibili(user) if completo}
+    out = []
+    for c in centri:
+        c["store_ids"] = [sid for sid in c["store_ids"] if sid in stores_all]
+        c["negozi"] = [stores_all[sid]["nome"] for sid in c["store_ids"]]
+        if c["store_ids"] and (set(c["store_ids"]) & visibili):
+            out.append(c)
+    return out
+
+
+async def _centro(user: dict, centro_id: str) -> dict:
+    for c in await _centri(user):
+        if c["id"] == centro_id:
+            return c
+    raise HTTPException(status_code=403, detail="Centro di costo non accessibile")
+
+
+class CentroInput(BaseModel):
+    id: str = ""
+    nome: str
+    store_ids: list
+
+
+@router.get("/pdp/centri")
+async def get_centri(request: Request):
+    return await _centri(await _user(request))
+
+
+@router.put("/pdp/centri")
+async def put_centri(body: list[CentroInput], request: Request):
+    user = await _user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    db = _d["db"]
+    usati = set()
+    docs = []
+    for c in body:
+        ids = [s for s in c.store_ids if s not in usati]
+        usati |= set(ids)
+        if not ids or not c.nome.strip():
+            continue
+        docs.append({"id": c.id or str(uuid.uuid4()), "nome": c.nome.strip()[:60], "store_ids": ids})
+    await db.pdp_centri.delete_many({})
+    if docs:
+        await db.pdp_centri.insert_many([dict(d) for d in docs])
+    return await _centri(user)
+
+
+async def _voci(centro: dict) -> dict:
+    doc = await _d["db"].pdp_voci.find_one({"centro_id": centro["id"]}, {"_id": 0})
     if doc:
         return {k: doc.get(k, []) for k in CATEGORIE}
-    base = VOCI_DEFAULT_SONDRIO if _slug(store["nome"]) == "sondrio" else VOCI_DEFAULT
+    base = VOCI_DEFAULT_SONDRIO if "sondrio" in _slug(centro["nome"]) else VOCI_DEFAULT
     return {k: list(v) for k, v in base.items()}
 
 
@@ -491,38 +580,49 @@ class VociInput(BaseModel):
     fornitori: list = []
 
 
-@router.get("/pdp/voci/{store_id}")
-async def get_voci(store_id: str, request: Request):
+@router.put("/pdp/voci/{centro_id}")
+async def put_voci(centro_id: str, body: VociInput, request: Request):
     user = await _user(request)
-    store, _ = await _store_completo(user, store_id)
-    return await _voci(store)
-
-
-@router.put("/pdp/voci/{store_id}")
-async def put_voci(store_id: str, body: VociInput, request: Request):
-    user = await _user(request)
-    await _store_completo(user, store_id)
+    await _centro(user, centro_id)
     doc = {k: [str(x).strip()[:60] for x in getattr(body, k) if str(x).strip()] for k in CATEGORIE}
-    await _d["db"].pdp_voci.update_one({"store_id": store_id}, {"$set": doc}, upsert=True)
+    await _d["db"].pdp_voci.update_one({"centro_id": centro_id}, {"$set": doc}, upsert=True)
     return doc
 
 
-async def _pdp_calcolo(store: dict, anno: int, mese: int) -> dict:
+async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     db = _d["db"]
-    voci = await _voci(store)
-    doc = await db.pdp.find_one({"store_id": store["id"], "anno": anno, "mese": mese}, {"_id": 0}) or {}
+    voci = await _voci(centro)
+    doc = await db.pdp.find_one({"centro_id": centro["id"], "anno": anno, "mese": mese}, {"_id": 0}) or {}
     valori = dict(doc.get("valori") or {})
     ereditato_da = None
-    if not doc:
-        prev = await db.pdp.find({"store_id": store["id"], "$or": [{"anno": {"$lt": anno}}, {"anno": anno, "mese": {"$lt": mese}}]},
+    if not doc and (anno, mese) in SEED_PDP.get(centro["id"], {}):
+        valori = dict(SEED_PDP[centro["id"]][(anno, mese)])
+        ereditato_da = "foglio Google (agosto 2026)"
+    elif not doc:
+        prev = await db.pdp.find({"centro_id": centro["id"], "$or": [{"anno": {"$lt": anno}}, {"anno": anno, "mese": {"$lt": mese}}]},
                                  {"_id": 0, "anno": 1, "mese": 1, "valori": 1}).sort([("anno", -1), ("mese", -1)]).limit(1).to_list(1)
-        if prev:
-            fisse = {k: v for k, v in (prev[0].get("valori") or {}).items() if k.startswith("spese_fisse|") and _f(v)}
+        fonte = prev[0] if prev else None
+        if not fonte:
+            seed = [(k, v) for k, v in SEED_PDP.get(centro["id"], {}).items() if k < (anno, mese)]
+            if seed:
+                (a, m), v = max(seed)
+                fonte = {"anno": a, "mese": m, "valori": v}
+        if fonte:
+            fisse = {k: v for k, v in (fonte.get("valori") or {}).items() if k.startswith("spese_fisse|") and _f(v)}
             if fisse:
                 valori.update(fisse)
-                ereditato_da = f"{MESI_IT[prev[0]['mese']]} {prev[0]['anno']}"
-    corr = (await _mese_dati(store["id"], anno, mese))["totali"]
-    entrate = {"Corrispettivi negozio": corr["totale"]}
+                ereditato_da = f"{MESI_IT[fonte['mese']]} {fonte['anno']}"
+    for k in valori:
+        cat, nome = k.split("|", 1)
+        if cat in voci and nome not in voci[cat]:
+            voci[cat].append(nome)
+    corr = 0.0
+    per_negozio = {}
+    for sid in centro["store_ids"]:
+        t = (await _mese_dati(sid, anno, mese))["totali"]["totale"]
+        per_negozio[sid] = t
+        corr += t
+    entrate = {"Corrispettivi negozi": round(corr, 2)}
     for v in voci["entrate"]:
         entrate[v] = _f(valori.get(f"entrate|{v}"))
     sezioni = {}
@@ -531,17 +631,17 @@ async def _pdp_calcolo(store: dict, anno: int, mese: int) -> dict:
     tot_entrate = round(sum(entrate.values()), 2)
     tot_spese = {cat: round(sum(d.values()), 2) for cat, d in sezioni.items()}
     tot_uscite = round(sum(tot_spese.values()), 2)
-    return {"store": {"id": store["id"], "nome": store["nome"]}, "anno": anno, "mese": mese, "voci": voci, "valori": valori,
-            "entrate": entrate, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
+    return {"centro": {"id": centro["id"], "nome": centro["nome"], "negozi": centro["negozi"]}, "anno": anno, "mese": mese, "voci": voci, "valori": valori,
+            "entrate": entrate, "corrispettivi_per_negozio": per_negozio, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
             "punto_pareggio": tot_uscite, "risultato": round(tot_entrate - tot_uscite, 2),
-            "copertura_pct": round(tot_entrate / tot_uscite * 100, 1) if tot_uscite else None, "note": doc.get("note", ""), "ereditato_da": ereditato_da}
+            "copertura_pct": round(tot_entrate / tot_uscite * 100, 1) if tot_uscite else None, "note": doc.get("note", ""), "ereditato_da": ereditato_da,
+            "compilato": bool(doc) or (anno, mese) in SEED_PDP.get(centro["id"], {})}
 
 
 @router.get("/pdp")
-async def get_pdp(store_id: str, anno: int, mese: int, request: Request):
+async def get_pdp(centro_id: str, anno: int, mese: int, request: Request):
     user = await _user(request)
-    store, _ = await _store_completo(user, store_id)
-    return await _pdp_calcolo(store, anno, mese)
+    return await _pdp_calcolo(await _centro(user, centro_id), anno, mese)
 
 
 class PdpInput(BaseModel):
@@ -549,15 +649,15 @@ class PdpInput(BaseModel):
     note: str = ""
 
 
-@router.put("/pdp/{store_id}/{anno}/{mese}")
-async def put_pdp(store_id: str, anno: int, mese: int, body: PdpInput, request: Request):
+@router.put("/pdp/{centro_id}/{anno}/{mese}")
+async def put_pdp(centro_id: str, anno: int, mese: int, body: PdpInput, request: Request):
     user = await _user(request)
-    store, _ = await _store_completo(user, store_id)
+    centro = await _centro(user, centro_id)
     valori = {k: _f(v) for k, v in body.valori.items() if "|" in k}
-    await _d["db"].pdp.update_one({"store_id": store_id, "anno": anno, "mese": mese},
+    await _d["db"].pdp.update_one({"centro_id": centro_id, "anno": anno, "mese": mese},
                                   {"$set": {"valori": valori, "note": body.note[:500], "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("name", "")},
                                    "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
-    return await _pdp_calcolo(store, anno, mese)
+    return await _pdp_calcolo(centro, anno, mese)
 
 
 # ---------------- Report annuale ----------------
@@ -565,10 +665,7 @@ async def _fatturato_mese(store: dict, anno: int, mese: int) -> dict:
     db = _d["db"]
     storico = await db.fatturato_storico.find_one({"store_id": store["id"], "anno": anno, "mese": mese}, {"_id": 0})
     corr = (await _mese_dati(store["id"], anno, mese))["totali"]["totale"]
-    doc = await db.pdp.find_one({"store_id": store["id"], "anno": anno, "mese": mese}, {"_id": 0, "valori": 1}) or {}
-    enel = sum(_f(v) for k, v in (doc.get("valori") or {}).items() if k.startswith("entrate|") and "enel" in k.lower() or k.startswith("entrate|") and "energia" in k.lower())
-    altro_pdp = sum(_f(v) for k, v in (doc.get("valori") or {}).items() if k.startswith("entrate|")) - enel
-    live = {"enel": round(enel, 2), "altro": round(corr + altro_pdp, 2)}
+    live = {"enel": 0.0, "altro": round(corr, 2)}
     if storico:
         st = {"enel": _f(storico.get("enel")), "altro": _f(storico.get("altro")), "storico": True}
         if live["enel"] + live["altro"] <= st["enel"] + st["altro"]:
@@ -733,15 +830,20 @@ async def report_confronto(anno: int, request: Request):
         for m in range(1, 13):
             cur = await _fatturato_mese(store, anno, m)
             ap = await _fatturato_mese(store, anno - 1, m)
-            pdp = await _pdp_calcolo(store, anno, m)
-            ha_pdp = pdp["tot_uscite"] > 0
-            mesi.append({"mese": m, "tot": round(cur["enel"] + cur["altro"], 2), "tot_ap": round(ap["enel"] + ap["altro"], 2),
-                         "pdp_risultato": pdp["risultato"] if ha_pdp else None, "pdp_uscite": pdp["tot_uscite"] if ha_pdp else None})
+            mesi.append({"mese": m, "tot": round(cur["enel"] + cur["altro"], 2), "tot_ap": round(ap["enel"] + ap["altro"], 2)})
         tot, tot_ap = round(sum(x["tot"] for x in mesi), 2), round(sum(x["tot_ap"] for x in mesi), 2)
-        pdp_tot = round(sum(x["pdp_risultato"] for x in mesi if x["pdp_risultato"] is not None), 2) if any(x["pdp_risultato"] is not None for x in mesi) else None
-        negozi.append({"id": store["id"], "nome": store["nome"], "mesi": mesi, "tot": tot, "tot_ap": tot_ap, "pdp_tot": pdp_tot,
+        negozi.append({"id": store["id"], "nome": store["nome"], "mesi": mesi, "tot": tot, "tot_ap": tot_ap,
                        "pct": round((tot - tot_ap) / tot_ap * 100, 2) if tot_ap and tot else None})
-    return {"anno": anno, "mesi": [MESI_IT[m] for m in range(1, 13)], "negozi": negozi}
+    centri = []
+    for c in await _centri(user):
+        mesi = []
+        for m in range(1, 13):
+            pdp = await _pdp_calcolo(c, anno, m)
+            ha = pdp["compilato"] and pdp["tot_uscite"] > 0
+            mesi.append({"mese": m, "risultato": pdp["risultato"] if ha else None, "uscite": pdp["tot_uscite"] if ha else None, "entrate": pdp["tot_entrate"] if ha else None})
+        vals = [x["risultato"] for x in mesi if x["risultato"] is not None]
+        centri.append({"id": c["id"], "nome": c["nome"], "mesi": mesi, "tot": round(sum(vals), 2) if vals else None})
+    return {"anno": anno, "mesi": [MESI_IT[m] for m in range(1, 13)], "negozi": negozi, "centri": centri}
 
 
 class StoricoInput(BaseModel):

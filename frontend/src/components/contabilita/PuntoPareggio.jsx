@@ -4,32 +4,51 @@ import { Plus, X } from "lucide-react";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
 import { MESI, Num, PeriodoPicker, eur } from "./shared";
+import { CentriCostoEditor } from "./CentriCostoEditor";
 
 const CAT = [["entrate", "Entrate", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse modificabili", "text-amber-700"], ["fornitori", "Fornitori / acquisti", "text-slate-700"]];
 
-export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese }) => {
+export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }) => {
+  const [centri, setCentri] = useState([]);
+  const [centroId, setCentroId] = useState("");
   const [d, setD] = useState(null);
   const [valori, setValori] = useState({});
   const [voci, setVoci] = useState(null);
   const [nuova, setNuova] = useState({});
-  const load = useCallback(() => api.get("/contabilita/pdp", { params: { store_id: storeId, anno, mese } }).then((r) => { setD(r.data); setValori(r.data.valori); setVoci(r.data.voci); }).catch((e) => toast.error(apiError(e))), [storeId, anno, mese]);
+  const loadCentri = useCallback(() => api.get("/contabilita/pdp/centri").then((r) => {
+    setCentri(r.data);
+    setCentroId((cur) => (r.data.some((c) => c.id === cur) ? cur : (r.data.find((c) => c.store_ids.includes(storeId)) || r.data[0] || {}).id || ""));
+  }).catch((e) => toast.error(apiError(e))), [storeId]);
+  useEffect(() => { loadCentri(); }, [loadCentri]);
+  const load = useCallback(() => {
+    if (!centroId) return;
+    api.get("/contabilita/pdp", { params: { centro_id: centroId, anno, mese } }).then((r) => { setD(r.data); setValori(r.data.valori); setVoci(r.data.voci); }).catch((e) => toast.error(apiError(e)));
+  }, [centroId, anno, mese]);
   useEffect(() => { load(); }, [load]);
-  const salva = async () => { try { const r = await api.put(`/contabilita/pdp/${storeId}/${anno}/${mese}`, { valori, note: d.note || "" }); setD(r.data); toast.success("Punto di pareggio salvato"); } catch (e) { toast.error(apiError(e)); } };
-  const salvaVoci = async (v) => { try { await api.put(`/contabilita/pdp/voci/${storeId}`, v); setVoci(v); } catch (e) { toast.error(apiError(e)); } };
+  const salva = async () => { try { const r = await api.put(`/contabilita/pdp/${centroId}/${anno}/${mese}`, { valori, note: d.note || "" }); setD(r.data); toast.success("Punto di pareggio salvato"); } catch (e) { toast.error(apiError(e)); } };
+  const salvaVoci = async (v) => { try { await api.put(`/contabilita/pdp/voci/${centroId}`, v); setVoci(v); } catch (e) { toast.error(apiError(e)); } };
+  if (!centroId) return <p className="text-sm text-slate-500" data-testid="pdp-nessun-centro">Nessun centro di costo disponibile.</p>;
   if (!d || !voci) return null;
   const somma = (cat) => voci[cat].reduce((a, v) => a + (parseFloat(valori[`${cat}|${v}`]) || 0), 0);
-  const entrate = d.entrate["Corrispettivi negozio"] + somma("entrate");
+  const entrate = d.entrate["Corrispettivi negozi"] + somma("entrate");
   const uscite = somma("spese_fisse") + somma("spese_semifisse") + somma("fornitori");
   const ris = entrate - uscite;
   return (
     <div className="space-y-5" data-testid="pdp-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <PeriodoPicker anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} />
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={centroId} onChange={(e) => setCentroId(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-2 text-sm font-medium" data-testid="pdp-centro-select">
+            {centri.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+          <PeriodoPicker anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} />
+          {isAdmin && <CentriCostoEditor centri={centri} onSaved={loadCentri} />}
+        </div>
         <Button size="sm" onClick={salva} data-testid="pdp-salva">Salva valori</Button>
       </div>
+      <p className="text-xs text-slate-500" data-testid="pdp-centro-negozi">Centro di costo <b>{d.centro.nome}</b>: {d.centro.negozi.join(" + ")} — i corrispettivi dei negozi entrano automaticamente nelle entrate.</p>
       {d.ereditato_da && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900" data-testid="pdp-ereditato">
-          <span>Spese fisse copiate automaticamente da <b>{d.ereditato_da}</b>: modificale solo se sono cambiate, poi premi "Salva valori" per confermarle per questo mese.</span>
+          <span>Valori precompilati da <b>{d.ereditato_da}</b>: modificali se sono cambiati, poi premi "Salva valori" per confermarli per questo mese.</span>
           <Button size="sm" variant="outline" onClick={salva} data-testid="pdp-conferma-ereditato">Conferma per {MESI[mese]}</Button>
         </div>
       )}
@@ -43,9 +62,9 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese }) => {
       <div className="grid gap-4 lg:grid-cols-2">
         {CAT.map(([cat, label, color]) => (
           <div key={cat} className="rounded-xl border border-slate-200 bg-white" data-testid={`pdp-sezione-${cat}`}>
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5"><h3 className={`text-sm font-semibold ${color}`}>{label}</h3><span className="text-sm font-semibold tabular-nums">{eur(somma(cat) + (cat === "entrate" ? d.entrate["Corrispettivi negozio"] : 0))}</span></div>
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5"><h3 className={`text-sm font-semibold ${color}`}>{label}</h3><span className="text-sm font-semibold tabular-nums">{eur(somma(cat) + (cat === "entrate" ? d.entrate["Corrispettivi negozi"] : 0))}</span></div>
             <div className="divide-y divide-slate-50 px-4">
-              {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Corrispettivi negozio <span className="text-xs text-slate-400">(automatico)</span></span><span className="tabular-nums font-medium" data-testid="pdp-corrispettivi-auto">{eur(d.entrate["Corrispettivi negozio"])}</span></div>}
+              {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Corrispettivi negozi <span className="text-xs text-slate-400">(automatico: {d.centro.negozi.join(" + ")})</span></span><span className="tabular-nums font-medium" data-testid="pdp-corrispettivi-auto">{eur(d.entrate["Corrispettivi negozi"])}</span></div>}
               {voci[cat].map((v) => (
                 <div key={v} className="flex items-center gap-2 py-1.5 text-sm">
                   <span className="flex-1 text-slate-600">{v}</span>
