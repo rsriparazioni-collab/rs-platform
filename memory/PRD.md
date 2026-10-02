@@ -503,3 +503,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-02 — Fallback interno invii corrispettivi
 - RCA deployer: lo scheduler piattaforma NON ha invocato /api/cron/corrispettivi-giornalieri il 1/10 (nessuna chiamata nei log prod; secret presente). Aggiunto `contabilita.invii_programmati_loop()` (avviato allo startup): ogni 5 min, dopo le 20:30 Roma invia il WA giornaliero se manca il log `wa_giornaliero` del giorno (i log degli invii manuali per singolo negozio hanno `solo_store` e non bloccano); dalle 18:00 dell'ultimo giorno del mese invia l'avviso fine mese se manca `wa_fine_mese`. Il cron piattaforma resta attivo come primario (idempotente grazie al log).
+
+## 2026-10-02 — Fix input importi con virgola (Contabilità)
+- Causa 'non riscosso resta 0': il componente `Num` (shared.jsx) era `type=number` e scartava la virgola italiana (771,81 → vuoto → 0). Ora `type=text inputMode=decimal`, accetta virgola e punto (convertita in punto, max 2 decimali). Vale per tutti gli importi dei corrispettivi.

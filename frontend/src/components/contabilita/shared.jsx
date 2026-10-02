@@ -14,6 +14,7 @@ export const PeriodoPicker = ({ anno, mese, setAnno, setMese, soloAnno }) => (
 );
 
 export const Num = ({ value, onChange, testid, className = "" }) => (
-  <input type="number" step="0.01" inputMode="decimal" value={value ?? ""} onChange={(e) => onChange(e.target.value)}
+  <input type="text" inputMode="decimal" value={value ?? ""} placeholder="0,00"
+    onChange={(e) => { const v = e.target.value.replace(/\s|€/g, "").replace(",", "."); if (v === "" || /^-?\d*\.?\d{0,2}$/.test(v)) onChange(v); }}
     className={`h-8 w-full rounded border border-slate-200 px-2 text-right text-sm tabular-nums focus:border-sky-400 focus:outline-none ${className}`} data-testid={testid} />
 );
