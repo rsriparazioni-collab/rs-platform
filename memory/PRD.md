@@ -500,3 +500,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-01 — Corrispettivi: totale = scontrinato
 - Rimossa la logica 'incassato oppure scontrini': totale giornata/mese = scontrini (riparazioni+merce+art74) + fatture. Il Non riscosso è una voce separata (campo nel dialog giorno, colonna in tabella, card nei totali mese, riga nel PDF/WA) e rientra solo nella quadratura: scontrini = contanti + POS + non riscosso.
+
+## 2026-10-02 — Fallback interno invii corrispettivi
+- RCA deployer: lo scheduler piattaforma NON ha invocato /api/cron/corrispettivi-giornalieri il 1/10 (nessuna chiamata nei log prod; secret presente). Aggiunto `contabilita.invii_programmati_loop()` (avviato allo startup): ogni 5 min, dopo le 20:30 Roma invia il WA giornaliero se manca il log `wa_giornaliero` del giorno (i log degli invii manuali per singolo negozio hanno `solo_store` e non bloccano); dalle 18:00 dell'ultimo giorno del mese invia l'avviso fine mese se manca `wa_fine_mese`. Il cron piattaforma resta attivo come primario (idempotente grazie al log).

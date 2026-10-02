@@ -7,6 +7,7 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 from html import escape
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
@@ -17,6 +18,27 @@ router = APIRouter(prefix="/contabilita")
 _d: dict = {}
 
 MESI_IT = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+ROMA = ZoneInfo("Europe/Rome")
+
+
+async def invii_programmati_loop() -> None:
+    """Fallback interno al cron piattaforma: ogni 5 min, dopo le 20:30 (Roma) invia il WA giornaliero se non ancora inviato oggi; alle 18:00 l'avviso fine mese."""
+    while True:
+        await asyncio.sleep(300)
+        try:
+            ora = datetime.now(ROMA)
+            oggi = ora.date().isoformat()
+            db = _d["db"]
+            if (ora.hour, ora.minute) >= (20, 30) and not await db.contabilita_log.find_one({"tipo": "wa_giornaliero", "giorno": oggi, "solo_store": {"$exists": False}}):
+                logger.info("Fallback interno: invio WA corrispettivi giornalieri %s", oggi)
+                await invia_wa_giornaliero(oggi)
+            if ora.hour >= 18 and (ora.date() + timedelta(days=1)).day == 1 and not await db.contabilita_log.find_one({"tipo": "wa_fine_mese", "giorno": oggi}):
+                logger.info("Fallback interno: avviso fine mese %s", oggi)
+                await avviso_fine_mese(oggi)
+            await db.cron_log.update_one({"job": "corrispettivi-loop"}, {"$set": {"last_run": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+        except Exception as e:
+            logger.error("invii_programmati_loop errore: %s", e)
+
 NUMERO_AMMINISTRAZIONE = "3792773557"
 CONFIG_DEFAULT = {
     "morbegno": {"condividi_admin": True, "wa_numero": NUMERO_AMMINISTRAZIONE, "email_to": "info@paghesas.it", "email_from": "rscontabilita@gmail.com"},
@@ -545,7 +567,7 @@ async def invia_wa_giornaliero(giorno: Optional[str] = None, solo_store: Optiona
             esiti.append({"numero": numero, "negozi": [s["nome"] for s, _, _ in items], "ok": True})
         except Exception as e:
             esiti.append({"numero": numero, "negozi": [s["nome"] for s, _, _ in items], "ok": False, "error": str(getattr(e, "detail", e))})
-    await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "wa_giornaliero", "giorno": giorno, "esiti": esiti, "at": datetime.now(timezone.utc).isoformat()})
+    await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "wa_giornaliero", "giorno": giorno, "esiti": esiti, "at": datetime.now(timezone.utc).isoformat(), **({"solo_store": solo_store} if solo_store else {})})
     return esiti
 
 

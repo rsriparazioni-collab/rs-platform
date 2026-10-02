@@ -5705,6 +5705,7 @@ async def startup():
         logger.error(f"Storage init fallito: {e}")
     asyncio.create_task(whatsapp_queue_loop())
     asyncio.create_task(backup_module.backup_loop())
+    asyncio.create_task(contabilita_module.invii_programmati_loop())
 
 async def whatsapp_queue_loop() -> None:
     """Fallback interno al cron piattaforma: svuota la coda WhatsApp (recensioni) ogni 60s."""
