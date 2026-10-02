@@ -38,9 +38,9 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
         <PeriodoPicker anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} />
         {rigaOggi && (
           <div className="flex items-baseline gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2" data-testid="corrispettivi-oggi-totale">
-            <span className="text-xs uppercase tracking-wide text-emerald-700">Incassato oggi</span>
+            <span className="text-xs uppercase tracking-wide text-emerald-700">Scontrinato oggi</span>
             <span className="text-xl font-bold tabular-nums text-emerald-800">{eur(rigaOggi.totale)}</span>
-            <span className="text-xs text-emerald-700">scontrini {eur(rigaOggi.scontrini)} · fatture {eur(rigaOggi.fatture)}</span>
+            <span className="text-xs text-emerald-700">incassato {eur(rigaOggi.incassato)}{rigaOggi.non_riscosso ? ` · non riscosso ${eur(rigaOggi.non_riscosso)}` : ""} · fatture {eur(rigaOggi.fatture)}</span>
           </div>
         )}
         <div className="flex flex-wrap gap-2">
@@ -50,8 +50,8 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
           <Button size="sm" variant="outline" onClick={inviaEmail} data-testid="corrispettivi-email-btn"><Mail className="mr-1 h-4 w-4" /> Invia email mese</Button>
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6" data-testid="corrispettivi-totali">
-        {[["Totale incassato (scontrini+fatture)", t.totale, "text-slate-900"], ["Contanti", t.contanti, "text-emerald-700"], ["POS", t.pos, "text-sky-700"], ["Spese contanti", t.spese_contanti, "text-rose-700"], ["Versati", t.versati_totale, "text-slate-700"], ["IVA 22% scorporata", t.iva, "text-amber-700"]].map(([l, v, c]) => (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7" data-testid="corrispettivi-totali">
+        {[["Totale scontrinato (scontrini+fatture)", t.totale, "text-slate-900"], ["Contanti", t.contanti, "text-emerald-700"], ["POS", t.pos, "text-sky-700"], ["Non riscosso", t.non_riscosso, "text-amber-700"], ["Spese contanti", t.spese_contanti, "text-rose-700"], ["Versati", t.versati_totale, "text-slate-700"], ["IVA 22% scorporata", t.iva, "text-amber-700"]].map(([l, v, c]) => (
           <div key={l} className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase tracking-wide text-slate-500">{l}</p><p className={`mt-1 text-xl font-semibold tabular-nums ${c}`}>{eur(v)}</p></div>
         ))}
       </div>

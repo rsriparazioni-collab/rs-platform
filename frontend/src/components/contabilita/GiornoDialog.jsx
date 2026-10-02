@@ -19,7 +19,7 @@ export const GiornoDialog = ({ storeId, riga, onClose, onSaved }) => {
   const nonRiscosso = n("non_riscosso");
   const diff = scontrini - incassato - nonRiscosso;
   const nonQuadra = incassato > 0 && Math.abs(diff) >= 1;
-  const totale = (incassato ? incassato + nonRiscosso : scontrini) + fatture;
+  const totale = scontrini + fatture;
   const setFatt = (i, k, v) => setF({ ...f, fatture_dettaglio: f.fatture_dettaglio.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
   const salva = async () => {
     setSaving(true);
@@ -59,7 +59,7 @@ export const GiornoDialog = ({ storeId, riga, onClose, onSaved }) => {
           </div>
         </div>
         <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-          <span>Totale giornata (scontrini + fatture) <b data-testid="giorno-totale">{eur(totale)}</b></span>
+          <span>Totale scontrinato (scontrini + fatture) <b data-testid="giorno-totale">{eur(totale)}</b></span>
           <span className={nonQuadra ? "font-medium text-amber-600" : "text-slate-500"} data-testid="giorno-quadratura">Scontrini {eur(scontrini)} / incassato {eur(incassato)}{nonRiscosso ? ` + non riscosso ${eur(nonRiscosso)}` : ""}{nonQuadra ? ` ≠ (diff. ${eur(diff)})` : " ✓"}</span>
         </div>
         {nonQuadra && <p className="text-xs text-amber-700" data-testid="giorno-quadratura-avviso">Al salvataggio il negozio riceverà un WhatsApp di avviso sulla differenza.</p>}

@@ -497,3 +497,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-01 — Riuso documenti ritiri, Alert quadratura, Non riscosso
 - Ritiri: scelto un cliente in anagrafica, il form mostra i suoi allegati con tasto "Allega alla bolla" (POST /api/ritiri/{id}/documenti-da-cliente {attachment_ids}); avviso se il documento ha più di 5 anni. Caricando documenti nuovi, checkbox "Sostituisci" (default ON) marca is_deleted i vecchi allegati origine 'ritiro' del cliente (param Form `sostituisci` su POST /ritiri/{id}/documenti).
 - Corrispettivi: nuovo campo `non_riscosso` + `non_riscosso_note` (es. saldo telefono operatore compensato da cessione credito). quadratura_diff = scontrini − (contanti+POS) − non_riscosso; totale = (contanti+POS+non_riscosso se inseriti, altrimenti scontrini) + fatture. Al PUT, se |diff| ≥ 1€ e incasso>0 → WhatsApp immediato al negozio (telefono_avvisi, tipo corrispettivi_quadratura). Colonna "Non riscosso" e ⚠ in tabella; riga nel WA giornaliero.
+
+## 2026-10-01 — Corrispettivi: totale = scontrinato
+- Rimossa la logica 'incassato oppure scontrini': totale giornata/mese = scontrini (riparazioni+merce+art74) + fatture. Il Non riscosso è una voce separata (campo nel dialog giorno, colonna in tabella, card nei totali mese, riga nel PDF/WA) e rientra solo nella quadratura: scontrini = contanti + POS + non riscosso.

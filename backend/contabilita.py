@@ -115,7 +115,7 @@ def _norm(c: dict) -> dict:
     c["scontrini"] = round(c["riparazioni"] + c["merce"] + c["art74"], 2)
     c["incassato"] = round(c["contanti"] + c["pos"], 2)
     c["quadratura_diff"] = round(c["scontrini"] - c["incassato"] - c["non_riscosso"], 2)
-    c["totale"] = round((c["incassato"] + c["non_riscosso"] if c["incassato"] else c["scontrini"]) + c["fatture"], 2)
+    c["totale"] = round(c["scontrini"] + c["fatture"], 2)
     c["iva"] = round((c["riparazioni"] + c["merce"] + c["fatture"]) * 22 / 122, 2)
     return c
 
@@ -505,7 +505,7 @@ def _testo_wa_store(nome: str, c: Optional[dict], spese: list, data: str) -> str
     if c["fatture"]:
         det = ", ".join(f"{x['numero']} {x['pagamento']}".strip() for x in c["fatture_dettaglio"])
         righe.append(f"Fatture: {_eur(c['fatture'])}" + (f" ({det})" if det else ""))
-    righe += [f"Contanti: {_eur(c['contanti'])} | POS: {_eur(c['pos'])}", f"*TOTALE (contanti+POS+fatture): {_eur(c['totale'])}*"]
+    righe += [f"Contanti: {_eur(c['contanti'])} | POS: {_eur(c['pos'])}", f"*TOTALE SCONTRINATO (scontrini+fatture): {_eur(c['totale'])}*"]
     if c.get("non_riscosso"):
         righe.append(f"Non riscosso: {_eur(c['non_riscosso'])}" + (f" ({c['non_riscosso_note']})" if c.get("non_riscosso_note") else ""))
     if c.get("incassato") and abs(c.get("quadratura_diff") or 0) >= QUADRATURA_TOLLERANZA:
@@ -581,8 +581,8 @@ async def invia_email_mensile(store_id: str, anno: int, mese: int, extra_to: Opt
             f"<p><a href='{link}' style='display:inline-block;padding:10px 16px;background:#0f172a;color:#fff;border-radius:8px;text-decoration:none'>Scarica il PDF completo</a></p>"
             f"<table style='border-collapse:collapse;font-size:13px'>"
             + "".join(f"<tr><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0'>{k}</td><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0;text-align:right'><b>{escape(_eur(v))}</b></td></tr>"
-                      for k, v in [("Riparazioni", t["riparazioni"]), ("Merce", t["merce"]), ("Art. 74", t["art74"]), ("Fatture", t["fatture"]), ("TOTALE (contanti + POS + fatture)", t["totale"]),
-                                   ("Contanti", t["contanti"]), ("POS", t["pos"]), ("Riporto mese precedente", t["riporto"]), ("Versati (nel mese + dopo)", t["versati_totale"]), ("Spese contanti (prima nota)", t["spese_contanti"]), ("Da versare / ammanco", t["da_versare"]), ("IVA 22% scorporata", t["iva"])])
+                      for k, v in [("Riparazioni", t["riparazioni"]), ("Merce", t["merce"]), ("Art. 74", t["art74"]), ("Fatture", t["fatture"]), ("TOTALE SCONTRINATO (scontrini + fatture)", t["totale"]),
+                                   ("Contanti", t["contanti"]), ("POS", t["pos"]), ("Non riscosso", t["non_riscosso"]), ("Riporto mese precedente", t["riporto"]), ("Versati (nel mese + dopo)", t["versati_totale"]), ("Spese contanti (prima nota)", t["spese_contanti"]), ("Da versare / ammanco", t["da_versare"]), ("IVA 22% scorporata", t["iva"])])
             + f"</table><p style='font-size:12px;color:#64748b'>Giorni inseriti: {t['giorni_inseriti']}. Inviato da {escape(cfg['email_from'] or 'gestionale')} - RS Riparazioni / CambiaOra.</p></div>")
     email_id = await _d["send_email"](to=to, subject=f"Corrispettivi {store['nome']} - {MESI_IT[mese]} {anno}", html=html,
                                       reply_to=cfg["email_from"] or None, from_name=cfg["email_from"] or None)
