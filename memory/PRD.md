@@ -510,3 +510,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-02 — Date default oggi + documenti in ogni form cliente
 - ServizioForm: data_attivazione (telefonia) e ClientForm: data_contratto precompilate con la data odierna (modificabili).
 - Nuovo componente `DocumentiPicker.jsx` (file + fotocamera) con helper `uploadDocumenti(files,{clientId,servizioId})`; usato in ClientForm, ServizioForm (riparazione/telefonia: allegati salvati sul cliente E sul servizio), VenditaForm (sul cliente). Ritiri mantiene il suo form (riuso/sostituzione).
+
+## 2026-10-02 — Documenti nel dettaglio servizio
+- ServizioDetail: upload multiplo + 'Fotografa documento' nella card allegati; i file vengono salvati sul servizio E sulla scheda cliente (uploadDocumenti). Nuova sotto-sezione 'Documenti sulla scheda cliente' (lista scaricabile da /clients/{id}/attachments).

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, Recycle, FileDown, Ban, Lock } from "lucide-react";
 import RitiroDaRiparazione from "./RitiroDaRiparazione";
+import { uploadDocumenti } from "./DocumentiPicker";
 import WhatsAppLog from "./WhatsAppLog";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
@@ -43,6 +44,7 @@ function PrezzoBreakdown({ s }) {
 export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, isAdmin }) {
   const [detail, setDetail] = useState(null);
   const [attachments, setAttachments] = useState([]);
+  const [clientAttachments, setClientAttachments] = useState([]);
   const [waLoading, setWaLoading] = useState(false);
   const [ricercaRic, setRicercaRic] = useState("");
   const [risultatiRic, setRisultatiRic] = useState([]);
@@ -65,6 +67,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
       setDetail(res.data);
       const att = await api.get(`/servizi/${servizio.id}/attachments`);
       setAttachments(att.data);
+      if (res.data.client_id) api.get(`/clients/${res.data.client_id}/attachments`).then((r) => setClientAttachments(r.data)).catch(() => setClientAttachments([]));
     } catch (e) {
       toast.error(apiError(e, "Impossibile caricare il servizio"));
     }
@@ -73,6 +76,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
   useEffect(() => {
     setDetail(null);
     setAttachments([]);
+    setClientAttachments([]);
     if (servizio) refresh();
   }, [servizio, refresh]);
 
@@ -90,14 +94,12 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
   };
 
   const uploadPhoto = async (e) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []);
     e.target.value = "";
-    if (!file || !detail) return;
-    const fd = new FormData();
-    fd.append("file", file);
+    if (!files.length || !detail) return;
     try {
-      await api.post(`/servizi/${detail.id}/attachments`, fd);
-      toast.success("Foto/documento caricato");
+      await uploadDocumenti(files, { servizioId: detail.id, clientId: detail.client_id });
+      toast.success(files.length > 1 ? `${files.length} documenti caricati (servizio + cliente)` : "Documento caricato (servizio + cliente)");
       refresh();
     } catch (err) {
       toast.error(apiError(err, "Upload fallito"));
@@ -560,12 +562,32 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                   ))}
                   {attachments.length === 0 && <p className="text-xs text-slate-400">Nessun allegato</p>}
                 </div>
-                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 transition-colors hover:border-sky-400 hover:text-sky-700"
-                       data-testid="servizio-upload-label">
-                  {isRip ? <Camera className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
-                  {isRip ? "Carica foto riparazione" : "Carica allegato"}
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={uploadPhoto} data-testid="servizio-upload-input" />
-                </label>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 transition-colors hover:border-sky-400 hover:text-sky-700"
+                         data-testid="servizio-upload-label">
+                    <Upload className="h-4 w-4" /> {isRip ? "Carica foto / documenti" : "Carica documenti"}
+                    <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={uploadPhoto} data-testid="servizio-upload-input" />
+                  </label>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-800 transition-colors hover:bg-sky-100"
+                         data-testid="servizio-camera-label">
+                    <Camera className="h-4 w-4" /> Fotografa documento
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={uploadPhoto} data-testid="servizio-camera-input" />
+                  </label>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">I documenti caricati qui vengono salvati anche sulla scheda cliente.</p>
+                {clientAttachments.length > 0 && (
+                  <div className="mt-3 border-t border-dashed border-slate-200 pt-2" data-testid="servizio-client-attachments">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Documenti sulla scheda cliente</p>
+                    <div className="mt-1.5 space-y-1">
+                      {clientAttachments.map((a) => (
+                        <button key={a.id} className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-sky-700 hover:bg-slate-50 hover:underline"
+                                onClick={() => downloadBlob(`/attachments/${a.id}/download`, a.original_filename)} data-testid={`servizio-client-attachment-${a.id}`}>
+                          <Paperclip className="h-3 w-3" /> {a.original_filename} <span className="text-slate-400">· {fmtDate(a.created_at)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {detail.note && (
