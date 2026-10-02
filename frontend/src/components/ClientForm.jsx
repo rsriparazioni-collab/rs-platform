@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Paperclip, Camera } from "lucide-react";
+import { DocumentiPicker, uploadDocumenti } from "./DocumentiPicker";
 import api, { apiError } from "../lib/api";
 import { apriPortaleDopoSalvataggio } from "./PortaleBox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -140,7 +140,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
       // La riga della lista ha solo alcuni campi: carico SEMPRE la scheda completa per non sovrascrivere dati
       api.get(`/clients/${client.id}`).then((r) => applica(r.data)).catch(() => toast.error("Impossibile caricare la scheda completa"));
     } else {
-      const f = { ...EMPTY, venditore_id: meta.stores[0]?.id || "", ...(prefill || {}) };
+      const f = { ...EMPTY, venditore_id: meta.stores[0]?.id || "", data_contratto: new Date().toISOString().slice(0, 10), ...(prefill || {}) };
       setForm(f);
       setBaseline(prefill ? { ...EMPTY, venditore_id: meta.stores[0]?.id || "" } : f);
     }
@@ -178,11 +178,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
       }
       if (nuoviDoc.length && clientId) {
         try {
-          for (const f of nuoviDoc) {
-            const fd = new FormData();
-            fd.append("file", f);
-            await api.post(`/clients/${clientId}/attachments`, fd);
-          }
+          await uploadDocumenti(nuoviDoc, { clientId });
           toast.success(`${nuoviDoc.length} documenti allegati al cliente`);
         } catch (e) { toast.error(apiError(e, "Cliente salvato ma documenti non caricati: allegali dalla scheda")); }
       }
@@ -422,17 +418,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
                 <Textarea rows={3} value={form.note} onChange={(e) => set("note", e.target.value)} data-testid="input-note" />
               </Field>
             </div>
-            <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3 text-sm" data-testid="client-form-documenti">
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 font-medium text-slate-700"><Paperclip className="h-4 w-4" /> Allega documenti (carta d'identità, bollette, ecc.)
-                  <input type="file" multiple accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden"
-                         onChange={(e) => { setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])]); e.target.value = ""; }} data-testid="client-form-documenti-input" /></label>
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100"><Camera className="h-4 w-4" /> Fotografa documento
-                  <input type="file" accept="image/*" capture="environment" className="hidden"
-                         onChange={(e) => { setNuoviDoc([...nuoviDoc, ...Array.from(e.target.files || [])]); e.target.value = ""; }} data-testid="client-form-camera-input" /></label>
-              </div>
-              {nuoviDoc.length > 0 && <ul className="mt-2 space-y-1 text-xs text-slate-600" data-testid="client-form-documenti-list">{nuoviDoc.map((f, i) => <li key={i} className="flex justify-between"><span>{f.name}</span><button type="button" className="text-rose-600" onClick={() => setNuoviDoc(nuoviDoc.filter((_, j) => j !== i))}>rimuovi</button></li>)}</ul>}
-            </div>
+            <div className="mt-4"><DocumentiPicker files={nuoviDoc} onChange={setNuoviDoc} testid="client-form-documenti" label="Allega documenti (carta d'identità, bollette, ecc.)" /></div>
           </section>
 
           <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">

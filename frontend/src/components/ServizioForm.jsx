@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import VenditaOrdineBox from "./VenditaOrdineBox";
+import { DocumentiPicker, uploadDocumenti } from "./DocumentiPicker";
 import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
@@ -60,12 +61,14 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
   const [results, setResults] = useState([]);
   const [newClient, setNewClient] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [nuoviDoc, setNuoviDoc] = useState([]);
 
   useEffect(() => {
     if (open) {
       const t = servizio?.tipo || defaultTipo || "riparazione";
       setTipo(t);
-      setForm(servizio ? { ...servizio } : { stato: "ingresso", con_ricambio: false, pagato: false, data_ingresso: new Date().toISOString().slice(0, 10) });
+      setForm(servizio ? { ...servizio } : { stato: "ingresso", con_ricambio: false, pagato: false, data_ingresso: new Date().toISOString().slice(0, 10), data_attivazione: new Date().toISOString().slice(0, 10) });
+      setNuoviDoc([]);
       setRicambioMag(null); setMagLabel(""); setMagSearch("");
       setClientId(servizio?.client_id || presetClient?.id || "");
       setClientLabel(servizio?.client_name || presetClient?.label || "");
@@ -166,11 +169,13 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
         codice_sblocco: form.codice_sblocco || "",
         account_password: form.account_password || "",
       };
+      let servizioId = servizio?.id;
       if (isEdit) {
         await api.patch(`/servizi/${servizio.id}`, payload);
         toast.success("Servizio aggiornato");
       } else {
         const created = await api.post("/servizi", payload);
+        servizioId = created.data.id;
         toast.success("Servizio inserito");
         if (tipo === "riparazione" && ricambioMag) {
           try { await collegaRicambio(created.data.id); toast.success(ricambioMag.disponibile ? "Ricambio scalato dal magazzino" : "Ricambio messo in ordine"); }
@@ -178,6 +183,10 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
         }
         const sez = { sim: "mobile", internet: "fisso", fisso: "fisso", riparazione: "riparazioni" }[tipo];
         api.get("/portali").then((r) => apriPortaleDopoSalvataggio(r.data, sez, payload.operatore_tel || payload.fornitore_ricambio)).catch(() => {});
+      }
+      if (nuoviDoc.length) {
+        try { await uploadDocumenti(nuoviDoc, { clientId: cid, servizioId }); toast.success(`${nuoviDoc.length} documenti allegati al cliente e al servizio`); }
+        catch (e) { toast.error(apiError(e, "Servizio salvato ma documenti non caricati: allegali dal dettaglio")); }
       }
       onSaved();
       onClose();
@@ -605,6 +614,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
             <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Note</Label>
             <Textarea rows={2} value={form.note || ""} onChange={(e) => set("note", e.target.value)} data-testid="servizio-note" />
           </div>
+          <DocumentiPicker files={nuoviDoc} onChange={setNuoviDoc} testid="servizio-documenti" label="Allega documenti (salvati sul cliente e sul servizio)" />
 
           <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
             <Button type="button" variant="outline" onClick={onClose} data-testid="servizio-form-cancel">Annulla</Button>

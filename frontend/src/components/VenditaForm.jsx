@@ -8,6 +8,7 @@ import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { DocumentiPicker, uploadDocumenti } from "./DocumentiPicker";
 
 const EMPTY = { store_id: "", client_id: "", cliente_nome: "", categoria: "telefono_nuovo", regime_iva: "iva22", articolo: "", marca: "", modello: "",
   imei: "", magazzino_item_id: "", quantita: 1, prezzo: "", costo: "", pagamento: "", numero_fattura: "", data_vendita: "", note: "" };
@@ -15,6 +16,7 @@ const EMPTY = { store_id: "", client_id: "", cliente_nome: "", categoria: "telef
 export default function VenditaForm({ open, onClose, vendita, meta, onSaved, presetClientId }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [nuoviDoc, setNuoviDoc] = useState([]);
   const [clientLabel, setClientLabel] = useState("");
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
@@ -72,6 +74,11 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
       if (vendita) await api.patch(`/vendite/${vendita.id}`, payload);
       else await api.post("/vendite", payload);
       toast.success(vendita ? "Vendita aggiornata" : "Vendita registrata");
+      if (nuoviDoc.length && clientId) {
+        try { await uploadDocumenti(nuoviDoc, { clientId }); toast.success(`${nuoviDoc.length} documenti allegati al cliente`); }
+        catch (e) { toast.error(apiError(e, "Vendita salvata ma documenti non caricati")); }
+      }
+      setNuoviDoc([]);
       onSaved();
     } catch (err) {
       toast.error(apiError(err, "Salvataggio fallito"));
@@ -186,6 +193,7 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
             <F l="N° fattura / scontrino"><Input value={form.numero_fattura} onChange={(e) => set("numero_fattura", e.target.value)} data-testid="vendita-fattura" /></F>
           </div>
           <F l="Note"><Textarea rows={2} value={form.note} onChange={(e) => set("note", e.target.value)} /></F>
+          <DocumentiPicker files={nuoviDoc} onChange={setNuoviDoc} testid="vendita-documenti" label="Allega documenti del cliente" />
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose}>Annulla</Button>

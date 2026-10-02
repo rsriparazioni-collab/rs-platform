@@ -506,3 +506,7 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-02 — Fix input importi con virgola (Contabilità)
 - Causa 'non riscosso resta 0': il componente `Num` (shared.jsx) era `type=number` e scartava la virgola italiana (771,81 → vuoto → 0). Ora `type=text inputMode=decimal`, accetta virgola e punto (convertita in punto, max 2 decimali). Vale per tutti gli importi dei corrispettivi.
+
+## 2026-10-02 — Date default oggi + documenti in ogni form cliente
+- ServizioForm: data_attivazione (telefonia) e ClientForm: data_contratto precompilate con la data odierna (modificabili).
+- Nuovo componente `DocumentiPicker.jsx` (file + fotocamera) con helper `uploadDocumenti(files,{clientId,servizioId})`; usato in ClientForm, ServizioForm (riparazione/telefonia: allegati salvati sul cliente E sul servizio), VenditaForm (sul cliente). Ritiri mantiene il suo form (riuso/sostituzione).
