@@ -513,3 +513,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-02 — Documenti nel dettaglio servizio
 - ServizioDetail: upload multiplo + 'Fotografa documento' nella card allegati; i file vengono salvati sul servizio E sulla scheda cliente (uploadDocumenti). Nuova sotto-sezione 'Documenti sulla scheda cliente' (lista scaricabile da /clients/{id}/attachments).
+
+## 2026-10-03 — Accesso contabilità Deborah (prod)
+- In produzione Deborah non aveva `contabilita_store_ids` (il fix precedente era solo dato in preview). Aggiunto `contabilita.seed_accessi()` allo startup: ACCESSI_DEFAULT {deborah@cambiaora.local: [morbegno]} impostato se manca l'override. Modificabile da admin in Contabilità → Invii e impostazioni → Accessi.

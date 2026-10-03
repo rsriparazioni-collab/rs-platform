@@ -5706,6 +5706,10 @@ async def startup():
     asyncio.create_task(whatsapp_queue_loop())
     asyncio.create_task(backup_module.backup_loop())
     asyncio.create_task(contabilita_module.invii_programmati_loop())
+    try:
+        await contabilita_module.seed_accessi()
+    except Exception as e:
+        logger.error(f"seed accessi contabilità: {e}")
 
 async def whatsapp_queue_loop() -> None:
     """Fallback interno al cron piattaforma: svuota la coda WhatsApp (recensioni) ogni 60s."""

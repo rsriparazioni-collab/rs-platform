@@ -21,6 +21,21 @@ MESI_IT = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Lu
 ROMA = ZoneInfo("Europe/Rome")
 
 
+ACCESSI_DEFAULT = {"deborah@cambiaora.local": ["morbegno"]}
+
+
+async def seed_accessi() -> None:
+    """Imposta l'accesso contabilità di default (es. Deborah → Morbegno) se l'utente non ha ancora un override."""
+    db = _d["db"]
+    stores = {_slug(s["nome"]): s["id"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    for email, slugs in ACCESSI_DEFAULT.items():
+        ids = [stores[s] for s in slugs if s in stores]
+        if ids:
+            r = await db.users.update_one({"email": email, "contabilita_store_ids": {"$exists": False}}, {"$set": {"contabilita_store_ids": ids}})
+            if r.modified_count:
+                logger.info("Accesso contabilità di default impostato per %s: %s", email, slugs)
+
+
 async def invii_programmati_loop() -> None:
     """Fallback interno al cron piattaforma: ogni 5 min, dopo le 20:30 (Roma) invia il WA giornaliero se non ancora inviato oggi; alle 18:00 l'avviso fine mese."""
     while True:
