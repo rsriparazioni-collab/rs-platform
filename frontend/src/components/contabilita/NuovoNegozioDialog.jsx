@@ -30,7 +30,7 @@ export const NuovoNegozioDialog = ({ onCreated }) => {
           <Campo label="Nome negozio *" k="nome" placeholder="es. Chiavenna" />
           <Campo label="Referente" k="referente" placeholder="Nome referente" />
           <Campo label="Telefono avvisi negozio" k="telefono_avvisi" placeholder="39..." />
-          <Campo label="WhatsApp corrispettivi (20:30) a" k="wa_numero" placeholder="3792773557" />
+          <Campo label="WhatsApp corrispettivi (19:00) a" k="wa_numero" placeholder="3792773557" />
           <Campo label="Email mensile a" k="email_to" placeholder="commercialista@studio.it" type="email" />
           <Campo label="Email mittente" k="email_from" placeholder="rscontabilita@gmail.com" type="email" />
         </div>

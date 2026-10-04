@@ -516,3 +516,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-03 — Accesso contabilità Deborah (prod)
 - In produzione Deborah non aveva `contabilita_store_ids` (il fix precedente era solo dato in preview). Aggiunto `contabilita.seed_accessi()` allo startup: ACCESSI_DEFAULT {deborah@cambiaora.local: [morbegno]} impostato se manca l'override. Modificabile da admin in Contabilità → Invii e impostazioni → Accessi.
+
+## 2026-10-03 — Orario WA corrispettivi → 19:00
+- crons.yml corrispettivi-giornalieri '0 19 * * *' (Europe/Rome); fallback interno invii_programmati_loop ≥ 19:00; etichette UI aggiornate.

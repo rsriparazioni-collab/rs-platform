@@ -37,14 +37,14 @@ async def seed_accessi() -> None:
 
 
 async def invii_programmati_loop() -> None:
-    """Fallback interno al cron piattaforma: ogni 5 min, dopo le 20:30 (Roma) invia il WA giornaliero se non ancora inviato oggi; alle 18:00 l'avviso fine mese."""
+    """Fallback interno al cron piattaforma: ogni 5 min, dopo le 19:00 (Roma) invia il WA giornaliero se non ancora inviato oggi; alle 18:00 l'avviso fine mese."""
     while True:
         await asyncio.sleep(300)
         try:
             ora = datetime.now(ROMA)
             oggi = ora.date().isoformat()
             db = _d["db"]
-            if (ora.hour, ora.minute) >= (20, 30) and not await db.contabilita_log.find_one({"tipo": "wa_giornaliero", "giorno": oggi, "solo_store": {"$exists": False}}):
+            if (ora.hour, ora.minute) >= (19, 0) and not await db.contabilita_log.find_one({"tipo": "wa_giornaliero", "giorno": oggi, "solo_store": {"$exists": False}}):
                 logger.info("Fallback interno: invio WA corrispettivi giornalieri %s", oggi)
                 await invia_wa_giornaliero(oggi)
             if ora.hour >= 18 and (ora.date() + timedelta(days=1)).day == 1 and not await db.contabilita_log.find_one({"tipo": "wa_fine_mese", "giorno": oggi}):
@@ -558,7 +558,7 @@ def _testo_wa_store(nome: str, c: Optional[dict], spese: list, data: str) -> str
 
 
 async def invia_wa_giornaliero(giorno: Optional[str] = None, solo_store: Optional[str] = None) -> list:
-    """Alle 20:30: un messaggio per numero destinatario con tutti i negozi che lo hanno impostato, dal numero del primo negozio."""
+    """Alle 19:00: un messaggio per numero destinatario con tutti i negozi che lo hanno impostato, dal numero del primo negozio."""
     db = _d["db"]
     giorno = giorno or date.today().isoformat()
     gruppi: dict = {}

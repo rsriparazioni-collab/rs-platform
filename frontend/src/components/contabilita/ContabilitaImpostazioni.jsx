@@ -21,7 +21,7 @@ export const ContabilitaImpostazioni = ({ meta, storeId, reload }) => {
     <div className="grid gap-5 lg:grid-cols-[1fr_380px]" data-testid="impostazioni-panel">
       <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
         <h3 className="font-semibold text-slate-900">Invii automatici — {store.nome}</h3>
-        <Row label="WhatsApp giornaliero (20:30)" hint={`Numero destinatario; parte dal WhatsApp del negozio. Amministrazione: ${meta.numero_amministrazione}`}>
+        <Row label="WhatsApp giornaliero (19:00)" hint={`Numero destinatario; parte dal WhatsApp del negozio. Amministrazione: ${meta.numero_amministrazione}`}>
           <div className="flex items-center gap-3"><Input value={f.wa_numero || ""} onChange={(e) => setF({ ...f, wa_numero: e.target.value })} placeholder="es. 3792773557" data-testid="cfg-wa-numero" /><Switch checked={f.wa_attivo !== false} onCheckedChange={(v) => setF({ ...f, wa_attivo: v })} data-testid="cfg-wa-attivo" /></div>
         </Row>
         <Row label="Email mensile — destinatario" hint="Il 1° del mese, PDF completo del mese precedente">

@@ -36,8 +36,8 @@ crons:
     method: POST
     enabled: true
   - name: corrispettivi-giornalieri
-    description: "Alle 20:30 WhatsApp con i corrispettivi del giorno (riparazioni, merce, art.74, fatture, contanti, POS, spese) di ogni negozio al numero impostato"
-    cron: "30 20 * * *"
+    description: "Alle 19:00 WhatsApp con i corrispettivi del giorno (riparazioni, merce, art.74, fatture, contanti, POS, spese) di ogni negozio al numero impostato"
+    cron: "0 19 * * *"
     timezone: "Europe/Rome"
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     endpoint: "{{BASE_URL}}/api/cron/corrispettivi-giornalieri"
