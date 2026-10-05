@@ -13,7 +13,7 @@ import { Switch } from "./ui/switch";
 import { LAVORAZIONI, ENEL_OPERAZIONI } from "../lib/constants";
 
 const EMPTY = {
-  nome: "", cognome: "", tipo_cliente: "privato", codice_fiscale: "", p_iva: "",
+  nome: "", cognome: "", tipo_cliente: "privato", codice_fiscale: "", p_iva: "", telefoni_extra: "", email_extra: "",
   indirizzo: "", civico: "", cap: "", comune: "", provincia: "", pod: "", pdr: "", iban: "", email: "", telefono: "",
   kw_potenza: "", tipo_bolletta: "luce", fornitore_provenienza: "", gestione: "cambiaora", enel_operazione: "",
   costo_kwh_attuale: "", spese_fisse_attuale: "", costo_smc_attuale: "",
@@ -61,7 +61,13 @@ function Field({ label, children, testid }) {
   );
 }
 
-export default function ClientForm({ open, onClose, client, meta, onSaved, prefill }) {
+const PROSSIMI = [
+  { id: "luce", label: "Utenza Luce" }, { id: "gas", label: "Utenza Gas" }, { id: "sim", label: "SIM" }, { id: "internet", label: "Internet" },
+  { id: "fisso", label: "Telefono fisso" }, { id: "riparazione", label: "Riparazione" }, { id: "accessori", label: "Accessori" }, { id: "vendita", label: "Vendita" }, { id: "ritiro", label: "Ritiro telefono" },
+];
+
+export default function ClientForm({ open, onClose, client, meta, onSaved, prefill, onAggiungi }) {
+  const [prossimo, setProssimo] = useState("");
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [baseline, setBaseline] = useState(EMPTY);
@@ -163,17 +169,21 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
     e.preventDefault();
     setSaving(true);
     const { _nuova_utenza, ...formPulito } = form;
-    const payload = { ...formPulito, tipo_cliente: tipoCliente };
+    const splitList = (v) => (Array.isArray(v) ? v : String(v || "").split(/[,;\n]/)).map((x) => x.trim()).filter(Boolean);
+    const payload = { ...formPulito, tipo_cliente: tipoCliente, telefoni_extra: splitList(form.telefoni_extra), email_extra: splitList(form.email_extra) };
     NUM_FIELDS.forEach((k) => { payload[k] = payload[k] === "" ? null : parseFloat(payload[k]); });
     DATE_FIELDS.forEach((k) => { payload[k] = payload[k] || null; });
     try {
       let clientId = client?.id;
+      let salvato = null;
       if (isEdit) {
-        await api.patch(`/clients/${client.id}`, payload);
+        const r = await api.patch(`/clients/${client.id}`, payload);
+        salvato = r.data;
         toast.success("Cliente aggiornato");
       } else {
         const r = await api.post("/clients", payload);
         clientId = r.data.id;
+        salvato = r.data;
         toast.success("Cliente inserito");
         if (payload.nuovo_fornitore) api.get("/portali").then((r) => apriPortaleDopoSalvataggio(r.data, "energia", payload.nuovo_fornitore)).catch(() => {});
       }
@@ -189,6 +199,8 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
       localStorage.removeItem(draftKey);
       onSaved();
       onClose();
+      if (!isEdit && prossimo && salvato) onAggiungi?.(prossimo, salvato);
+      setProssimo("");
     } catch (err) {
       toast.error(apiError(err, "Salvataggio fallito"));
     } finally {
@@ -269,6 +281,12 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
               </Field>
               <Field label="Telefono" testid="telefono">
                 <Input value={form.telefono} onChange={(e) => set("telefono", e.target.value)} data-testid="input-telefono" />
+              </Field>
+              <Field label="Altri telefoni (separati da virgola)" testid="telefoni-extra">
+                <Input placeholder="es. 333 1234567, 0342 123456" value={Array.isArray(form.telefoni_extra) ? form.telefoni_extra.join(", ") : form.telefoni_extra || ""} onChange={(e) => set("telefoni_extra", e.target.value)} data-testid="input-telefoni-extra" />
+              </Field>
+              <Field label="Altre email (separate da virgola)" testid="email-extra">
+                <Input placeholder="es. lavoro@azienda.it" value={Array.isArray(form.email_extra) ? form.email_extra.join(", ") : form.email_extra || ""} onChange={(e) => set("email_extra", e.target.value)} data-testid="input-email-extra" />
               </Field>
               <Field label="IBAN" testid="iban">
                 <Input value={form.iban} onChange={(e) => set("iban", e.target.value.toUpperCase())} data-testid="input-iban" />
@@ -425,10 +443,25 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
             <div className="mt-4"><DocumentiPicker files={nuoviDoc} onChange={setNuoviDoc} testid="client-form-documenti" label="Allega documenti (carta d'identità, bollette, ecc.)" /></div>
           </section>
 
+          {!isEdit && onAggiungi && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-4" data-testid="client-form-prossimo">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Dopo il salvataggio aggiungi subito…</p>
+              <p className="mb-2 text-[11px] text-slate-500">Ogni cliente può avere utenze, SIM, riparazioni, vendite e ritiri illimitati: scegli cosa aprire appena salvato.</p>
+              <div className="flex flex-wrap gap-2">
+                {PROSSIMI.map((p) => (
+                  <button type="button" key={p.id} onClick={() => setProssimo(prossimo === p.id ? "" : p.id)} data-testid={`client-form-prossimo-${p.id}`}
+                          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${prossimo === p.id ? "border-sky-700 bg-sky-700 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
             <Button type="button" variant="outline" onClick={handleClose} data-testid="client-form-cancel">Annulla</Button>
             <Button type="submit" disabled={saving} className="bg-slate-900 hover:bg-slate-800" data-testid="client-form-submit">
-              {saving ? "Salvataggio..." : isEdit ? "Salva modifiche" : "Inserisci cliente"}
+              {saving ? "Salvataggio..." : isEdit ? "Salva modifiche" : prossimo ? `Inserisci e aggiungi ${PROSSIMI.find((p) => p.id === prossimo)?.label}` : "Inserisci cliente"}
             </Button>
           </div>
         </form>

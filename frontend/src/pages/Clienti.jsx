@@ -416,7 +416,18 @@ export default function Clienti() {
         </DialogContent>
       </Dialog>
 
-      <ClientForm open={formOpen} onClose={() => { setFormOpen(false); setPrefill(null); }} client={editing} meta={meta} onSaved={load} prefill={prefill} />
+      <ClientForm open={formOpen} onClose={() => { setFormOpen(false); setPrefill(null); }} client={editing} meta={meta} onSaved={load} prefill={prefill}
+                  onAggiungi={(tipo, d) => {
+                    if (tipo === "luce" || tipo === "gas") {
+                      const { id, created_at, updated_at, pod, pdr, kw_potenza, costo_kwh_attuale, costo_smc_attuale, costo_kwh_nuovo, costo_smc_nuovo,
+                        spese_fisse_attuale, spese_fisse_nuovo, data_contratto, data_verifica, data_cambio, note, history, premium_step, tipi_servizi, ...anag } = d;
+                      setTimeout(() => { setEditing(null); setPrefill({ ...anag, tipo_bolletta: tipo, lavorazione: "da_quotare", pagato: undefined, privacy_firmata: !!d.privacy_firmata, _nuova_utenza: true }); setFormOpen(true); }, 150);
+                      return;
+                    }
+                    if (tipo === "vendita") { navigate(`/vendite?cliente=${d.id}`); return; }
+                    if (tipo === "ritiro") { navigate(`/ritiri?cliente=${d.id}`); return; }
+                    setServizioForm({ tipo, client: { id: d.id, label: `${d.cognome} ${d.nome}` } });
+                  }} />
     </div>
   );
 }

@@ -540,3 +540,7 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-05 — Promemoria ordini fermi
 - vendite.avvisi_ordini_fermi(): ogni mattina (cron riparazioni-ferme 8:30) WA al numero avvisi del negozio con i telefoni `ordinato` da ≥5 giorni (ORDINE_FERMO_GIORNI), raggruppati per negozio, ripetuto ogni 5 giorni (avviso_ordine_fermo_at); log contabilita_log tipo ordini_fermi. Test /tmp/test_ordini_fermi.py.
+
+## 2026-10-05 — Cliente multi-contatto + 'Dopo il salvataggio aggiungi…'
+- ClientInput: telefoni_extra[], email_extra[] (form: campi separati da virgola; ricerca /clients?q anche su extra; mostrati in ClientDetail).
+- ClientForm (solo Nuovo cliente): riquadro chip Luce/Gas/SIM/Internet/Fisso/Riparazione/Accessori/Vendita/Ritiro → prop onAggiungi(tipo, clienteSalvato); Clienti.jsx apre subito il form corrispondente (nuova utenza prefill, ServizioForm, /vendite?cliente=, /ritiri?cliente=). Script login preview: /app/memory/login_preview.sh.

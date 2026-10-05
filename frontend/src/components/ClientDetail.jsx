@@ -264,8 +264,8 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
               </div>
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                <div><p className="text-xs text-slate-500">Telefono</p><p className="font-medium">{detail.telefono || "-"}</p></div>
-                <div><p className="text-xs text-slate-500">Email</p><p className="font-medium">{detail.email || "-"}</p></div>
+                <div><p className="text-xs text-slate-500">Telefono</p><p className="font-medium">{detail.telefono || "-"}{(detail.telefoni_extra || []).length > 0 && <span className="block text-xs text-slate-500" data-testid="client-telefoni-extra">{detail.telefoni_extra.join(" · ")}</span>}</p></div>
+                <div><p className="text-xs text-slate-500">Email</p><p className="font-medium">{detail.email || "-"}{(detail.email_extra || []).length > 0 && <span className="block text-xs text-slate-500" data-testid="client-email-extra">{detail.email_extra.join(" · ")}</span>}</p></div>
                 <div><p className="text-xs text-slate-500">Codice Fiscale</p><p className="font-medium">{detail.codice_fiscale || "-"}</p></div>
                 <div><p className="text-xs text-slate-500">P.IVA</p><p className="font-medium">{detail.p_iva || "-"}</p></div>
                 <div className="col-span-2"><p className="text-xs text-slate-500">Indirizzo</p><p className="font-medium" data-testid="detail-indirizzo">{[[detail.indirizzo, detail.civico].filter(Boolean).join(" "), [detail.cap, detail.comune].filter(Boolean).join(" "), detail.provincia].filter(Boolean).join(", ") || "-"}</p></div>

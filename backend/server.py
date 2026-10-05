@@ -809,6 +809,8 @@ class ClientInput(BaseModel):
     iban: str = ""
     email: str = ""
     telefono: str = ""
+    telefoni_extra: List[str] = []
+    email_extra: List[str] = []
     kw_potenza: Optional[float] = None
     tipo_bolletta: str = "luce"
     fornitore_provenienza: str = ""
@@ -940,7 +942,7 @@ async def list_clients(user: dict = Depends(get_current_user),
     if q:
         rx = {"$regex": re.escape(q), "$options": "i"}
         scope["$or"] = [{"nome": rx}, {"cognome": rx}, {"codice_fiscale": rx},
-                        {"pod": rx}, {"pdr": rx}, {"telefono": rx}, {"email": rx}]
+                        {"pod": rx}, {"pdr": rx}, {"telefono": rx}, {"email": rx}, {"telefoni_extra": rx}, {"email_extra": rx}]
     proj = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "tipo_cliente": 1, "p_iva": 1,
             "telefono": 1, "email": 1, "codice_fiscale": 1, "pod": 1, "pdr": 1,
             "tipo_bolletta": 1, "fornitore_provenienza": 1, "lavorazione": 1,
