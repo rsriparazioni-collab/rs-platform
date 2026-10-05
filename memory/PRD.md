@@ -531,3 +531,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-05 — Utenze energia multiple per cliente
 - Modello già esistente: ogni utenza = un record `clients` (compenso per utenza), collegati per CF/P.IVA/telefono (/clients/{id}/collegati, ora con indirizzo/civico/comune). Aggiunto: badge 'N luce · M gas' in lista Clienti (campo `utenze` calcolato in GET /clients), pulsanti 'Utenza Luce' e 'Utenza Gas' sempre disponibili in 'Aggiungi al cliente', titolo 'Nuova utenza … · cliente' con hint e campo indirizzo evidenziato (indirizzi diversi per utenza), sezione 'Altre utenze energia di questo cliente' con indirizzo.
+
+## 2026-10-05 — Lista Clienti per persona
+- GET /clients restituisce `persona_key` (CF/P.IVA/telefono) e `indirizzo`. Clienti.jsx: toggle 'Per persona (N)' / 'Per utenza (N)' (default per persona), raggruppa client-side, riga principale con chevron espandi e badge '2 luce · +1', sotto-righe viola con tipo/POD-PDR/indirizzo.

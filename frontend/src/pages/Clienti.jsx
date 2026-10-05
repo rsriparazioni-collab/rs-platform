@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban, Wrench, Smartphone, Wifi, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban, Wrench, Smartphone, Wifi, RefreshCw, Users, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import SyncFogliDialog from "../components/SyncFogliDialog";
@@ -74,6 +74,21 @@ export default function Clienti() {
   }, []);
 
   const storeName = (id) => meta.stores.find((s) => s.id === id)?.nome || "-";
+  const [perPersona, setPerPersona] = useState(true);
+  const [espansi, setEspansi] = useState({});
+  const righe = useMemo(() => {
+    if (!perPersona) return clients.map((c, i) => ({ c, i, figlio: false, gruppo: 1 }));
+    const gruppi = new Map();
+    clients.forEach((c) => { const k = c.persona_key || c.id; if (!gruppi.has(k)) gruppi.set(k, []); gruppi.get(k).push(c); });
+    const out = [];
+    let i = 0;
+    gruppi.forEach((lista, k) => {
+      out.push({ c: lista[0], i: i++, figlio: false, gruppo: lista.length, key: k, aperto: !!espansi[k] });
+      if (espansi[k]) lista.slice(1).forEach((c) => out.push({ c, i: i++, figlio: true, gruppo: lista.length, key: k }));
+    });
+    return out;
+  }, [clients, perPersona, espansi]);
+  const persone = useMemo(() => new Set(clients.map((c) => c.persona_key || c.id)).size, [clients]);
 
   const exportExcel = async () => {
     try {
@@ -211,6 +226,10 @@ export default function Clienti() {
                 onClick={() => setFilters((f) => ({ ...f, no_recensioni: !f.no_recensioni }))} data-testid="filter-blacklist-toggle">
           <Ban className="h-4 w-4" /> Solo blacklist recensioni
         </Button>
+        <Button type="button" variant={perPersona ? "default" : "outline"} size="sm" className="h-10 gap-1.5"
+                onClick={() => setPerPersona((v) => !v)} title={perPersona ? "Una riga per persona, utenze espandibili" : "Una riga per utenza"} data-testid="toggle-vista-persona">
+          <Users className="h-4 w-4" /> {perPersona ? `Per persona (${persone})` : `Per utenza (${clients.length})`}
+        </Button>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="clients-table">
@@ -229,11 +248,18 @@ export default function Clienti() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {clients.map((c, i) => (
-                <tr key={c.id} className="cursor-pointer transition-colors hover:bg-slate-50"
-                    onClick={() => setDetailRow(c)} data-testid={`client-row-${i}`}>
-                  <td className="px-4 py-3">
+              {righe.map(({ c, i, figlio, gruppo, key, aperto }) => (
+                <tr key={c.id} className={`cursor-pointer transition-colors hover:bg-slate-50 ${figlio ? "bg-violet-50/40" : ""}`}
+                    onClick={() => setDetailRow(c)} data-testid={figlio ? `client-subrow-${i}` : `client-row-${i}`}>
+                  <td className={`px-4 py-3 ${figlio ? "pl-12" : ""}`}>
+                    {figlio && <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700">↳ {c.tipo_bolletta === "gas" ? "Gas" : "Luce"}{c.pod ? ` · POD ${c.pod}` : c.pdr ? ` · PDR ${c.pdr}` : ""}{c.indirizzo ? ` · ${c.indirizzo}` : ""}</p>}
                     <p className="font-medium text-slate-900">
+                      {!figlio && perPersona && gruppo > 1 && (
+                        <button type="button" className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                                onClick={(e) => { e.stopPropagation(); setEspansi((s) => ({ ...s, [key]: !s[key] })); }} data-testid={`espandi-persona-${i}`} title={aperto ? "Nascondi utenze" : "Mostra tutte le utenze"}>
+                          {aperto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
                       {c.cognome} {c.nome}
                       {c.gestione === "enel" && filters.gestione === "all" && (
                         <span className="ml-2 status-badge bg-amber-500/15 text-amber-700 border-amber-300" data-testid={`client-enel-${i}`}>ENEL{c.enel_operazione ? ` · ${c.enel_operazione.toUpperCase()}` : ""}</span>
@@ -249,9 +275,9 @@ export default function Clienti() {
                           {PREMIUM_STEPS[c.premium_step]?.label}
                         </span>
                       )}
-                      {c.utenze && (c.utenze.luce + c.utenze.gas) > 1 && (
+                      {c.utenze && (c.utenze.luce + c.utenze.gas) > 1 && !figlio && (
                         <span className="ml-2 status-badge border-violet-300 bg-violet-500/10 text-violet-700" title="Utenze energia intestate a questa persona" data-testid={`client-utenze-${i}`}>
-                          <Zap className="h-3 w-3" />{[c.utenze.luce ? `${c.utenze.luce} luce` : null, c.utenze.gas ? `${c.utenze.gas} gas` : null].filter(Boolean).join(" · ")}
+                          <Zap className="h-3 w-3" />{[c.utenze.luce ? `${c.utenze.luce} luce` : null, c.utenze.gas ? `${c.utenze.gas} gas` : null].filter(Boolean).join(" · ")}{perPersona && gruppo > 1 && !aperto ? ` · +${gruppo - 1}` : ""}
                         </span>
                       )}
                     </p>
