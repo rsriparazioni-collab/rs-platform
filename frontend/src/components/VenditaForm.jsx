@@ -175,22 +175,23 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
             </div>
           </div>
 
-          {!vendita && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3" data-testid="vendita-stato-box">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stato della vendita</p>
+          <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3" data-testid="vendita-stato-box">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stato della vendita{vendita ? " (si cambia dal dettaglio con i tasti Arrivato / Ritirato)" : ""}</p>
               <div className="flex flex-wrap gap-2">
                 {VENDITA_STATI.map((s) => (
-                  <button type="button" key={s.id} onClick={() => set("stato", s.id)} data-testid={`vendita-stato-${s.id}`}
-                          className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${form.stato === s.id ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}>
+                  <button type="button" key={s.id} disabled={Boolean(vendita)} onClick={() => set("stato", s.id)} data-testid={`vendita-stato-${s.id}`}
+                          className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors disabled:opacity-60 ${form.stato === s.id ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}>
                     {s.label}
                   </button>
                 ))}
               </div>
+              {!vendita && (
               <p className="text-xs text-slate-600">
                 {form.stato === "ordinato" && "Il telefono viene messo in ordine al fornitore: magazzino a −1 e WhatsApp al cliente 'il tuo nuovo telefono è stato ordinato, grazie di averci scelto'. All'arrivo lo segni Arrivato."}
                 {form.stato === "arrivato" && "Il telefono è in negozio in attesa del cliente: parte il WhatsApp 'il tuo telefono è arrivato, ti aspettiamo'."}
                 {form.stato === "consegnato" && "Vendita completata e ritirata dal cliente: parte la richiesta di recensione dal numero del negozio."}
               </p>
+              )}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {form.stato === "consegnato" ? (
                   <F l="Pagamento">
@@ -202,10 +203,12 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
                 ) : (
                   <F l="Acconto € (da pagare il saldo)"><Input type="number" step="0.01" min="0" value={form.acconto} onChange={(e) => set("acconto", e.target.value)} data-testid="vendita-acconto" /></F>
                 )}
-                {form.stato === "ordinato" && <F l="Fornitore"><Input placeholder="es. Miwo, Phoneclik" value={form.fornitore} onChange={(e) => set("fornitore", e.target.value)} data-testid="vendita-fornitore" /></F>}
+                <F l={form.stato === "ordinato" ? "Ordinato da (fornitore) *" : "Fornitore / acquistato da"}>
+                  <Input required={form.stato === "ordinato"} list="vendita-fornitori-list" placeholder="es. Miwo, Phoneclik, Brightstar" value={form.fornitore} onChange={(e) => set("fornitore", e.target.value)} data-testid="vendita-fornitore" />
+                  <datalist id="vendita-fornitori-list">{(meta?.fornitori_magazzino || []).map((f) => <option key={f} value={f} />)}</datalist>
+                </F>
               </div>
             </div>
-          )}
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <F l="Prezzo vendita € *"><Input required type="number" step="0.01" min="0" value={form.prezzo} onChange={(e) => set("prezzo", e.target.value)} data-testid="vendita-prezzo" /></F>

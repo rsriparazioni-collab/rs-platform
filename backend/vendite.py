@@ -366,6 +366,8 @@ async def update_vendita(vendita_id: str, input: VenditaInput, user: dict = _use
     data["client_name"] = None
     await _arricchisci(data)
     await db.vendite.update_one({"id": vendita_id}, {"$set": data})
+    if data.get("fornitore") and old.get("magazzino_item_id"):
+        await db.magazzino.update_one({"id": old["magazzino_item_id"]}, {"$set": {"fornitore": data["fornitore"][:60]}})
     return await db.vendite.find_one({"id": vendita_id}, {"_id": 0})
 
 

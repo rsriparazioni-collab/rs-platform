@@ -182,6 +182,7 @@ export default function Vendite() {
                 <Info l="IMEI / Serial" v={detail.imei || "-"} />
                 <Info l="Pagamento" v={detail.pagamento || "-"} />
                 <Info l="N° fattura" v={detail.numero_fattura || "-"} />
+                <Info l="Fornitore (ordinato da)" v={detail.fornitore || "-"} />
                 <Info l="Stato" v={`${venditaStatoLabel(detail.stato)}${detail.pagato === false ? " · Da pagare" : detail.stato === "consegnato" ? " · Pagato" : ""}`} />
                 {detail.acconto > 0 && <Info l="Acconto / Saldo" v={`${eur(detail.acconto)} / ${eur(detail.prezzo * (detail.quantita || 1) - detail.acconto)}`} />}
                 {detail.note && <div className="col-span-full"><p className="text-xs text-slate-500">Note</p><p>{detail.note}</p></div>}

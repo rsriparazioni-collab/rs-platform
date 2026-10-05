@@ -1184,7 +1184,8 @@ async def get_meta(user: dict = Depends(get_current_user)):
         stores = [s for s in stores if s["id"] in ids]
     operators = await db.users.find({"role": {"$in": ["operatore", "admin"]}, "active": True},
                                     {"_id": 0, "password_hash": 0}).to_list(200)
-    return {"suppliers": suppliers, "lavorazioni": LAVORAZIONI,
+    forn_mag = sorted({(f or "").strip() for f in await db.magazzino.distinct("fornitore") + await db.vendite.distinct("fornitore") if f and f.strip()}, key=str.lower)
+    return {"suppliers": suppliers, "lavorazioni": LAVORAZIONI, "fornitori_magazzino": forn_mag,
             "tel_operators": {"sim": SIM_OPERATORS, "internet": INTERNET_OPERATORS, "fisso": FISSO_OPERATORS},
             "rip_stati": RIP_STATI, "servizio_tipi": SERVIZIO_TIPI,
             "stores": [{"id": s["id"], "nome": s["nome"], "referente": s.get("referente", "")} for s in stores],

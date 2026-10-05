@@ -534,3 +534,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-05 — Lista Clienti per persona
 - GET /clients restituisce `persona_key` (CF/P.IVA/telefono) e `indirizzo`. Clienti.jsx: toggle 'Per persona (N)' / 'Per utenza (N)' (default per persona), raggruppa client-side, riga principale con chevron espandi e badge '2 luce · +1', sotto-righe viola con tipo/POD-PDR/indirizzo.
+
+## 2026-10-05 — Vendite: campo Fornitore sempre visibile
+- VenditaForm: box 'Stato della vendita' visibile anche in modifica (chip disabilitati), campo 'Ordinato da (fornitore)' sempre presente (obbligatorio se Ordinato) con datalist da /meta `fornitori_magazzino` (distinct magazzino+vendite). PATCH vendita aggiorna il fornitore anche sull'articolo di magazzino. Dettaglio vendita mostra 'Fornitore (ordinato da)'.
