@@ -10,6 +10,7 @@ import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import VenditaForm from "../components/VenditaForm";
+import { ClienteLink } from "../components/ClienteLink";
 import ServizioForm from "../components/ServizioForm";
 
 const eur = (v) => (v == null ? "-" : `€ ${Number(v).toFixed(2)}`);
@@ -150,7 +151,7 @@ export default function Vendite() {
                 <td className="px-4 py-3 text-slate-600">{venditaCategoriaLabel(v.categoria)}</td>
                 <td className="px-4 py-3"><span className={`status-badge ${regimeIvaBadge(v.regime_iva)}`}>{regimeIvaLabel(v.regime_iva)}</span></td>
                 <td className="px-4 py-3"><span className="flex flex-wrap gap-1"><span className={`status-badge ${venditaStatoBadge(v.stato)}`} data-testid={`vendita-stato-badge-${i}`}>{venditaStatoLabel(v.stato)}</span>{v.pagato === false && <span className="status-badge border-rose-300 bg-rose-500/10 text-rose-700">Da pagare</span>}</span></td>
-                <td className="px-4 py-3 text-slate-700">{v.client_name || v.cliente_nome || "-"}</td>
+                <td className="px-4 py-3 text-slate-700"><ClienteLink clientId={v.client_id}>{v.client_name || v.cliente_nome || "-"}</ClienteLink></td>
                 <td className="px-4 py-3 text-slate-600">{storeName(v.store_id)}</td>
                 <td className="px-4 py-3 text-right font-semibold">{eur(v.prezzo * (v.quantita || 1))}</td>
                 <td className="px-4 py-3 text-right text-emerald-700">{v.costo != null ? eur((v.prezzo - v.costo) * (v.quantita || 1)) : "-"}</td>
@@ -173,7 +174,7 @@ export default function Vendite() {
                 <Info l="Categoria" v={venditaCategoriaLabel(detail.categoria)} />
                 <Info l="Regime IVA" v={regimeIvaLabel(detail.regime_iva)} />
                 <Info l="Negozio" v={storeName(detail.store_id)} />
-                <Info l="Cliente" v={detail.client_name || detail.cliente_nome || "-"} />
+                <div data-testid="vendita-detail-cliente"><p className="text-xs text-slate-500">Cliente</p><ClienteLink clientId={detail.client_id}>{detail.client_name || detail.cliente_nome || "-"}</ClienteLink></div>
                 <Info l="Telefono" v={detail.client_telefono || "-"} />
                 <Info l="Data" v={fmtDate(detail.data_vendita)} />
                 <Info l="Prezzo" v={eur(detail.prezzo)} />

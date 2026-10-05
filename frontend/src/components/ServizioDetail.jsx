@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, Recycle, FileDown, Ban, Lock } from "lucide-react";
 import RitiroDaRiparazione from "./RitiroDaRiparazione";
 import { uploadDocumenti } from "./DocumentiPicker";
+import { ClienteLink } from "./ClienteLink";
 import WhatsAppLog from "./WhatsAppLog";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
@@ -287,8 +288,9 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
           <>
             <SheetHeader>
               <SheetTitle className="font-heading text-xl">
-                {detail.client_name} · {servizioTipoLabel(detail.tipo)}
+                <ClienteLink clientId={detail.client_id} className="text-xl" testid="servizio-detail-cliente-link">{detail.client_name}</ClienteLink> · {servizioTipoLabel(detail.tipo)}
               </SheetTitle>
+              <p className="text-xs text-slate-500">Clicca sul nome per aprire la scheda cliente completa e aggiungere utenze, servizi o documenti.</p>
             </SheetHeader>
             <div className="mt-6 space-y-6">
               {isRip && !detail.ritiro_id && (

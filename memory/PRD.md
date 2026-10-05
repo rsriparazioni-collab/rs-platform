@@ -544,3 +544,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-05 — Cliente multi-contatto + 'Dopo il salvataggio aggiungi…'
 - ClientInput: telefoni_extra[], email_extra[] (form: campi separati da virgola; ricerca /clients?q anche su extra; mostrati in ClientDetail).
 - ClientForm (solo Nuovo cliente): riquadro chip Luce/Gas/SIM/Internet/Fisso/Riparazione/Accessori/Vendita/Ritiro → prop onAggiungi(tipo, clienteSalvato); Clienti.jsx apre subito il form corrispondente (nuova utenza prefill, ServizioForm, /vendite?cliente=, /ritiri?cliente=). Script login preview: /app/memory/login_preview.sh.
+
+## 2026-10-05 — Scheda cliente ovunque
+- Nuovo `ClienteLink.jsx`: nome cliente cliccabile → /clienti?apri=<id> (Clienti.jsx apre ClientDetail con 'Aggiungi al cliente'). Usato nelle liste Riparazioni, Telefonia (mobile/fisso), Vendite, nel dettaglio vendita e nel titolo di ServizioDetail.

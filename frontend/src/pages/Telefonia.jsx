@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { servizioTipoLabel, fmtDate } from "../lib/constants";
 import ServizioForm from "../components/ServizioForm";
 import ServizioDetail from "../components/ServizioDetail";
+import { ClienteLink } from "../components/ClienteLink";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 
@@ -113,7 +114,7 @@ export default function Telefonia() {
                   {rows.map((s, i) => (
                     <tr key={s.id} className="cursor-pointer transition-colors hover:bg-slate-50"
                         onClick={() => setDetailRow(s)} data-testid={`telefonia-row-${i}`}>
-                      <td className="px-4 py-3 font-medium text-slate-900">{s.client_name || "-"}
+                      <td className="px-4 py-3 font-medium text-slate-900"><ClienteLink clientId={s.client_id}>{s.client_name || "-"}</ClienteLink>
                         {tab === "fisso" && <span className="ml-2 text-xs text-slate-400">{servizioTipoLabel(s.tipo)}</span>}</td>
                       <td className="px-4 py-3"><span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300"><sez.icon className="h-3 w-3" /> {s.operatore_tel || "-"}</span></td>
                       <td className="px-4 py-3 text-slate-600">{s.numero || "-"}</td>
@@ -158,7 +159,7 @@ export default function Telefonia() {
             <tbody className="divide-y divide-slate-100">
               {vincoli.map((s, i) => (
                 <tr key={s.id} className="cursor-pointer hover:bg-slate-50" onClick={() => setDetailRow(s)} data-testid={`vincolo-row-${i}`}>
-                  <td className="px-4 py-3 font-medium text-slate-900">{s.client_name || "-"}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900"><ClienteLink clientId={s.client_id}>{s.client_name || "-"}</ClienteLink></td>
                   <td className="px-4 py-3">{s.tipo === "sim" ? "Mobile" : "Fisso"}</td>
                   <td className="px-4 py-3 text-slate-600">{s.operatore_tel || "-"}</td>
                   <td className="px-4 py-3 text-slate-600">{fmtDate(s.data_attivazione)}</td>
