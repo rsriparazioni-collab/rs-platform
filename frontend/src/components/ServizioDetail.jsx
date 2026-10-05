@@ -315,6 +315,16 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     <Recycle className="h-3 w-3" /> Ritiro {detail.ritiro_numero}
                   </span>
                 )}
+                {isRip && detail.ricambio_msg_sent_at && (
+                  <span className="status-badge bg-lime-500/15 text-lime-700 border-lime-300" data-testid="servizio-ricambio-sent-badge">
+                    <MessageCircle className="h-3 w-3" /> Avviso ricambio arrivato inviato {fmtDate(detail.ricambio_msg_sent_at)}
+                  </span>
+                )}
+                {isRip && !detail.ricambio_msg_sent_at && detail.ricambio_msg_error && (
+                  <span className="status-badge bg-amber-500/15 text-amber-700 border-amber-300" title={detail.ricambio_msg_error} data-testid="servizio-ricambio-error-badge">
+                    Avviso "ricambio arrivato" non inviato
+                  </span>
+                )}
                 {isRip && detail.pronto_msg_sent_at && (
                   <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300" data-testid="servizio-pronto-sent-badge">
                     <MessageCircle className="h-3 w-3" /> Cliente avvisato {fmtDate(detail.pronto_msg_sent_at)}

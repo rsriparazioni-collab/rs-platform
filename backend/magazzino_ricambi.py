@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import uuid
@@ -151,12 +152,14 @@ async def arrivo_ricambio(item_id: str, input: ArrivoInput, user: dict = Depends
         vendite_pronte = await _d["vendite_arrivato"](item_id) if _d.get("vendite_arrivato") else []
         if _d.get("vendite_registro_arrivato"):
             vendite_pronte += await _d["vendite_registro_arrivato"](item_id)
-        async for s in db.servizi.find({"ricambi_usati": {"$elemMatch": {"item_id": item_id, "in_ordine": True}}}, {"_id": 0, "id": 1, "numero_riparazione": 1, "stato": 1, "ricambi_usati": 1}):
+        async for s in db.servizi.find({"ricambi_usati": {"$elemMatch": {"item_id": item_id, "in_ordine": True}}}, {"_id": 0}):
             usati = [{**u, "in_ordine": False, "arrivato_at": now} if u.get("item_id") == item_id else u for u in s.get("ricambi_usati") or []]
             set_ = {"ricambi_usati": usati, "updated_at": now}
-            if s.get("stato") == "attesa_ricambio_carico":
-                set_["stato"] = "in_lavorazione"
-            await db.servizi.update_one({"id": s["id"]}, {"$set": set_})
+            if s.get("stato") in ("attesa_ricambio_carico", "attesa_ricambio_cliente"):
+                set_["stato"] = "ricambio_arrivato"
+            await db.servizi.update_one({"id": s["id"]}, {"$set": set_, "$push": {"stato_log": {"stato": "ricambio_arrivato", "at": now, "user_name": "magazzino"}}} if "stato" in set_ else {"$set": set_})
+            if "stato" in set_ and _d.get("avviso_ricambio_arrivato"):
+                asyncio.create_task(_d["avviso_ricambio_arrivato"]({**s, **set_}))
             sbloccate.append(s.get("numero_riparazione") or s["id"])
     return {"status": "ok", "quantita": nuova, "in_ordine": nuova < 0, "riparazioni_sbloccate": sbloccate, "vendite_pronte": vendite_pronte}
 

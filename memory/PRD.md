@@ -547,3 +547,7 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-05 — Scheda cliente ovunque
 - Nuovo `ClienteLink.jsx`: nome cliente cliccabile → /clienti?apri=<id> (Clienti.jsx apre ClientDetail con 'Aggiungi al cliente'). Usato nelle liste Riparazioni, Telefonia (mobile/fisso), Vendite, nel dettaglio vendita e nel titolo di ServizioDetail.
+
+## 2026-10-05 — Uso utenza + stato 'Ricambio arrivato'
+- Clienti energia: campo `uso_utenza` (residenza|non_residenza|business) con chip nel form (sezione indirizzo) e nel dettaglio.
+- Riparazioni: nuovo stato `ricambio_arrivato` (RIP_STATI backend/frontend, STATI_RIP_APERTI, label). Al passaggio (manuale via PATCH o automatico dal carico arrivo in Magazzino per riparazioni in attesa ricambio) parte il WA al cliente dal negozio: MSG_RICAMBIO_ARRIVATO 'Ciao {nome}! Il ricambio del tuo {dispositivo} è arrivato: passa o contattaci per la riparazione. Buona giornata!'; esito in ricambio_msg_sent_at/_error con badge in ServizioDetail.

@@ -55,6 +55,7 @@ export const RIP_STATI = [
   { id: "ingresso", label: "Ingresso", badge: "bg-sky-500/15 text-sky-700 border-sky-300" },
   { id: "attesa_ricambio_cliente", label: "Attesa ricambio (disp. col cliente)", badge: "bg-amber-500/15 text-amber-700 border-amber-300" },
   { id: "attesa_ricambio_carico", label: "Attesa ricambio (disp. in carico)", badge: "bg-orange-500/15 text-orange-700 border-orange-300" },
+  { id: "ricambio_arrivato", label: "Ricambio arrivato (cliente avvisato)", badge: "bg-lime-500/15 text-lime-700 border-lime-300" },
   { id: "in_attesa_cliente", label: "In attesa cliente", badge: "bg-yellow-500/15 text-yellow-700 border-yellow-300" },
   { id: "preventivo", label: "Preventivo", badge: "bg-violet-500/15 text-violet-700 border-violet-300" },
   { id: "in_lavorazione", label: "In lavorazione", badge: "bg-cyan-500/15 text-cyan-700 border-cyan-300" },

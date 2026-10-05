@@ -13,7 +13,7 @@ import { Switch } from "./ui/switch";
 import { LAVORAZIONI, ENEL_OPERAZIONI } from "../lib/constants";
 
 const EMPTY = {
-  nome: "", cognome: "", tipo_cliente: "privato", codice_fiscale: "", p_iva: "", telefoni_extra: "", email_extra: "",
+  nome: "", cognome: "", tipo_cliente: "privato", codice_fiscale: "", p_iva: "", telefoni_extra: "", email_extra: "", uso_utenza: "",
   indirizzo: "", civico: "", cap: "", comune: "", provincia: "", pod: "", pdr: "", iban: "", email: "", telefono: "",
   kw_potenza: "", tipo_bolletta: "luce", fornitore_provenienza: "", gestione: "cambiaora", enel_operazione: "",
   costo_kwh_attuale: "", spese_fisse_attuale: "", costo_smc_attuale: "",
@@ -263,6 +263,14 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
               )}
               <Field label={prefill?._nuova_utenza ? "Via / Indirizzo dell'utenza" : "Via / Indirizzo"} testid="indirizzo">
                 <Input value={form.indirizzo} onChange={(e) => set("indirizzo", e.target.value)} data-testid="input-indirizzo" className={prefill?._nuova_utenza ? "border-violet-300 bg-violet-50/40" : ""} />
+              </Field>
+              <Field label="Uso utenza (indirizzo)" testid="uso-utenza">
+                <div className="flex gap-1.5" data-testid="uso-utenza-chips">
+                  {[["residenza", "Residenza"], ["non_residenza", "Non residenza"], ["business", "Business"]].map(([id, l]) => (
+                    <button type="button" key={id} onClick={() => set("uso_utenza", form.uso_utenza === id ? "" : id)} data-testid={`uso-utenza-${id}`}
+                            className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${form.uso_utenza === id ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}>{l}</button>
+                  ))}
+                </div>
               </Field>
               <Field label="N. civico" testid="civico">
                 <Input value={form.civico || ""} onChange={(e) => set("civico", e.target.value)} data-testid="input-civico" />

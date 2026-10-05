@@ -798,6 +798,7 @@ class ClientInput(BaseModel):
     nome: str
     cognome: str
     tipo_cliente: str = "privato"
+    uso_utenza: str = ""
     codice_fiscale: str = ""
     p_iva: str = ""
     indirizzo: str = ""
@@ -2538,7 +2539,7 @@ async def anonimizza_cliente_core(c: dict, by: str) -> dict:
     return {"status": "ok", "allegati_eliminati": n_att, "messaggi_eliminati": n_wa, "servizi_anonimizzati": n_svc, "ritiri_anonimizzati": n_rit}
 
 RETENTION_ANNI = 5
-STATI_RIP_APERTI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "in_attesa_cliente", "preventivo", "in_lavorazione", "pronto", "pronto_ritiro"]
+STATI_RIP_APERTI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "ricambio_arrivato", "in_attesa_cliente", "preventivo", "in_lavorazione", "pronto", "pronto_ritiro"]
 
 async def pulizia_retention_gdpr() -> dict:
     """Anonimizza i clienti senza alcuna attività (contratti, servizi, ritiri) negli ultimi RETENTION_ANNI anni."""
@@ -3937,8 +3938,28 @@ async def export_clients(user: dict = Depends(get_current_user)):
 
 # ---------------- Servizi (riparazioni / telefonia) ----------------
 
-RIP_STATI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "in_attesa_cliente",
+RIP_STATI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "ricambio_arrivato", "in_attesa_cliente",
              "preventivo", "in_lavorazione", "pronto", "pronto_ritiro", "consegnato", "non_riparabile"]
+
+MSG_RICAMBIO_ARRIVATO = "Ciao {nome}! 😊\nIl ricambio del tuo {dispositivo} è arrivato: passa o contattaci per la riparazione.\nBuona giornata!\n{negozio}"
+
+
+async def invia_avviso_ricambio_arrivato(svc: dict) -> None:
+    """WA al cliente dal negozio della riparazione quando il ricambio ordinato è arrivato."""
+    if svc.get("ricambio_msg_sent_at"):
+        return
+    client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "telefono": 1})
+    if not client_doc or not client_doc.get("telefono"):
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"ricambio_msg_error": "Cliente senza numero di telefono"}})
+        return
+    sessione = await wa_session_servizio(svc)
+    store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0, "nome": 1})
+    msg = MSG_RICAMBIO_ARRIVATO.format(nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo") or "telefono", negozio=f"RS Riparazioni {(store or {}).get('nome', '')}".strip())
+    try:
+        await wa_send(client_doc["telefono"], msg, session=sessione, tipo="ricambio_arrivato", client_id=svc["client_id"], servizio_id=svc["id"])
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"ricambio_msg_sent_at": datetime.now(timezone.utc).isoformat(), "ricambio_msg_error": None}})
+    except HTTPException as e:
+        await db.servizi.update_one({"id": svc["id"]}, {"$set": {"ricambio_msg_error": str(e.detail)}})
 
 SERVIZIO_TIPI = ["riparazione", "accessori", "vendita", "sim", "internet", "fisso"]
 
@@ -4513,6 +4534,8 @@ async def update_servizio(servizio_id: str, input: ServizioInput, background_tas
     if updated.get("tipo") == "riparazione" and updated.get("stato") == "pronto_ritiro" and old.get("stato") != "pronto_ritiro" \
             and not updated.get("pronto_msg_sent_at"):
         background_tasks.add_task(invia_avviso_pronto, updated)
+    if updated.get("tipo") == "riparazione" and updated.get("stato") == "ricambio_arrivato" and old.get("stato") != "ricambio_arrivato":
+        background_tasks.add_task(invia_avviso_ricambio_arrivato, updated)
     if updated.get("tipo") == "riparazione" and updated.get("stato") == "pronto" and old.get("stato") != "pronto":
         background_tasks.add_task(invia_avviso_pronto_negozio, updated)
     if updated.get("tipo") == "riparazione" and updated.get("stato") == "consegnato" and old.get("stato") != "consegnato":
@@ -5485,7 +5508,7 @@ async def riparazioni_ferme_per_negozio() -> dict:
     return out
 
 RIP_STATO_LABEL = {"ingresso": "Ingresso", "attesa_ricambio_cliente": "Attesa ricambio (cliente)",
-                   "attesa_ricambio_carico": "Attesa ricambio (in carico)", "in_attesa_cliente": "In attesa cliente",
+                   "attesa_ricambio_carico": "Attesa ricambio (in carico)", "ricambio_arrivato": "Ricambio arrivato", "in_attesa_cliente": "In attesa cliente",
                    "preventivo": "Preventivo", "in_lavorazione": "In lavorazione", "pronto": "Pronto (laboratorio)", "pronto_ritiro": "Pronto da ritirare"}
 
 def messaggio_riparazioni_ferme(store_name: str, items: list, joy: Optional[list] = None) -> str:
@@ -5914,7 +5937,8 @@ firma_ritiro_module.setup(db=db, wa_send=wa_send, put_object=put_object, get_obj
 api_router.include_router(firma_ritiro_module.router)
 magazzino_ricambi_module.setup(db=db, get_current_user=get_current_user, get_scoped_servizio=get_scoped_servizio,
                                magazzino_scope=magazzino_scope, wa_send=wa_send, trasferimenti=trasferimenti_module,
-                               vendite_arrivato=vendite_ordine_module.arrivato, vendite_registro_arrivato=vendite_module.arrivato_da_magazzino)
+                               vendite_arrivato=vendite_ordine_module.arrivato, vendite_registro_arrivato=vendite_module.arrivato_da_magazzino,
+                               avviso_ricambio_arrivato=invia_avviso_ricambio_arrivato)
 api_router.include_router(magazzino_ricambi_module.router)
 
 @api_router.post("/servizi/{servizio_id}/consegna-ordine")
