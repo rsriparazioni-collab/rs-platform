@@ -537,3 +537,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-05 — Vendite: campo Fornitore sempre visibile
 - VenditaForm: box 'Stato della vendita' visibile anche in modifica (chip disabilitati), campo 'Ordinato da (fornitore)' sempre presente (obbligatorio se Ordinato) con datalist da /meta `fornitori_magazzino` (distinct magazzino+vendite). PATCH vendita aggiorna il fornitore anche sull'articolo di magazzino. Dettaglio vendita mostra 'Fornitore (ordinato da)'.
+
+## 2026-10-05 — Promemoria ordini fermi
+- vendite.avvisi_ordini_fermi(): ogni mattina (cron riparazioni-ferme 8:30) WA al numero avvisi del negozio con i telefoni `ordinato` da ≥5 giorni (ORDINE_FERMO_GIORNI), raggruppati per negozio, ripetuto ogni 5 giorni (avviso_ordine_fermo_at); log contabilita_log tipo ordini_fermi. Test /tmp/test_ordini_fermi.py.

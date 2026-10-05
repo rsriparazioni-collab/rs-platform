@@ -5535,6 +5535,7 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
     background_tasks.add_task(invia_avvisi_vincolo)
     background_tasks.add_task(invia_avvisi_rinnovo_energia)
     background_tasks.add_task(invia_avvisi_truffe)
+    background_tasks.add_task(vendite_module.avvisi_ordini_fermi)
     background_tasks.add_task(pulizia_retention_gdpr)
     return {"status": "accepted"}
 

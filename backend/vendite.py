@@ -2,7 +2,7 @@ import csv
 import io
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -286,6 +286,45 @@ async def arrivato_da_magazzino(item_id: str) -> list:
         await _wa_vendita(v, MSG_ARRIVATO, "arrivato", _saldo_txt(v))
         out.append(f"{v.get('articolo', '')} ({v.get('client_name') or v.get('cliente_nome') or 'cliente'})")
     return out
+
+
+ORDINE_FERMO_GIORNI = 5
+
+
+async def avvisi_ordini_fermi() -> list:
+    """Ogni mattina: WA al negozio per i telefoni ordinati per i clienti non arrivati dopo 5 giorni (ripetuto ogni 5 giorni)."""
+    db = _deps["db"]
+    now = datetime.now(timezone.utc)
+    limite = (now - timedelta(days=ORDINE_FERMO_GIORNI)).isoformat()
+    per_store: dict = {}
+    async for v in db.vendite.find({"stato": "ordinato", "ordinato_at": {"$lte": limite}}, {"_id": 0}):
+        ultimo = v.get("avviso_ordine_fermo_at")
+        if ultimo and ultimo > limite:
+            continue
+        per_store.setdefault(v["store_id"], []).append(v)
+    esiti = []
+    for store_id, lst in per_store.items():
+        s = await db.stores.find_one({"id": store_id}, {"_id": 0, "nome": 1, "telefono_avvisi": 1})
+        numero = re.sub(r"\D", "", (s or {}).get("telefono_avvisi") or "")
+        if not numero:
+            esiti.append({"negozio": (s or {}).get("nome"), "ok": False, "motivo": "numero avvisi mancante"})
+            continue
+        righe = []
+        for v in lst:
+            giorni = (now - datetime.fromisoformat(v["ordinato_at"])).days
+            righe.append(f"• {v.get('articolo', '')} per {v.get('client_name') or v.get('cliente_nome') or 'cliente'}"
+                         + (f" ({v.get('fornitore')})" if v.get("fornitore") else "") + f" – ordinato da {giorni} giorni")
+        testo = (f"⏰ *{s['nome']}* – telefoni ordinati non ancora arrivati:\n" + "\n".join(righe)
+                 + "\n\nSollecita il fornitore o avvisa il cliente. Quando arriva, segnalo 'Arrivato' in Magazzino o Vendite.")
+        try:
+            await _deps["wa_send"](numero, testo, session=store_id, tipo="vendita_ordine_fermo")
+            await db.vendite.update_many({"id": {"$in": [v["id"] for v in lst]}}, {"$set": {"avviso_ordine_fermo_at": now.isoformat()}})
+            esiti.append({"negozio": s["nome"], "ok": True, "ordini": len(lst)})
+        except Exception as e:
+            esiti.append({"negozio": s["nome"], "ok": False, "motivo": str(e)[:200]})
+    if esiti:
+        await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "ordini_fermi", "at": now.isoformat(), "esiti": esiti})
+    return esiti
 
 
 @router.post("/vendite/{vendita_id}/stato")
