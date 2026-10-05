@@ -954,8 +954,22 @@ async def list_clients(user: dict = Depends(get_current_user),
     async for row in db.servizi.aggregate([{"$sort": {"updated_at": -1}}, {"$group": {"_id": "$client_id", "tipo": {"$first": "$tipo"}, "stato": {"$first": "$stato"}}}]):
         ultimo_servizio[row["_id"]] = {"tipo": row["tipo"], "stato": row.get("stato") or ""}
     out = []
+    def _pkey(c):
+        for k in ("codice_fiscale", "p_iva", "telefono"):
+            v = (c.get(k) or "").strip().lower()
+            if len(v) >= 6:
+                return f"{k}:{v}"
+        return None
+    utenze_per_persona: dict = {}
+    async for e in db.clients.find({"anonimizzato_at": {"$in": [None]}, "$or": [{"pod": {"$nin": [None, ""]}}, {"pdr": {"$nin": [None, ""]}}, {"data_contratto": {"$nin": [None, ""]}}]},
+                                   {"_id": 0, "codice_fiscale": 1, "p_iva": 1, "telefono": 1, "tipo_bolletta": 1}):
+        k = _pkey(e)
+        if k:
+            d = utenze_per_persona.setdefault(k, {"luce": 0, "gas": 0})
+            d["gas" if e.get("tipo_bolletta") == "gas" else "luce"] += 1
     for c in clients:
         compute_dates(c)
+        c["utenze"] = utenze_per_persona.get(_pkey(c) or "", None)
         tipi = set(tipi_per_client.get(c["id"], []))
         if not cliente_energia(c):
             c["stato_servizio"] = ultimo_servizio.get(c["id"])
@@ -1204,7 +1218,7 @@ async def client_collegati(client_id: str, user: dict = Depends(get_current_user
     scope = client_scope_filter(user)
     scope.update({"$or": ors, "id": {"$ne": client_id}})
     proj = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "tipo_bolletta": 1, "nuovo_fornitore": 1, "fornitore_provenienza": 1,
-            "lavorazione": 1, "data_contratto": 1, "venditore_id": 1, "pod": 1, "pdr": 1, "gestione": 1}
+            "lavorazione": 1, "data_contratto": 1, "venditore_id": 1, "pod": 1, "pdr": 1, "gestione": 1, "indirizzo": 1, "civico": 1, "comune": 1}
     rows = await db.clients.find(scope, proj).sort("created_at", -1).to_list(50)
     return [compute_dates(r) for r in rows]
 

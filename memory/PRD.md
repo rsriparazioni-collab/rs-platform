@@ -528,3 +528,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-05 — Magazzino: telefoni ordinati per i clienti
 - /api/magazzino/da-ordinare arricchito con tipo_ordine (vendita|ricambio), cliente, telefono, prezzo/acconto (dal registro vendite `ordinato` o dai servizi `in_ordine`). POST /magazzino/{id}/arrivo ora chiama anche vendite.arrivato_da_magazzino → vendita Arrivato + WA cliente. DaOrdinare.jsx diviso in 'Telefoni ordinati per i clienti' (tasto Arrivato rapido) e 'Ricambi da ordinare'.
+
+## 2026-10-05 — Utenze energia multiple per cliente
+- Modello già esistente: ogni utenza = un record `clients` (compenso per utenza), collegati per CF/P.IVA/telefono (/clients/{id}/collegati, ora con indirizzo/civico/comune). Aggiunto: badge 'N luce · M gas' in lista Clienti (campo `utenze` calcolato in GET /clients), pulsanti 'Utenza Luce' e 'Utenza Gas' sempre disponibili in 'Aggiungi al cliente', titolo 'Nuova utenza … · cliente' con hint e campo indirizzo evidenziato (indirizzi diversi per utenza), sezione 'Altre utenze energia di questo cliente' con indirizzo.

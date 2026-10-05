@@ -315,16 +315,19 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
 
               {collegati.length > 0 && (
                 <div data-testid="client-utenze-collegate">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Altre utenze della stessa persona (stesso CF / P.IVA / telefono)</p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Altre utenze energia di questo cliente ({collegati.length})</p>
                   <div className="space-y-1.5">
                     {collegati.map((u) => (
                       <button type="button" key={u.id} onClick={() => onNuovoServizio?.("apri_utenza", u)}
-                              className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-left text-xs hover:bg-slate-100"
+                              className="flex w-full items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-left text-xs hover:bg-slate-100"
                               data-testid={`utenza-collegata-${u.id}`}>
-                        <span className="font-medium text-slate-800">
-                          {u.tipo_bolletta === "gas" ? "Gas" : "Luce"}{u.pod ? ` · POD ${u.pod}` : ""}{u.pdr ? ` · PDR ${u.pdr}` : ""}{u.nuovo_fornitore ? ` · ${u.nuovo_fornitore}` : ""}
+                        <span className="min-w-0">
+                          <span className="block font-medium text-slate-800">
+                            {u.tipo_bolletta === "gas" ? "Gas" : "Luce"}{u.pod ? ` · POD ${u.pod}` : ""}{u.pdr ? ` · PDR ${u.pdr}` : ""}{u.nuovo_fornitore ? ` · ${u.nuovo_fornitore}` : ""}
+                          </span>
+                          {(u.indirizzo || u.comune) && <span className="block truncate text-[11px] text-slate-500">{[u.indirizzo, u.civico, u.comune].filter(Boolean).join(" ")}</span>}
                         </span>
-                        <span className={`status-badge ${lavorazioneBadge(u.lavorazione)}`}>{lavorazioneLabel(u.lavorazione)}</span>
+                        <span className={`status-badge shrink-0 ${lavorazioneBadge(u.lavorazione)}`}>{lavorazioneLabel(u.lavorazione)}</span>
                       </button>
                     ))}
                   </div>
@@ -336,10 +339,14 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Aggiungi al cliente</p>
                   <div className="flex flex-wrap gap-2">
                     {onNuovaUtenza && (
-                      <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-utenza-button"
-                              onClick={() => onNuovaUtenza(detail, detail.tipo_bolletta === "luce" ? "gas" : "luce")}>
-                        <Zap className="h-4 w-4" /> Utenza {detail.tipo_bolletta === "luce" ? "Gas" : "Luce"}
-                      </Button>
+                      <>
+                        <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-utenza-luce-button" onClick={() => onNuovaUtenza(detail, "luce")}>
+                          <Zap className="h-4 w-4" /> Utenza Luce
+                        </Button>
+                        <Button size="sm" variant="outline" className="gap-1.5" data-testid="aggiungi-utenza-gas-button" onClick={() => onNuovaUtenza(detail, "gas")}>
+                          <Zap className="h-4 w-4" /> Utenza Gas
+                        </Button>
+                      </>
                     )}
                     {onNuovoServizio && (
                       <>

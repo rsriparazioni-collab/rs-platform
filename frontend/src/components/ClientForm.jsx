@@ -162,7 +162,8 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const payload = { ...form, tipo_cliente: tipoCliente };
+    const { _nuova_utenza, ...formPulito } = form;
+    const payload = { ...formPulito, tipo_cliente: tipoCliente };
     NUM_FIELDS.forEach((k) => { payload[k] = payload[k] === "" ? null : parseFloat(payload[k]); });
     DATE_FIELDS.forEach((k) => { payload[k] = payload[k] || null; });
     try {
@@ -200,8 +201,11 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto" data-testid="client-form-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-xl">
-            {isEdit ? `Modifica ${client.cognome} ${client.nome}` : "Nuovo cliente"}
+            {isEdit ? `Modifica ${client.cognome} ${client.nome}` : prefill?._nuova_utenza ? `Nuova utenza ${prefill.tipo_bolletta === "gas" ? "Gas" : "Luce"} · ${prefill.cognome} ${prefill.nome}` : "Nuovo cliente"}
           </DialogTitle>
+          {!isEdit && prefill?._nuova_utenza && (
+            <p className="text-sm text-slate-600" data-testid="nuova-utenza-hint">Anagrafica copiata dal cliente. Se l'utenza è a un altro indirizzo (seconda casa, negozio, ecc.) cambia Via / Comune qui sotto: ogni utenza ha il suo indirizzo e il suo compenso.</p>
+          )}
         </DialogHeader>
         <form onSubmit={submit} className="space-y-6" data-testid="client-form">
           {draft && (
@@ -245,8 +249,8 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
                          placeholder="11 cifre" data-testid="input-p-iva" />
                 </Field>
               )}
-              <Field label="Via / Indirizzo" testid="indirizzo">
-                <Input value={form.indirizzo} onChange={(e) => set("indirizzo", e.target.value)} data-testid="input-indirizzo" />
+              <Field label={prefill?._nuova_utenza ? "Via / Indirizzo dell'utenza" : "Via / Indirizzo"} testid="indirizzo">
+                <Input value={form.indirizzo} onChange={(e) => set("indirizzo", e.target.value)} data-testid="input-indirizzo" className={prefill?._nuova_utenza ? "border-violet-300 bg-violet-50/40" : ""} />
               </Field>
               <Field label="N. civico" testid="civico">
                 <Input value={form.civico || ""} onChange={(e) => set("civico", e.target.value)} data-testid="input-civico" />

@@ -249,8 +249,12 @@ export default function Clienti() {
                           {PREMIUM_STEPS[c.premium_step]?.label}
                         </span>
                       )}
+                      {c.utenze && (c.utenze.luce + c.utenze.gas) > 1 && (
+                        <span className="ml-2 status-badge border-violet-300 bg-violet-500/10 text-violet-700" title="Utenze energia intestate a questa persona" data-testid={`client-utenze-${i}`}>
+                          <Zap className="h-3 w-3" />{[c.utenze.luce ? `${c.utenze.luce} luce` : null, c.utenze.gas ? `${c.utenze.gas} gas` : null].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
                     </p>
-                    <p className="text-xs text-slate-500">{isBusinessCliente(c.tipo_cliente) ? `P.IVA ${c.p_iva || "-"} · ${c.telefono || ""}` : c.telefono}</p>
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex flex-wrap items-center gap-1" data-testid={`client-tipi-${i}`}>
@@ -309,7 +313,7 @@ export default function Clienti() {
                       const { id, created_at, updated_at, pod, pdr, kw_potenza, costo_kwh_attuale, costo_smc_attuale, costo_kwh_nuovo, costo_smc_nuovo,
                         spese_fisse_attuale, spese_fisse_nuovo, data_contratto, data_verifica, data_cambio, note, history, premium_step, tipi_servizi, ...anag } = d;
                       setEditing(null);
-                      setPrefill({ ...anag, tipo_bolletta: tipo, lavorazione: "da_quotare", pagato: undefined, privacy_firmata: !!d.privacy_firmata });
+                      setPrefill({ ...anag, tipo_bolletta: tipo, lavorazione: "da_quotare", pagato: undefined, privacy_firmata: !!d.privacy_firmata, _nuova_utenza: true });
                       setFormOpen(true);
                     }}
                     onNuovoServizio={(tipo, d) => {
