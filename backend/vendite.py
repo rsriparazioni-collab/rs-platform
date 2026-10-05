@@ -274,6 +274,20 @@ def _saldo_txt(v: dict) -> str:
     return f"\nSaldo alla consegna: {saldo:.2f} €." if not v.get("pagato") and saldo > 0 else ""
 
 
+async def arrivato_da_magazzino(item_id: str) -> list:
+    """Chiamato dal carico arrivo in Magazzino: le vendite ordinate su quell'articolo passano ad Arrivato e il cliente riceve il WA."""
+    db = _deps["db"]
+    now = datetime.now(timezone.utc).isoformat()
+    out = []
+    async for v in db.vendite.find({"magazzino_item_id": item_id, "stato": "ordinato"}, {"_id": 0}):
+        await db.vendite.update_one({"id": v["id"]}, {"$set": {"stato": "arrivato", "arrivato_at": now, "updated_at": now},
+                                                      "$push": {"stato_log": {"stato": "arrivato", "at": now, "by": "magazzino"}}})
+        v.update(stato="arrivato")
+        await _wa_vendita(v, MSG_ARRIVATO, "arrivato", _saldo_txt(v))
+        out.append(f"{v.get('articolo', '')} ({v.get('client_name') or v.get('cliente_nome') or 'cliente'})")
+    return out
+
+
 @router.post("/vendite/{vendita_id}/stato")
 async def cambia_stato_vendita(vendita_id: str, input: StatoVenditaInput, user: dict = _user()):
     """Ordinato → Arrivato (magazzino torna a 0 + WA cliente) → Consegnato/Ritirato (recensione)."""

@@ -525,3 +525,6 @@ Vedi /app/memory/test_credentials.md
 - Ordinato: crea/usa articolo magazzino, quantità −1 con in_ordine, WA MSG_ORDINATO dal negozio (session=store_id). POST /api/vendite/{id}/stato {stato,pagato,numero_fattura}: →arrivato: magazzino +1 (torna a 0, in_ordine False) + WA MSG_ARRIVATO (con saldo se da pagare); →consegnato: pagato, recensione in coda (accoda_recensione_vendita in server.py, session negozio, rispetta no_recensioni/review_link). Delete ripristina.
 - UI: VenditaForm box "Stato della vendita" (chip), Pagato/Da pagare, acconto, fornitore; telefono obbligatorio per nuovo cliente; cliente in anagrafica obbligatorio per ordinato/arrivato. Vendite.jsx: colonna Stato + badge Da pagare, pannello Avanzamento nel dettaglio (Arrivato / Ritirato e pagato / Ritirato da pagare / Segna pagato), esiti WA.
 - Testato via API end-to-end (mag −1→0, WA ordinato/arrivato dal negozio Sondrio, consegnato) + smoke UI.
+
+## 2026-10-05 — Magazzino: telefoni ordinati per i clienti
+- /api/magazzino/da-ordinare arricchito con tipo_ordine (vendita|ricambio), cliente, telefono, prezzo/acconto (dal registro vendite `ordinato` o dai servizi `in_ordine`). POST /magazzino/{id}/arrivo ora chiama anche vendite.arrivato_da_magazzino → vendita Arrivato + WA cliente. DaOrdinare.jsx diviso in 'Telefoni ordinati per i clienti' (tasto Arrivato rapido) e 'Ricambi da ordinare'.

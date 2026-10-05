@@ -149,6 +149,8 @@ async def arrivo_ricambio(item_id: str, input: ArrivoInput, user: dict = Depends
     if nuova >= 0:
         await _d["trasferimenti"].arrivato(item_id)
         vendite_pronte = await _d["vendite_arrivato"](item_id) if _d.get("vendite_arrivato") else []
+        if _d.get("vendite_registro_arrivato"):
+            vendite_pronte += await _d["vendite_registro_arrivato"](item_id)
         async for s in db.servizi.find({"ricambi_usati": {"$elemMatch": {"item_id": item_id, "in_ordine": True}}}, {"_id": 0, "id": 1, "numero_riparazione": 1, "stato": 1, "ricambi_usati": 1}):
             usati = [{**u, "in_ordine": False, "arrivato_at": now} if u.get("item_id") == item_id else u for u in s.get("ricambi_usati") or []]
             set_ = {"ricambi_usati": usati, "updated_at": now}
@@ -166,9 +168,22 @@ async def da_ordinare(user: dict = Depends(_current_user)):
     scope["in_ordine"] = True
     items = await db.magazzino.find(scope, {"_id": 0}).sort("ordine_at", 1).to_list(1000)
     smap = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    ids = [i["id"] for i in items]
+    vendite = {v["magazzino_item_id"]: v async for v in db.vendite.find({"magazzino_item_id": {"$in": ids}, "stato": "ordinato"}, {"_id": 0, "magazzino_item_id": 1, "client_name": 1, "cliente_nome": 1, "client_telefono": 1, "acconto": 1, "prezzo": 1, "ordinato_at": 1})}
+    servizi = {s["magazzino_item_id"]: s async for s in db.servizi.find({"magazzino_item_id": {"$in": ids}, "tipo": {"$in": ["vendita", "accessori"]}, "stato": "in_ordine"}, {"_id": 0, "magazzino_item_id": 1, "client_id": 1})}
     for i in items:
         i["store_name"] = smap.get(i.get("store_id", ""), "-")
         i["da_ordinare"] = -(i.get("quantita") or 0)
+        v = vendite.get(i["id"])
+        s = servizi.get(i["id"])
+        if v:
+            i.update(tipo_ordine="vendita", cliente=v.get("client_name") or v.get("cliente_nome") or "", cliente_telefono=v.get("client_telefono", ""),
+                     acconto=v.get("acconto") or 0, prezzo=v.get("prezzo"))
+        elif s:
+            c = await db.clients.find_one({"id": s.get("client_id")}, {"_id": 0, "nome": 1, "cognome": 1, "telefono": 1})
+            i.update(tipo_ordine="vendita", cliente=f"{(c or {}).get('cognome', '')} {(c or {}).get('nome', '')}".strip(), cliente_telefono=(c or {}).get("telefono", ""))
+        else:
+            i["tipo_ordine"] = "ricambio"
     return items
 
 

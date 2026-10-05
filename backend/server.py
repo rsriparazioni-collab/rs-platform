@@ -5895,7 +5895,7 @@ firma_ritiro_module.setup(db=db, wa_send=wa_send, put_object=put_object, get_obj
 api_router.include_router(firma_ritiro_module.router)
 magazzino_ricambi_module.setup(db=db, get_current_user=get_current_user, get_scoped_servizio=get_scoped_servizio,
                                magazzino_scope=magazzino_scope, wa_send=wa_send, trasferimenti=trasferimenti_module,
-                               vendite_arrivato=vendite_ordine_module.arrivato)
+                               vendite_arrivato=vendite_ordine_module.arrivato, vendite_registro_arrivato=vendite_module.arrivato_da_magazzino)
 api_router.include_router(magazzino_ricambi_module.router)
 
 @api_router.post("/servizi/{servizio_id}/consegna-ordine")
