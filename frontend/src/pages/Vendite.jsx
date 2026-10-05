@@ -4,7 +4,7 @@ import { Plus, Search, ShoppingBag, Trash2, Wrench, Smartphone, Wifi, PackageOpe
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { fmtDate, VENDITE_CATEGORIE, venditaCategoriaLabel, REGIMI_IVA, regimeIvaLabel, regimeIvaBadge } from "../lib/constants";
+import { fmtDate, VENDITE_CATEGORIE, venditaCategoriaLabel, REGIMI_IVA, regimeIvaLabel, regimeIvaBadge, venditaStatoLabel, venditaStatoBadge } from "../lib/constants";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
@@ -47,6 +47,13 @@ export default function Vendite() {
     if (!window.confirm("Eliminare questa vendita? Se collegata al magazzino la giacenza viene ripristinata.")) return;
     try { await api.delete(`/vendite/${v.id}`); toast.success("Vendita eliminata"); setDetail(null); load(); }
     catch (e) { toast.error(apiError(e, "Eliminazione fallita")); }
+  };
+  const cambiaStato = async (v, stato, pagato) => {
+    try {
+      const r = await api.post(`/vendite/${v.id}/stato`, { stato, pagato: pagato ?? null });
+      toast.success(stato === "arrivato" ? "Segnato arrivato · magazzino aggiornato · WhatsApp al cliente inviato" : "Vendita chiusa · richiesta recensione in partenza");
+      setDetail(r.data); load();
+    } catch (e) { toast.error(apiError(e, "Aggiornamento fallito")); }
   };
 
   const importaFoglio = async () => {
@@ -128,13 +135,13 @@ export default function Vendite() {
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Data</th><th className="px-4 py-3">Articolo</th><th className="px-4 py-3">Categoria</th>
-              <th className="px-4 py-3">IVA</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Negozio</th>
+              <th className="px-4 py-3">IVA</th><th className="px-4 py-3">Stato</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Negozio</th>
               <th className="px-4 py-3 text-right">Prezzo</th><th className="px-4 py-3 text-right">Margine</th><th className="px-4 py-3">Fattura</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500" data-testid="vendite-empty">Nessuna vendita registrata</td></tr>
+              <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-500" data-testid="vendite-empty">Nessuna vendita registrata</td></tr>
             )}
             {rows.map((v, i) => (
               <tr key={v.id} className="cursor-pointer border-t border-slate-100 hover:bg-slate-50" onClick={() => setDetail(v)} data-testid={`vendita-row-${i}`}>
@@ -142,6 +149,7 @@ export default function Vendite() {
                 <td className="px-4 py-3 font-medium text-slate-900"><span className="flex items-center gap-2"><ShoppingBag className="h-3.5 w-3.5 text-slate-400" />{v.articolo}{v.imei ? <span className="font-mono text-[10px] text-slate-500">{v.imei}</span> : null}</span></td>
                 <td className="px-4 py-3 text-slate-600">{venditaCategoriaLabel(v.categoria)}</td>
                 <td className="px-4 py-3"><span className={`status-badge ${regimeIvaBadge(v.regime_iva)}`}>{regimeIvaLabel(v.regime_iva)}</span></td>
+                <td className="px-4 py-3"><span className="flex flex-wrap gap-1"><span className={`status-badge ${venditaStatoBadge(v.stato)}`} data-testid={`vendita-stato-badge-${i}`}>{venditaStatoLabel(v.stato)}</span>{v.pagato === false && <span className="status-badge border-rose-300 bg-rose-500/10 text-rose-700">Da pagare</span>}</span></td>
                 <td className="px-4 py-3 text-slate-700">{v.client_name || v.cliente_nome || "-"}</td>
                 <td className="px-4 py-3 text-slate-600">{storeName(v.store_id)}</td>
                 <td className="px-4 py-3 text-right font-semibold">{eur(v.prezzo * (v.quantita || 1))}</td>
@@ -174,8 +182,30 @@ export default function Vendite() {
                 <Info l="IMEI / Serial" v={detail.imei || "-"} />
                 <Info l="Pagamento" v={detail.pagamento || "-"} />
                 <Info l="N° fattura" v={detail.numero_fattura || "-"} />
+                <Info l="Stato" v={`${venditaStatoLabel(detail.stato)}${detail.pagato === false ? " · Da pagare" : detail.stato === "consegnato" ? " · Pagato" : ""}`} />
+                {detail.acconto > 0 && <Info l="Acconto / Saldo" v={`${eur(detail.acconto)} / ${eur(detail.prezzo * (detail.quantita || 1) - detail.acconto)}`} />}
                 {detail.note && <div className="col-span-full"><p className="text-xs text-slate-500">Note</p><p>{detail.note}</p></div>}
               </div>
+              {(detail.stato === "ordinato" || detail.stato === "arrivato") && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="vendita-avanzamento">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Avanzamento</p>
+                  <div className="flex flex-wrap gap-2">
+                    {detail.stato === "ordinato" && <Button size="sm" className="bg-sky-600 hover:bg-sky-700" onClick={() => cambiaStato(detail, "arrivato")} data-testid="vendita-segna-arrivato">Arrivato in negozio → avvisa il cliente</Button>}
+                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => cambiaStato(detail, "consegnato", true)} data-testid="vendita-segna-ritirato">Ritirato e pagato → recensione</Button>
+                    <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "consegnato", false)} data-testid="vendita-segna-ritirato-da-pagare">Ritirato, da pagare</Button>
+                  </div>
+                  {(detail.wa_ordinato_sent_at || detail.wa_arrivato_sent_at || detail.wa_ordinato_error || detail.wa_arrivato_error) && (
+                    <p className="mt-2 text-xs text-slate-600">
+                      {detail.wa_ordinato_sent_at && <span>WA ordine inviato {fmtDate(detail.wa_ordinato_sent_at)} · </span>}
+                      {detail.wa_arrivato_sent_at && <span>WA arrivo inviato {fmtDate(detail.wa_arrivato_sent_at)} · </span>}
+                      {(detail.wa_ordinato_error || detail.wa_arrivato_error) && <span className="text-rose-600">WA non inviato: {detail.wa_ordinato_error || detail.wa_arrivato_error}</span>}
+                    </p>
+                  )}
+                </div>
+              )}
+              {detail.stato === "consegnato" && detail.pagato === false && (
+                <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "consegnato", true)} data-testid="vendita-segna-pagato">Segna come pagato</Button>
+              )}
               {detail.client_id && (
                 <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-4" data-testid="vendita-aggiungi-al-cliente">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Aggiungi al cliente</p>

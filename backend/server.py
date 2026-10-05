@@ -5865,7 +5865,23 @@ async def audit_log_list(admin: dict = Depends(require_admin), q: str = "", user
     return rows
 
 import vendite as vendite_module
-vendite_module.setup(db, get_current_user, magazzino_scope)
+async def accoda_recensione_vendita(client_id: str, store_id: str) -> bool:
+    """Recensione dopo il ritiro di una vendita: in coda dal numero del negozio."""
+    client_doc = await db.clients.find_one({"id": client_id}, {"_id": 0, "telefono": 1, "no_recensioni": 1})
+    if not client_doc or not client_doc.get("telefono") or client_doc.get("no_recensioni"):
+        return False
+    store = await db.stores.find_one({"id": store_id}, {"_id": 0})
+    if not store or not store.get("review_link"):
+        return False
+    now = datetime.now(timezone.utc)
+    await db.whatsapp_queue.insert_one({
+        "id": str(uuid.uuid4()), "client_id": client_id, "phone": client_doc["telefono"], "type": "review",
+        "message": store_msg(store, "msg_recensione"), "session": store_id, "tipo": "vendita_recensione",
+        "send_after": (now + timedelta(seconds=REVIEW_DELAY_SEC)).isoformat(), "sent": False, "created_at": now.isoformat()})
+    programma_svuota_coda()
+    return True
+
+vendite_module.setup(db, get_current_user, magazzino_scope, wa_send=wa_send, accoda_recensione=accoda_recensione_vendita)
 api_router.include_router(vendite_module.router)
 
 import report_ritiri as report_ritiri_module

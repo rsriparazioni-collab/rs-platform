@@ -9,17 +9,21 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-VENDITE_CATEGORIE = ["telefono_nuovo", "telefono_rigenerato", "telefono_usato", "pc", "router", "accessori", "stampanti", "altro"]
+VENDITE_CATEGORIE = ["telefono_nuovo", "telefono_rigenerato", "telefono_ricondizionato", "telefono_usato", "pc", "router", "accessori", "stampanti", "altro"]
 REGIMI_IVA = ["iva22", "art36", "art17"]
-CATEGORIE_USATO = {"telefono_rigenerato", "telefono_usato"}
+CATEGORIE_USATO = {"telefono_rigenerato", "telefono_ricondizionato", "telefono_usato"}
+IVA_DEFAULT = {"telefono_usato": "art36"}
+STATI_VENDITA = ["ordinato", "arrivato", "consegnato"]
+MSG_ORDINATO = "Ciao {nome}! 😊\nIl tuo nuovo {articolo} è stato ordinato. Grazie di averci scelto!\nTi avviseremo appena arriva in negozio.\n{negozio}"
+MSG_ARRIVATO = "Ciao {nome}! 😊\nIl tuo telefono {articolo} è arrivato in negozio: ti aspettiamo per prepararlo insieme e partire con la tua nuova esperienza!{saldo}\n{negozio}"
 SHEET_PREFIX_STORE = {"M": "Morbegno", "SO": "Sondrio", "G": "Gravedona"}
 
 router = APIRouter()
 _deps: dict = {}
 
 
-def setup(db, get_current_user, magazzino_scope, log_audit=None):
-    _deps.update(db=db, get_current_user=get_current_user, magazzino_scope=magazzino_scope, log_audit=log_audit)
+def setup(db, get_current_user, magazzino_scope, log_audit=None, **extra):
+    _deps.update(db=db, get_current_user=get_current_user, magazzino_scope=magazzino_scope, log_audit=log_audit, **extra)
 
 
 async def _current_user(request: Request):
@@ -54,6 +58,16 @@ class VenditaInput(BaseModel):
     data_vendita: Optional[str] = None
     note: str = ""
     ritiro_id: str = ""
+    stato: str = "consegnato"
+    pagato: bool = True
+    acconto: float = 0
+    fornitore: str = ""
+
+
+class StatoVenditaInput(BaseModel):
+    stato: str
+    pagato: Optional[bool] = None
+    numero_fattura: Optional[str] = None
 
 
 def vendite_scope(user: dict) -> dict:
@@ -69,6 +83,11 @@ def _valida(data: dict) -> None:
         raise HTTPException(status_code=400, detail="Regime IVA non valido")
     if data["categoria"] not in CATEGORIE_USATO:
         data["regime_iva"] = "iva22"
+    if data.get("stato") not in STATI_VENDITA:
+        raise HTTPException(status_code=400, detail="Stato vendita non valido")
+    data["acconto"] = max(float(data.get("acconto") or 0), 0)
+    if data["acconto"] > data["prezzo"] * data["quantita"]:
+        raise HTTPException(status_code=400, detail="L'acconto supera il prezzo")
     if data["prezzo"] < 0 or data["quantita"] < 1:
         raise HTTPException(status_code=400, detail="Prezzo o quantità non validi")
     if not data.get("client_id") and not (data.get("cliente_nome") or "").strip():
@@ -85,9 +104,48 @@ async def _arricchisci(v: dict) -> dict:
     return v
 
 
+async def _wa_vendita(v: dict, template: str, tipo: str, saldo_txt: str = "") -> None:
+    """WhatsApp al cliente dal numero del negozio della vendita; esito salvato sulla vendita."""
+    db = _deps["db"]
+    c = await db.clients.find_one({"id": v.get("client_id")}, {"_id": 0, "nome": 1, "telefono": 1}) if v.get("client_id") else None
+    store = await db.stores.find_one({"id": v["store_id"]}, {"_id": 0, "nome": 1})
+    key = f"wa_{tipo}"
+    if not c or not c.get("telefono"):
+        await db.vendite.update_one({"id": v["id"]}, {"$set": {f"{key}_error": "Cliente senza numero di telefono"}})
+        return
+    msg = template.format(nome=c.get("nome", ""), articolo=v.get("articolo", ""), negozio=(store or {}).get("nome", ""), saldo=saldo_txt)
+    try:
+        await _deps["wa_send"](c["telefono"], msg, session=v["store_id"], tipo=f"vendita_{tipo}", client_id=v["client_id"])
+        await db.vendite.update_one({"id": v["id"]}, {"$set": {f"{key}_sent_at": datetime.now(timezone.utc).isoformat(), f"{key}_error": None}})
+    except Exception as e:
+        await db.vendite.update_one({"id": v["id"]}, {"$set": {f"{key}_error": str(getattr(e, "detail", e))[:200]}})
+
+
+async def _accoda_recensione(v: dict) -> None:
+    if v.get("client_id") and _deps.get("accoda_recensione"):
+        try:
+            await _deps["accoda_recensione"](v["client_id"], v["store_id"])
+            await _deps["db"].vendite.update_one({"id": v["id"]}, {"$set": {"review_queued_at": datetime.now(timezone.utc).isoformat()}})
+        except Exception as e:
+            await _deps["db"].vendite.update_one({"id": v["id"]}, {"$set": {"review_error": str(e)[:200]}})
+
+
+async def _crea_item_ordine(data: dict) -> dict:
+    """Articolo di magazzino creato al volo per una vendita su ordinazione (giacenza parte da 0)."""
+    now = datetime.now(timezone.utc).isoformat()
+    cond = {"telefono_usato": "usato", "telefono_rigenerato": "rigenerato", "telefono_ricondizionato": "rigenerato"}.get(data["categoria"], "nuovo")
+    cat = "rigenerati" if cond != "nuovo" else ("accessori" if data["categoria"] == "accessori" else "telefoni")
+    item = {"id": str(uuid.uuid4()), "nome": data["articolo"][:120], "barcode": (data.get("imei") or "")[:60], "condizione": cond, "regime_iva": data["regime_iva"],
+            "categoria": cat, "store_id": data["store_id"], "quantita": 0, "prezzo_acquisto": data.get("costo"), "prezzo_vendita": data["prezzo"],
+            "marca": (data.get("marca") or "")[:60], "modello": (data.get("modello") or "")[:60], "tipologia": "", "fornitore": (data.get("fornitore") or "")[:60],
+            "note": "Ordinato per vendita cliente", "created_at": now, "updated_at": now}
+    await _deps["db"].magazzino.insert_one(dict(item))
+    return item
+
+
 @router.get("/vendite/meta")
 async def vendite_meta(user: dict = _user()):
-    return {"categorie": VENDITE_CATEGORIE, "regimi_iva": REGIMI_IVA}
+    return {"categorie": VENDITE_CATEGORIE, "regimi_iva": REGIMI_IVA, "iva_default": IVA_DEFAULT, "stati": STATI_VENDITA}
 
 
 @router.get("/vendite")
@@ -157,6 +215,26 @@ async def create_vendita(input: VenditaInput, user: dict = _user()):
     data.update({"id": str(uuid.uuid4()), "created_by": user["id"], "created_by_name": user["name"],
                  "created_at": now.isoformat(), "updated_at": now.isoformat(),
                  "data_vendita": data.get("data_vendita") or now.isoformat()})
+    data["stato_log"] = [{"stato": data["stato"], "at": now.isoformat(), "by": user["name"]}]
+    if data["stato"] == "ordinato":
+        data["pagato"] = False
+        data["ordinato_at"] = now.isoformat()
+        item = await db.magazzino.find_one({"id": data["magazzino_item_id"]}, {"_id": 0}) if data.get("magazzino_item_id") else None
+        if not item:
+            item = await _crea_item_ordine(data)
+            data["magazzino_item_id"] = item["id"]
+        await db.magazzino.update_one({"id": item["id"]}, {"$inc": {"quantita": -data["quantita"]}, "$set": {
+            "in_ordine": True, "ordine_at": now.isoformat(), "ordine_vendita_id": data["id"], "fornitore": (data.get("fornitore") or item.get("fornitore") or "")[:60],
+            "ordine_servizio_numero": f"Vendita {data.get('client_name') or data.get('cliente_nome') or ''}".strip(), "updated_at": now.isoformat()}})
+        data["magazzino_nome"] = item.get("nome")
+        await _arricchisci(data)
+        await db.vendite.insert_one(dict(data))
+        data.pop("_id", None)
+        await _wa_vendita(data, MSG_ORDINATO, "ordinato")
+        return data
+    if data["stato"] == "arrivato":
+        data["pagato"] = False
+        data["arrivato_at"] = now.isoformat()
     if data.get("magazzino_item_id"):
         item = await db.magazzino.find_one({"id": data["magazzino_item_id"]}, {"_id": 0})
         if not item:
@@ -182,7 +260,68 @@ async def create_vendita(input: VenditaInput, user: dict = _user()):
     await _arricchisci(data)
     await db.vendite.insert_one(dict(data))
     data.pop("_id", None)
+    if data["stato"] == "arrivato":
+        await _wa_vendita(data, MSG_ARRIVATO, "arrivato", _saldo_txt(data))
+    elif data["stato"] == "consegnato":
+        data["consegnato_at"] = now.isoformat()
+        await db.vendite.update_one({"id": data["id"]}, {"$set": {"consegnato_at": now.isoformat()}})
+        await _accoda_recensione(data)
     return data
+
+
+def _saldo_txt(v: dict) -> str:
+    saldo = round(float(v.get("prezzo") or 0) * int(v.get("quantita") or 1) - float(v.get("acconto") or 0), 2)
+    return f"\nSaldo alla consegna: {saldo:.2f} €." if not v.get("pagato") and saldo > 0 else ""
+
+
+@router.post("/vendite/{vendita_id}/stato")
+async def cambia_stato_vendita(vendita_id: str, input: StatoVenditaInput, user: dict = _user()):
+    """Ordinato → Arrivato (magazzino torna a 0 + WA cliente) → Consegnato/Ritirato (recensione)."""
+    db = _deps["db"]
+    scope = vendite_scope(user)
+    scope["id"] = vendita_id
+    v = await db.vendite.find_one(scope, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Vendita non trovata")
+    if input.stato not in STATI_VENDITA:
+        raise HTTPException(status_code=400, detail="Stato non valido")
+    attuale = v.get("stato") or "consegnato"
+    ordine = STATI_VENDITA.index
+    if ordine(input.stato) < ordine(attuale):
+        raise HTTPException(status_code=400, detail="Non è possibile tornare a uno stato precedente")
+    now = datetime.now(timezone.utc).isoformat()
+    upd = {"stato": input.stato, "updated_at": now}
+    if input.pagato is not None:
+        upd["pagato"] = input.pagato
+    if input.numero_fattura is not None:
+        upd["numero_fattura"] = input.numero_fattura
+    if input.stato == "arrivato" and attuale == "ordinato":
+        upd["arrivato_at"] = now
+        if v.get("magazzino_item_id"):
+            await db.magazzino.update_one({"id": v["magazzino_item_id"]}, {"$inc": {"quantita": v.get("quantita") or 1},
+                                                                            "$set": {"in_ordine": False, "arrivato_at": now, "updated_at": now}, "$unset": {"ordine_vendita_id": ""}})
+    if input.stato == "consegnato" and attuale != "consegnato":
+        upd["consegnato_at"] = now
+        upd["consegnato_da"] = user.get("name", "")
+        if input.pagato is None:
+            upd["pagato"] = True
+        if attuale == "ordinato" and v.get("magazzino_item_id"):
+            await db.magazzino.update_one({"id": v["magazzino_item_id"]}, {"$inc": {"quantita": v.get("quantita") or 1}, "$set": {"in_ordine": False, "updated_at": now}, "$unset": {"ordine_vendita_id": ""}})
+        if v.get("magazzino_item_id"):
+            item = await db.magazzino.find_one({"id": v["magazzino_item_id"]}, {"_id": 0, "categoria": 1, "quantita": 1, "prezzo_acquisto": 1, "ritiro_id": 1})
+            if item and item.get("categoria") == "rigenerati" and (item.get("quantita") or 0) <= 0:
+                await db.magazzino.update_one({"id": v["magazzino_item_id"]}, {"$set": {"stato": "venduto", "venduto_at": now, "venduto_prezzo": v.get("prezzo"), "venduto_da": user.get("name", ""),
+                                                                                       "margine": float(v.get("prezzo") or 0) - float(item.get("prezzo_acquisto") or 0)}})
+            if item and item.get("ritiro_id"):
+                import report_ritiri as _rr
+                await _rr.aggiorna_stato_ritiro(item["ritiro_id"], "venduto", upd.get("numero_fattura") or v.get("numero_fattura") or "", user["name"])
+    await db.vendite.update_one({"id": vendita_id}, {"$set": upd, "$push": {"stato_log": {"stato": input.stato, "at": now, "by": user.get("name", "")}}})
+    v = await db.vendite.find_one({"id": vendita_id}, {"_id": 0})
+    if input.stato == "arrivato" and attuale == "ordinato":
+        await _wa_vendita(v, MSG_ARRIVATO, "arrivato", _saldo_txt(v))
+    if input.stato == "consegnato" and attuale != "consegnato":
+        await _accoda_recensione(v)
+    return await db.vendite.find_one({"id": vendita_id}, {"_id": 0})
 
 
 @router.get("/vendite/{vendita_id}")
@@ -207,6 +346,8 @@ async def update_vendita(vendita_id: str, input: VenditaInput, user: dict = _use
     data = input.model_dump()
     _valida(data)
     data.pop("magazzino_item_id", None)
+    for k in ("stato", "stato_log"):
+        data.pop(k, None)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     data["client_name"] = None
     await _arricchisci(data)
@@ -225,8 +366,11 @@ async def delete_vendita(vendita_id: str, user: dict = _user()):
     if v.get("magazzino_item_id"):
         import trasferimenti as _tr
         await _tr.annulla_vendita(vendita_id)
-        await db.magazzino.update_one({"id": v["magazzino_item_id"]}, {"$inc": {"quantita": v.get("quantita") or 1},
-                                                                        "$set": {"stato": "disponibile"}})
+        if v.get("stato") == "ordinato":
+            await db.magazzino.update_one({"id": v["magazzino_item_id"]}, {"$inc": {"quantita": v.get("quantita") or 1}, "$set": {"in_ordine": False}, "$unset": {"ordine_vendita_id": ""}})
+        else:
+            await db.magazzino.update_one({"id": v["magazzino_item_id"]}, {"$inc": {"quantita": v.get("quantita") or 1},
+                                                                            "$set": {"stato": "disponibile"}})
     await db.vendite.delete_one({"id": vendita_id})
     return {"status": "deleted"}
 

@@ -146,7 +146,8 @@ export const magazzinoCategoriaLabel = (id) =>
 export const VENDITE_CATEGORIE = [
   { id: "telefono_nuovo", label: "Telefono nuovo" },
   { id: "telefono_rigenerato", label: "Telefono rigenerato" },
-  { id: "telefono_usato", label: "Telefono usato" },
+  { id: "telefono_ricondizionato", label: "Telefono ricondizionato" },
+  { id: "telefono_usato", label: "Telefono usato (ritiri)" },
   { id: "pc", label: "PC" },
   { id: "router", label: "Router" },
   { id: "accessori", label: "Accessori" },
@@ -154,7 +155,15 @@ export const VENDITE_CATEGORIE = [
   { id: "altro", label: "Altro" },
 ];
 export const venditaCategoriaLabel = (id) => VENDITE_CATEGORIE.find((c) => c.id === id)?.label || id || "-";
-export const isCategoriaUsato = (id) => id === "telefono_rigenerato" || id === "telefono_usato";
+export const isCategoriaUsato = (id) => id === "telefono_rigenerato" || id === "telefono_usato" || id === "telefono_ricondizionato";
+export const ivaDefaultPerCategoria = (id) => (id === "telefono_usato" ? "art36" : "iva22");
+export const VENDITA_STATI = [
+  { id: "ordinato", label: "Ordinato", badge: "bg-amber-500/15 text-amber-700 border-amber-300" },
+  { id: "arrivato", label: "Arrivato", badge: "bg-sky-500/15 text-sky-700 border-sky-300" },
+  { id: "consegnato", label: "Ritirato", badge: "bg-emerald-500/15 text-emerald-700 border-emerald-300" },
+];
+export const venditaStatoLabel = (id) => VENDITA_STATI.find((s) => s.id === (id || "consegnato"))?.label || id;
+export const venditaStatoBadge = (id) => VENDITA_STATI.find((s) => s.id === (id || "consegnato"))?.badge || "";
 export const REGIMI_IVA = [
   { id: "iva22", label: "IVA 22%", badge: "bg-slate-500/10 text-slate-700 border-slate-300" },
   { id: "art36", label: "Art. 36 (margine)", badge: "bg-orange-500/15 text-orange-700 border-orange-300" },

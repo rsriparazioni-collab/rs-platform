@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
-import { VENDITE_CATEGORIE, REGIMI_IVA, isCategoriaUsato } from "../lib/constants";
+import { VENDITE_CATEGORIE, REGIMI_IVA, isCategoriaUsato, ivaDefaultPerCategoria, VENDITA_STATI } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { DocumentiPicker, uploadDocumenti } from "./DocumentiPicker";
 
 const EMPTY = { store_id: "", client_id: "", cliente_nome: "", categoria: "telefono_nuovo", regime_iva: "iva22", articolo: "", marca: "", modello: "",
-  imei: "", magazzino_item_id: "", quantita: 1, prezzo: "", costo: "", pagamento: "", numero_fattura: "", data_vendita: "", note: "" };
+  imei: "", magazzino_item_id: "", quantita: 1, prezzo: "", costo: "", pagamento: "", numero_fattura: "", data_vendita: "", note: "",
+  stato: "consegnato", pagato: true, acconto: "", fornitore: "" };
 
 export default function VenditaForm({ open, onClose, vendita, meta, onSaved, presetClientId }) {
   const [form, setForm] = useState(EMPTY);
@@ -48,9 +49,9 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
 
   useEffect(() => {
     if (magSearch.trim().length < 2 || form.magazzino_item_id) { setMagResults([]); return undefined; }
-    const t = setTimeout(() => api.get("/magazzino", { params: { q: magSearch.trim() } }).then((r) => setMagResults(r.data.filter((m) => (m.quantita || 0) > 0).slice(0, 8))).catch(() => {}), 300);
+    const t = setTimeout(() => api.get("/magazzino", { params: { q: magSearch.trim() } }).then((r) => setMagResults(r.data.filter((m) => form.stato === "ordinato" || (m.quantita || 0) > 0).slice(0, 8))).catch(() => {}), 300);
     return () => clearTimeout(t);
-  }, [magSearch, form.magazzino_item_id]);
+  }, [magSearch, form.magazzino_item_id, form.stato]);
 
   const pickItem = (m) => {
     setForm((f) => ({ ...f, magazzino_item_id: m.id, articolo: m.nome, costo: m.prezzo_acquisto ?? "", prezzo: m.prezzo_vendita ?? f.prezzo,
@@ -65,15 +66,18 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
     try {
       let clientId = form.client_id;
       if (!clientId && newClient) {
+        if (!(newClient.telefono || "").replace(/\D/g, "").length) { toast.error("Inserisci il telefono del cliente: serve per gli avvisi WhatsApp"); setSaving(false); return; }
         const c = await api.post("/clients", { nome: newClient.nome, cognome: newClient.cognome, telefono: newClient.telefono || "",
           codice_fiscale: newClient.codice_fiscale || "", venditore_id: form.store_id, tipo_bolletta: "luce", origine: "riparazione", lavorazione: "" });
         clientId = c.data.id;
       }
+      if (form.stato !== "consegnato" && !clientId) { toast.error("Per una vendita ordinata/arrivata serve un cliente in anagrafica (per gli avvisi WhatsApp)"); setSaving(false); return; }
       const payload = { ...form, client_id: clientId, prezzo: Number(form.prezzo), costo: form.costo === "" ? null : Number(form.costo),
+        acconto: Number(String(form.acconto).replace(",", ".")) || 0, pagato: form.stato === "consegnato" ? Boolean(form.pagato) : false,
         quantita: Number(form.quantita) || 1, data_vendita: form.data_vendita ? new Date(form.data_vendita).toISOString() : null };
       if (vendita) await api.patch(`/vendite/${vendita.id}`, payload);
       else await api.post("/vendite", payload);
-      toast.success(vendita ? "Vendita aggiornata" : "Vendita registrata");
+      toast.success(vendita ? "Vendita aggiornata" : form.stato === "ordinato" ? "Vendita registrata · articolo in ordine (−1 a magazzino) · WhatsApp di conferma ordine inviato" : form.stato === "arrivato" ? "Vendita registrata · WhatsApp 'telefono arrivato' inviato" : "Vendita registrata");
       if (nuoviDoc.length && clientId) {
         try { await uploadDocumenti(nuoviDoc, { clientId }); toast.success(`${nuoviDoc.length} documenti allegati al cliente`); }
         catch (e) { toast.error(apiError(e, "Vendita salvata ma documenti non caricati")); }
@@ -104,7 +108,7 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="vendita-new-client">
                 <Input required placeholder="Nome *" value={newClient.nome} onChange={(e) => setNewClient({ ...newClient, nome: e.target.value })} data-testid="vendita-new-nome" />
                 <Input required placeholder="Cognome *" value={newClient.cognome} onChange={(e) => setNewClient({ ...newClient, cognome: e.target.value })} data-testid="vendita-new-cognome" />
-                <Input placeholder="Telefono" value={newClient.telefono} onChange={(e) => setNewClient({ ...newClient, telefono: e.target.value })} data-testid="vendita-new-telefono" />
+                <Input required placeholder="Telefono *" value={newClient.telefono} onChange={(e) => setNewClient({ ...newClient, telefono: e.target.value })} data-testid="vendita-new-telefono" />
                 <div className="flex gap-1">
                   <Input placeholder="Cod. fiscale" value={newClient.codice_fiscale} onChange={(e) => setNewClient({ ...newClient, codice_fiscale: e.target.value.toUpperCase() })} />
                   <Button type="button" size="sm" variant="ghost" onClick={() => setNewClient(null)}>✕</Button>
@@ -153,7 +157,7 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <F l="Descrizione articolo *"><Input required value={form.articolo} onChange={(e) => set("articolo", e.target.value)} data-testid="vendita-articolo" /></F>
               <F l="Categoria">
-                <Select value={form.categoria} onValueChange={(v) => set("categoria", v)}>
+                <Select value={form.categoria} onValueChange={(v) => setForm((f) => ({ ...f, categoria: v, regime_iva: ivaDefaultPerCategoria(v) }))}>
                   <SelectTrigger data-testid="vendita-categoria"><SelectValue /></SelectTrigger>
                   <SelectContent>{VENDITE_CATEGORIE.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}</SelectContent>
                 </Select>
@@ -163,12 +167,45 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
                   <SelectTrigger data-testid="vendita-regime-iva"><SelectValue /></SelectTrigger>
                   <SelectContent>{REGIMI_IVA.map((r) => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}</SelectContent>
                 </Select>
+                <p className="mt-1 text-[11px] text-slate-500">Nuovo / rigenerato / ricondizionato: IVA 22% · Usato da ritiro: art. 36 (margine, 0%)</p>
               </F>
               <F l="Marca"><Input value={form.marca} onChange={(e) => set("marca", e.target.value)} /></F>
               <F l="Modello"><Input value={form.modello} onChange={(e) => set("modello", e.target.value)} /></F>
               <F l="IMEI / Serial"><Input value={form.imei} onChange={(e) => set("imei", e.target.value)} data-testid="vendita-imei" /></F>
             </div>
           </div>
+
+          {!vendita && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3" data-testid="vendita-stato-box">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stato della vendita</p>
+              <div className="flex flex-wrap gap-2">
+                {VENDITA_STATI.map((s) => (
+                  <button type="button" key={s.id} onClick={() => set("stato", s.id)} data-testid={`vendita-stato-${s.id}`}
+                          className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${form.stato === s.id ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-600">
+                {form.stato === "ordinato" && "Il telefono viene messo in ordine al fornitore: magazzino a −1 e WhatsApp al cliente 'il tuo nuovo telefono è stato ordinato, grazie di averci scelto'. All'arrivo lo segni Arrivato."}
+                {form.stato === "arrivato" && "Il telefono è in negozio in attesa del cliente: parte il WhatsApp 'il tuo telefono è arrivato, ti aspettiamo'."}
+                {form.stato === "consegnato" && "Vendita completata e ritirata dal cliente: parte la richiesta di recensione dal numero del negozio."}
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {form.stato === "consegnato" ? (
+                  <F l="Pagamento">
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => set("pagato", true)} data-testid="vendita-pagato" className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${form.pagato ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-300 bg-white"}`}>Pagato</button>
+                      <button type="button" onClick={() => set("pagato", false)} data-testid="vendita-da-pagare" className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${!form.pagato ? "border-rose-600 bg-rose-600 text-white" : "border-slate-300 bg-white"}`}>Da pagare</button>
+                    </div>
+                  </F>
+                ) : (
+                  <F l="Acconto € (da pagare il saldo)"><Input type="number" step="0.01" min="0" value={form.acconto} onChange={(e) => set("acconto", e.target.value)} data-testid="vendita-acconto" /></F>
+                )}
+                {form.stato === "ordinato" && <F l="Fornitore"><Input placeholder="es. Miwo, Phoneclik" value={form.fornitore} onChange={(e) => set("fornitore", e.target.value)} data-testid="vendita-fornitore" /></F>}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <F l="Prezzo vendita € *"><Input required type="number" step="0.01" min="0" value={form.prezzo} onChange={(e) => set("prezzo", e.target.value)} data-testid="vendita-prezzo" /></F>

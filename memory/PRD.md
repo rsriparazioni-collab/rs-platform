@@ -519,3 +519,9 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-03 — Orario WA corrispettivi → 19:00
 - crons.yml corrispettivi-giornalieri '0 19 * * *' (Europe/Rome); fallback interno invii_programmati_loop ≥ 19:00; etichette UI aggiornate.
+
+## 2026-10-05 — Vendite: stati Ordinato/Arrivato/Ritirato + Pagato/Da pagare + WA
+- vendite.py: `stato` (ordinato|arrivato|consegnato), `pagato`, `acconto`, `fornitore`, `stato_log`. Nuova categoria `telefono_ricondizionato` (IVA 22%); IVA_DEFAULT telefono_usato→art36, altri→iva22 (auto nel form, modificabile per usato).
+- Ordinato: crea/usa articolo magazzino, quantità −1 con in_ordine, WA MSG_ORDINATO dal negozio (session=store_id). POST /api/vendite/{id}/stato {stato,pagato,numero_fattura}: →arrivato: magazzino +1 (torna a 0, in_ordine False) + WA MSG_ARRIVATO (con saldo se da pagare); →consegnato: pagato, recensione in coda (accoda_recensione_vendita in server.py, session negozio, rispetta no_recensioni/review_link). Delete ripristina.
+- UI: VenditaForm box "Stato della vendita" (chip), Pagato/Da pagare, acconto, fornitore; telefono obbligatorio per nuovo cliente; cliente in anagrafica obbligatorio per ordinato/arrivato. Vendite.jsx: colonna Stato + badge Da pagare, pannello Avanzamento nel dettaglio (Arrivato / Ritirato e pagato / Ritirato da pagare / Segna pagato), esiti WA.
+- Testato via API end-to-end (mag −1→0, WA ordinato/arrivato dal negozio Sondrio, consegnato) + smoke UI.
