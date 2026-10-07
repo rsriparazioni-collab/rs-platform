@@ -71,7 +71,7 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
           codice_fiscale: newClient.codice_fiscale || "", venditore_id: form.store_id, tipo_bolletta: "luce", origine: "riparazione", lavorazione: "" });
         clientId = c.data.id;
       }
-      if (form.stato !== "consegnato" && !clientId) { toast.error("Per una vendita ordinata/arrivata serve un cliente in anagrafica (per gli avvisi WhatsApp)"); setSaving(false); return; }
+      if (!clientId) { toast.error("Seleziona un cliente esistente oppure crealo con '+ Nuovo cliente'"); setSaving(false); return; }
       const payload = { ...form, client_id: clientId, prezzo: Number(form.prezzo), costo: form.costo === "" ? null : Number(form.costo),
         acconto: Number(String(form.acconto).replace(",", ".")) || 0, pagato: form.stato === "consegnato" ? Boolean(form.pagato) : false,
         quantita: Number(form.quantita) || 1, data_vendita: form.data_vendita ? new Date(form.data_vendita).toISOString() : null };
@@ -130,7 +130,7 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
                     ))}
                   </div>
                 )}
-                <Input placeholder="oppure nome cliente libero (senza scheda)" value={form.cliente_nome} onChange={(e) => set("cliente_nome", e.target.value)} data-testid="vendita-cliente-nome" />
+                <p className="text-xs text-slate-500">Ogni vendita viene collegata a una scheda cliente (serve per avvisi WhatsApp e recensioni).</p>
               </div>
             )}
           </div>

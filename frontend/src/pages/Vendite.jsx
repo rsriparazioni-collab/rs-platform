@@ -52,7 +52,7 @@ export default function Vendite() {
   const cambiaStato = async (v, stato, pagato) => {
     try {
       const r = await api.post(`/vendite/${v.id}/stato`, { stato, pagato: pagato ?? null });
-      toast.success(stato === "arrivato" ? "Segnato arrivato · magazzino aggiornato · WhatsApp al cliente inviato" : "Vendita chiusa · richiesta recensione in partenza");
+      toast.success(stato === "arrivato" ? "Segnato arrivato · magazzino aggiornato · WhatsApp al cliente inviato" : stato === "consegnato" ? "Vendita chiusa · richiesta recensione in partenza" : "Stato aggiornato");
       setDetail(r.data); load();
     } catch (e) { toast.error(apiError(e, "Aggiornamento fallito")); }
   };
@@ -194,14 +194,17 @@ export default function Vendite() {
                   <MessageCircle className="h-4 w-4" /> {detail.wa_arrivato_sent_at ? `Reinvia avviso "arrivato" (inviato ${fmtDate(detail.wa_arrivato_sent_at)})` : 'Avvisa il cliente: "il tuo telefono è arrivato"'}
                 </Button>
               )}
-              {(detail.stato === "ordinato" || detail.stato === "arrivato") && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="vendita-avanzamento">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Avanzamento</p>
-                  <div className="flex flex-wrap gap-2">
-                    {detail.stato === "ordinato" && <Button size="sm" className="bg-sky-600 hover:bg-sky-700" onClick={() => cambiaStato(detail, "arrivato")} data-testid="vendita-segna-arrivato">Arrivato in negozio → avvisa il cliente</Button>}
+              <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="vendita-avanzamento">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Stato: {venditaStatoLabel(detail.stato)}</p>
+                <div className="flex flex-wrap gap-2">
+                  {detail.stato !== "ordinato" && <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "ordinato")} data-testid="vendita-segna-ordinato">Riporta a "Ordinato"</Button>}
+                  {detail.stato === "ordinato" && <Button size="sm" className="bg-sky-600 hover:bg-sky-700" onClick={() => cambiaStato(detail, "arrivato")} data-testid="vendita-segna-arrivato">Arrivato in negozio → avvisa il cliente</Button>}
+                  {detail.stato === "consegnato" && <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "arrivato")} data-testid="vendita-segna-arrivato-indietro">Riporta a "Arrivato (in attesa ritiro)"</Button>}
+                  {detail.stato !== "consegnato" && <>
                     <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => cambiaStato(detail, "consegnato", true)} data-testid="vendita-segna-ritirato">Ritirato e pagato → recensione</Button>
                     <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "consegnato", false)} data-testid="vendita-segna-ritirato-da-pagare">Ritirato, da pagare</Button>
-                  </div>
+                  </>}
+                </div>
                   {(detail.wa_ordinato_sent_at || detail.wa_arrivato_sent_at || detail.wa_ordinato_error || detail.wa_arrivato_error) && (
                     <p className="mt-2 text-xs text-slate-600">
                       {detail.wa_ordinato_sent_at && <span>WA ordine inviato {fmtDate(detail.wa_ordinato_sent_at)} · </span>}
@@ -210,7 +213,6 @@ export default function Vendite() {
                     </p>
                   )}
                 </div>
-              )}
               {detail.stato === "consegnato" && detail.pagato === false && (
                 <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "consegnato", true)} data-testid="vendita-segna-pagato">Segna come pagato</Button>
               )}

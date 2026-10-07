@@ -91,7 +91,7 @@ def _valida(data: dict) -> None:
     if data["prezzo"] < 0 or data["quantita"] < 1:
         raise HTTPException(status_code=400, detail="Prezzo o quantità non validi")
     if not data.get("client_id") and not (data.get("cliente_nome") or "").strip():
-        raise HTTPException(status_code=400, detail="Indica il cliente (esistente o nome libero)")
+        raise HTTPException(status_code=400, detail="Indica il cliente")
 
 
 async def _arricchisci(v: dict) -> dict:
@@ -209,6 +209,8 @@ async def create_vendita(input: VenditaInput, user: dict = _user()):
     db = _deps["db"]
     data = input.model_dump()
     _valida(data)
+    if not data.get("client_id"):
+        raise HTTPException(status_code=400, detail="Ogni vendita deve avere un cliente in anagrafica: cerca il cliente o crealo con '+ Nuovo cliente'")
     if user["role"] == "negozio" and data["store_id"] not in user.get("store_ids", []):
         raise HTTPException(status_code=403, detail="Puoi registrare vendite solo per il tuo negozio")
     now = datetime.now(timezone.utc)
@@ -354,11 +356,23 @@ async def cambia_stato_vendita(vendita_id: str, input: StatoVenditaInput, user: 
     if input.stato not in STATI_VENDITA:
         raise HTTPException(status_code=400, detail="Stato non valido")
     attuale = v.get("stato") or "consegnato"
-    ordine = STATI_VENDITA.index
-    if ordine(input.stato) < ordine(attuale):
-        raise HTTPException(status_code=400, detail="Non è possibile tornare a uno stato precedente")
+    if input.stato == attuale and input.pagato is None and input.numero_fattura is None:
+        return v
     now = datetime.now(timezone.utc).isoformat()
     upd = {"stato": input.stato, "updated_at": now}
+    indietro = STATI_VENDITA.index(input.stato) < STATI_VENDITA.index(attuale)
+    if indietro:
+        if attuale == "consegnato":
+            upd["consegnato_at"] = None
+            upd["pagato"] = False if input.pagato is None else input.pagato
+        if input.stato == "ordinato":
+            upd["arrivato_at"] = None
+            upd["ordinato_at"] = v.get("ordinato_at") or now
+            if v.get("magazzino_item_id"):
+                await db.magazzino.update_one({"id": v["magazzino_item_id"]}, {"$inc": {"quantita": -(v.get("quantita") or 1)},
+                                                                                "$set": {"in_ordine": True, "ordine_vendita_id": vendita_id, "updated_at": now}})
+        await db.vendite.update_one({"id": vendita_id}, {"$set": upd, "$push": {"stato_log": {"stato": input.stato, "at": now, "by": user.get("name", ""), "indietro": True}}})
+        return await db.vendite.find_one({"id": vendita_id}, {"_id": 0})
     if input.pagato is not None:
         upd["pagato"] = input.pagato
     if input.numero_fattura is not None:

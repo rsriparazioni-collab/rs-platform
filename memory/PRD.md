@@ -560,3 +560,7 @@ Vedi /app/memory/test_credentials.md
 - Backend: POST /api/clients/{id}/whatsapp/custom (message, phone opzionale tra telefono/telefoni_extra; segnaposto {nome}; sessione WA del negozio del cliente; log wa_log tipo "custom"); GET stesso path = ultimi 5 invii custom.
 - Frontend: WaCustomDialog.jsx + tasto "Scrivi WhatsApp" (wa-custom-button) in ClientDetail; messaggio precompilato "Ciao {nome}, ", scelta destinatario, storico ultimi 5. Testato con testing_agent (iteration_30) OK.
 - Backlog P1: refactor server.py / ClientForm.jsx / ServizioDetail.jsx. P2: email automatiche compensi venditori.
+
+## 2026-10-07 — Vendite: stato modificabile + cliente obbligatorio
+- Dettaglio vendita: box stato sempre visibile; possibile anche tornare indietro (consegnato→arrivato/ordinato, con ripristino magazzino se torna a ordinato). Backend POST /vendite/{id}/stato non blocca più i passi indietro.
+- Nuova vendita richiede sempre client_id (rimosso "nome cliente libero"); backend 400 se manca. Import da foglio invariato.
