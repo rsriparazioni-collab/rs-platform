@@ -16,6 +16,7 @@ import hashlib
 import ipaddress
 import logging
 from datetime import datetime, date, timezone, timedelta
+from zoneinfo import ZoneInfo
 from html import escape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
@@ -652,6 +653,7 @@ class StoreCreate(BaseModel):
     msg_offerta_annuale: str = ""
     msg_rinnovo_energia: str = ""
     msg_truffe: str = ""
+    msg_bollette: str = ""
 
 class StoreUpdate(BaseModel):
     nome: Optional[str] = None
@@ -669,6 +671,7 @@ class StoreUpdate(BaseModel):
     msg_offerta_annuale: Optional[str] = None
     msg_rinnovo_energia: Optional[str] = None
     msg_truffe: Optional[str] = None
+    msg_bollette: Optional[str] = None
 
 MSG_DEFAULTS = {
     "msg_privacy": """RS Group – Grazie per averci scelto!
@@ -704,6 +707,9 @@ Prima di firmare, confermare o accettare qualsiasi proposta, *contatta noi*. Ti 
 Un messaggio o una telefonata possono evitarti problemi e costi inutili.
 *CambiaOra*
 _Siamo al tuo fianco per aiutarti a scegliere in sicurezza._""",
+    "msg_bollette": ("Buongiorno {nome}, per dare una valutazione puntuale e coerente invitiamo ad inviarci le bollette, "
+                     "che verranno valutate con i nuovi prezzi rispetto alle scadenze che avverranno a breve. "
+                     "Ricordiamo che la Nostra consulenza è sempre gratuita."),
 }
 MSG_PLACEHOLDERS = ["{nome}", "{cognome}", "{dispositivo}", "{numero}", "{negozio}", "{link}"]
 
@@ -4671,6 +4677,12 @@ async def messaggi_previsti(client_id: str, user: dict = Depends(get_current_use
         items.append({"tipo": "rinnovo_energia", "label": "Rinnovo luce/gas", "data": d.isoformat(), "scadenza": c["data_scadenza"],
                       "inviato_il": c.get("rinnovo_msg_sent_at") if sent else None,
                       "stato": "inviato" if sent else ("saltato" if today > scad else "previsto")})
+        rin = date.fromisoformat(c["data_rinnovo"])
+        db_ = rin - timedelta(days=45 - BOLLETTE_DOPO_GIORNI)
+        sent_b = c.get("bollette_msg_sent_for") == c["data_rinnovo"]
+        items.append({"tipo": "bollette", "label": "Invito a inviare le bollette", "data": db_.isoformat(), "scadenza": c["data_rinnovo"],
+                      "inviato_il": c.get("bollette_msg_sent_at") if sent_b else None,
+                      "stato": "inviato" if sent_b else ("saltato" if (today - rin).days > 30 or c.get("lavorazione") in ("rinnovato", "cambio_effettuato") else "previsto")})
     servizi = await db.servizi.find({"client_id": client_id, "tipo": {"$in": ["sim", "internet", "fisso"]}}, {"_id": 0}).to_list(100)
     for s in servizi:
         so = scadenza_offerta(s)
@@ -5230,6 +5242,49 @@ async def invia_avvisi_rinnovo_energia() -> dict:
 async def avvisi_rinnovo_ora(admin: dict = Depends(require_admin)):
     return await invia_avvisi_rinnovo_energia()
 
+BOLLETTE_DOPO_GIORNI = 20
+
+async def clienti_bollette_da_avvisare() -> list:
+    """Clienti nel Centro Alert rinnovi da almeno 20 giorni (giorni al rinnovo <= 45-20), non lavorati, con telefono, non ancora avvisati per questa scadenza."""
+    clients = await db.clients.find({"data_contratto": {"$nin": [None, ""]}, "telefono": {"$nin": [None, ""]}}, {"_id": 0}).to_list(20000)
+    out = []
+    for c in clients:
+        compute_dates(c)
+        gr = c.get("giorni_al_rinnovo")
+        if gr is None or not (-30 <= gr <= 45 - BOLLETTE_DOPO_GIORNI) or c.get("lavorazione") in ("rinnovato", "cambio_effettuato"):
+            continue
+        if c.get("bollette_msg_sent_for") == c.get("data_rinnovo"):
+            continue
+        if c.get("telefono") in {x.get("telefono") for x in out}:
+            continue
+        out.append(c)
+    return out
+
+async def invia_avvisi_bollette() -> dict:
+    report = []
+    for c in await clienti_bollette_da_avvisare():
+        store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
+        msg = store_msg(store, "msg_bollette", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
+        try:
+            await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="bollette", client_id=c["id"])
+            await db.clients.update_many({"telefono": c["telefono"], "data_contratto": c.get("data_contratto")}, {"$set": {"bollette_msg_sent_for": c["data_rinnovo"],
+                                                                   "bollette_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
+            report.append({"client_id": c["id"], "nome": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "inviato": True})
+        except HTTPException as e:
+            report.append({"client_id": c["id"], "nome": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "inviato": False, "errore": str(e.detail)})
+    if report:
+        await db.cron_log.insert_one({"job": "bollette", "at": datetime.now(timezone.utc).isoformat(), "report": report})
+    return {"report": report, "inviati": sum(1 for r in report if r["inviato"]), "falliti": sum(1 for r in report if not r["inviato"])}
+
+@api_router.get("/energia/avvisi-bollette/anteprima")
+async def avvisi_bollette_anteprima(admin: dict = Depends(require_admin)):
+    return [{"client_id": c["id"], "nome": c.get("nome", ""), "cognome": c.get("cognome", ""), "telefono": c.get("telefono", ""),
+             "giorni": c.get("giorni_al_rinnovo"), "lavorazione": c.get("lavorazione", "")} for c in await clienti_bollette_da_avvisare()]
+
+@api_router.post("/energia/avvisi-bollette/invia-ora")
+async def avvisi_bollette_ora(admin: dict = Depends(require_admin)):
+    return await invia_avvisi_bollette()
+
 TRUFFE_DOPO_GIORNI = 10
 TRUFFE_FINESTRA_GIORNI = 40
 
@@ -5605,6 +5660,7 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
     background_tasks.add_task(invia_promemoria_ritiro)
     background_tasks.add_task(invia_avvisi_vincolo)
     background_tasks.add_task(invia_avvisi_rinnovo_energia)
+    background_tasks.add_task(invia_avvisi_bollette)
     background_tasks.add_task(invia_avvisi_truffe)
     background_tasks.add_task(vendite_module.avvisi_ordini_fermi)
     background_tasks.add_task(pulizia_retention_gdpr)
@@ -5792,6 +5848,7 @@ async def startup():
     except Exception as e:
         logger.error(f"Storage init fallito: {e}")
     asyncio.create_task(whatsapp_queue_loop())
+    asyncio.create_task(avvisi_bollette_loop())
     asyncio.create_task(backup_module.backup_loop())
     asyncio.create_task(contabilita_module.invii_programmati_loop())
     try:
@@ -5809,6 +5866,20 @@ async def whatsapp_queue_loop() -> None:
                                          {"$set": {"last_run": datetime.now(timezone.utc).isoformat()}}, upsert=True)
         except Exception as e:
             logger.error(f"whatsapp_queue_loop errore: {e}")
+
+async def avvisi_bollette_loop() -> None:
+    """Fallback interno: una volta al giorno (ore 10 Italia) invia i WA 'bollette' ai clienti in alert da 20+ giorni."""
+    while True:
+        await asyncio.sleep(600)
+        try:
+            ora = datetime.now(ZoneInfo("Europe/Rome"))
+            oggi = ora.date().isoformat()
+            last = await db.cron_log.find_one({"job": "bollette-loop"}, {"_id": 0, "last_day": 1})
+            if ora.hour >= 10 and (last or {}).get("last_day") != oggi:
+                await invia_avvisi_bollette()
+                await db.cron_log.update_one({"job": "bollette-loop"}, {"$set": {"last_day": oggi, "last_run": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+        except Exception as e:
+            logger.error(f"avvisi_bollette_loop errore: {e}")
 
 app.include_router(api_router)
 

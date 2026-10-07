@@ -568,3 +568,8 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-07 — Vendite: collega cliente a vendite senza scheda
 - POST /api/vendite/{id}/cliente {client_id}: aggiorna client_id/client_name/client_telefono.
 - AssegnaClienteDialog.jsx: ricerca cliente esistente o creazione al volo (nome precompilato da cliente_nome). Tasto nel dettaglio vendita (vendita-assegna-cliente-main) + badge "senza scheda" in lista.
+
+## 2026-10-07 — WA "Invito bollette" (Centro Alert, 20 gg)
+- Clienti in alert rinnovo da >=20 gg (giorni_al_rinnovo <= 25, >= -30), lavorazione non rinnovato/cambio_effettuato, con telefono, 1 invio per scadenza (bollette_msg_sent_for), dedupe per telefono. Template msg_bollette per negozio (Negozi -> Messaggi).
+- Endpoint: GET /energia/avvisi-bollette/anteprima, POST /energia/avvisi-bollette/invia-ora (admin). Cron: webhook /cron (whatsapp) + loop interno avvisi_bollette_loop ore 10 Italia.
+- UI: Dashboard Centro Alert tasto "WA bollette (N)" con lista e conferma (AvvisiBolletteButton.jsx); voce in messaggi-previsti cliente.

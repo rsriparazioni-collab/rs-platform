@@ -10,6 +10,7 @@ import StatoInviiWhatsApp from "../components/StatoInviiWhatsApp";
 import ContattoDialog, { ContattoBadge, ContattoButton } from "../components/ContattoDialog";
 import { useAuth } from "../context/AuthContext";
 import RegistroRapido from "../components/RegistroRapido";
+import AvvisiBolletteButton from "../components/AvvisiBolletteButton";
 import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate } from "../lib/constants";
 import { Button } from "../components/ui/button";
 
@@ -263,9 +264,12 @@ export default function Dashboard() {
               <BellRing className="h-4 w-4 text-amber-600" />
               <h2 className="font-heading text-lg font-semibold text-slate-800">Centro Alert</h2>
             </div>
-            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800" data-testid="alerts-count">
-              {totalAlerts}
-            </span>
+            <div className="flex items-center gap-2">
+              {user.role === "admin" && <AvvisiBolletteButton />}
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800" data-testid="alerts-count">
+                {totalAlerts}
+              </span>
+            </div>
           </div>
           <div className="max-h-[420px] divide-y divide-slate-100 overflow-y-auto">
             {alerts && totalAlerts === 0 && (
