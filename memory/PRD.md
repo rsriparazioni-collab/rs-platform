@@ -564,3 +564,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-07 — Vendite: stato modificabile + cliente obbligatorio
 - Dettaglio vendita: box stato sempre visibile; possibile anche tornare indietro (consegnato→arrivato/ordinato, con ripristino magazzino se torna a ordinato). Backend POST /vendite/{id}/stato non blocca più i passi indietro.
 - Nuova vendita richiede sempre client_id (rimosso "nome cliente libero"); backend 400 se manca. Import da foglio invariato.
+
+## 2026-10-07 — Vendite: collega cliente a vendite senza scheda
+- POST /api/vendite/{id}/cliente {client_id}: aggiorna client_id/client_name/client_telefono.
+- AssegnaClienteDialog.jsx: ricerca cliente esistente o creazione al volo (nome precompilato da cliente_nome). Tasto nel dettaglio vendita (vendita-assegna-cliente-main) + badge "senza scheda" in lista.

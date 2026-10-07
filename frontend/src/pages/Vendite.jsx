@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, ShoppingBag, Trash2, Wrench, Smartphone, Wifi, PackageOpen, Zap, FileDown, MessageCircle } from "lucide-react";
+import { Plus, Search, ShoppingBag, Trash2, Wrench, Smartphone, Wifi, PackageOpen, Zap, FileDown, MessageCircle, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import VenditaForm from "../components/VenditaForm";
 import { ClienteLink } from "../components/ClienteLink";
 import ServizioForm from "../components/ServizioForm";
+import AssegnaClienteDialog from "../components/AssegnaClienteDialog";
 
 const eur = (v) => (v == null ? "-" : `€ ${Number(v).toFixed(2)}`);
 
@@ -27,6 +28,7 @@ export default function Vendite() {
   const [detail, setDetail] = useState(null);
   const [servizioForm, setServizioForm] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [assegnaOpen, setAssegnaOpen] = useState(false);
   const presetClientId = useMemo(() => new URLSearchParams(window.location.search).get("cliente"), []);
   const canSeeAll = user.role === "admin" || user.can_view_all || user.role === "tecnico";
 
@@ -151,7 +153,7 @@ export default function Vendite() {
                 <td className="px-4 py-3 text-slate-600">{venditaCategoriaLabel(v.categoria)}</td>
                 <td className="px-4 py-3"><span className={`status-badge ${regimeIvaBadge(v.regime_iva)}`}>{regimeIvaLabel(v.regime_iva)}</span></td>
                 <td className="px-4 py-3"><span className="flex flex-wrap gap-1"><span className={`status-badge ${venditaStatoBadge(v.stato)}`} data-testid={`vendita-stato-badge-${i}`}>{venditaStatoLabel(v.stato)}</span>{v.pagato === false && <span className="status-badge border-rose-300 bg-rose-500/10 text-rose-700">Da pagare</span>}</span></td>
-                <td className="px-4 py-3 text-slate-700"><ClienteLink clientId={v.client_id}>{v.client_name || v.cliente_nome || "-"}</ClienteLink></td>
+                <td className="px-4 py-3 text-slate-700"><ClienteLink clientId={v.client_id}>{v.client_name || v.cliente_nome || "-"}</ClienteLink>{!v.client_id && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" data-testid={`vendita-senza-scheda-${v.id}`}>senza scheda</span>}</td>
                 <td className="px-4 py-3 text-slate-600">{storeName(v.store_id)}</td>
                 <td className="px-4 py-3 text-right font-semibold">{eur(v.prezzo * (v.quantita || 1))}</td>
                 <td className="px-4 py-3 text-right text-emerald-700">{v.costo != null ? eur((v.prezzo - v.costo) * (v.quantita || 1)) : "-"}</td>
@@ -174,7 +176,9 @@ export default function Vendite() {
                 <Info l="Categoria" v={venditaCategoriaLabel(detail.categoria)} />
                 <Info l="Regime IVA" v={regimeIvaLabel(detail.regime_iva)} />
                 <Info l="Negozio" v={storeName(detail.store_id)} />
-                <div data-testid="vendita-detail-cliente"><p className="text-xs text-slate-500">Cliente</p><ClienteLink clientId={detail.client_id}>{detail.client_name || detail.cliente_nome || "-"}</ClienteLink></div>
+                <div data-testid="vendita-detail-cliente"><p className="text-xs text-slate-500">Cliente</p><ClienteLink clientId={detail.client_id}>{detail.client_name || detail.cliente_nome || "-"}</ClienteLink>
+                  {!detail.client_id && <Button size="sm" variant="link" className="h-auto p-0 text-xs text-amber-700" onClick={() => setAssegnaOpen(true)} data-testid="vendita-assegna-cliente-button">Senza scheda · collega cliente</Button>}
+                </div>
                 <Info l="Telefono" v={detail.client_telefono || "-"} />
                 <Info l="Data" v={fmtDate(detail.data_vendita)} />
                 <Info l="Prezzo" v={eur(detail.prezzo)} />
@@ -188,12 +192,17 @@ export default function Vendite() {
                 {detail.acconto > 0 && <Info l="Acconto / Saldo" v={`${eur(detail.acconto)} / ${eur(detail.prezzo * (detail.quantita || 1) - detail.acconto)}`} />}
                 {detail.note && <div className="col-span-full"><p className="text-xs text-slate-500">Note</p><p>{detail.note}</p></div>}
               </div>
-              {detail.client_id && (
+              {detail.client_id ? (
                 <Button size="sm" variant="outline" className="gap-1.5 border-sky-300 text-sky-800" data-testid="vendita-wa-arrivato"
                         onClick={async () => { try { const r = await api.post(`/vendite/${detail.id}/whatsapp/arrivato`); toast.success("WhatsApp 'telefono arrivato in negozio' inviato al cliente"); setDetail(r.data); load(); } catch (e) { toast.error(apiError(e, "Invio fallito")); } }}>
                   <MessageCircle className="h-4 w-4" /> {detail.wa_arrivato_sent_at ? `Reinvia avviso "arrivato" (inviato ${fmtDate(detail.wa_arrivato_sent_at)})` : 'Avvisa il cliente: "il tuo telefono è arrivato"'}
                 </Button>
+              ) : (
+                <Button size="sm" className="gap-1.5 bg-amber-600 hover:bg-amber-700" onClick={() => setAssegnaOpen(true)} data-testid="vendita-assegna-cliente-main">
+                  <UserPlus className="h-4 w-4" /> Collega a un cliente (esistente o nuovo)
+                </Button>
               )}
+              <AssegnaClienteDialog vendita={detail} open={assegnaOpen} onOpenChange={setAssegnaOpen} onAssigned={(v) => { setDetail(v); load(); }} />
               <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="vendita-avanzamento">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Stato: {venditaStatoLabel(detail.stato)}</p>
                 <div className="flex flex-wrap gap-2">

@@ -406,6 +406,28 @@ async def cambia_stato_vendita(vendita_id: str, input: StatoVenditaInput, user: 
     return await db.vendite.find_one({"id": vendita_id}, {"_id": 0})
 
 
+class AssegnaClienteInput(BaseModel):
+    client_id: str
+
+
+@router.post("/vendite/{vendita_id}/cliente")
+async def assegna_cliente_vendita(vendita_id: str, input: AssegnaClienteInput, user: dict = _user()):
+    """Collega una vendita (es. importata senza scheda) a un cliente in anagrafica."""
+    db = _deps["db"]
+    scope = vendite_scope(user)
+    scope["id"] = vendita_id
+    v = await db.vendite.find_one(scope, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Vendita non trovata")
+    c = await db.clients.find_one({"id": input.client_id}, {"_id": 0, "nome": 1, "cognome": 1, "telefono": 1})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.vendite.update_one({"id": vendita_id}, {"$set": {"client_id": input.client_id, "client_name": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(),
+                                                              "client_telefono": c.get("telefono", ""), "updated_at": now}})
+    return await db.vendite.find_one({"id": vendita_id}, {"_id": 0})
+
+
 @router.get("/vendite/{vendita_id}")
 async def get_vendita(vendita_id: str, user: dict = _user()):
     db = _deps["db"]
