@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban, Wrench, Smartphone, Wifi, RefreshCw, Users, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban, Wrench, Smartphone, Wifi, RefreshCw, Users, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import SyncFogliDialog from "../components/SyncFogliDialog";
@@ -28,7 +28,7 @@ export default function Clienti() {
   const { user } = useAuth();
   const [clients, setClients] = useState([]);
   const [meta, setMeta] = useState({ suppliers: [], lavorazioni: [], stores: [], operators: [] });
-  const [filters, setFilters] = useState({ q: "", lavorazione: "all", tipo_bolletta: "all", venditore_id: "all", no_recensioni: false, tipo_cliente: "all",
+  const [filters, setFilters] = useState({ q: "", lavorazione: "all", tipo_bolletta: "all", venditore_id: "all", no_recensioni: false, bollette_inviato: false, tipo_cliente: "all",
     gestione: localStorage.getItem("clienti_gestione") || "all" });
   const [conteggi, setConteggi] = useState(null);
   const setGestione = (g) => { localStorage.setItem("clienti_gestione", g); setFilters((f) => ({ ...f, gestione: g })); };
@@ -55,6 +55,7 @@ export default function Clienti() {
     if (filters.tipo_bolletta !== "all") params.tipo_servizio = filters.tipo_bolletta;
     if (filters.venditore_id !== "all") params.venditore_id = filters.venditore_id;
     if (filters.no_recensioni) params.no_recensioni = "1";
+    if (filters.bollette_inviato) params.bollette_inviato = "1";
     if (filters.tipo_cliente !== "all") params.tipo_cliente = filters.tipo_cliente;
     if (filters.gestione !== "all") params.sezione = filters.gestione;
     api.get("/clients/conteggio-sezioni").then((r) => setConteggi(r.data)).catch(() => {});
@@ -226,6 +227,10 @@ export default function Clienti() {
                 onClick={() => setFilters((f) => ({ ...f, no_recensioni: !f.no_recensioni }))} data-testid="filter-blacklist-toggle">
           <Ban className="h-4 w-4" /> Solo blacklist recensioni
         </Button>
+        <Button type="button" variant={filters.bollette_inviato ? "default" : "outline"} size="sm" className={`h-10 gap-1.5 ${filters.bollette_inviato ? "bg-violet-700 hover:bg-violet-800" : "border-violet-300 text-violet-800"}`}
+                onClick={() => setFilters((f) => ({ ...f, bollette_inviato: !f.bollette_inviato }))} data-testid="filter-bollette-toggle">
+          <MessageCircle className="h-4 w-4" /> WA bollette inviato
+        </Button>
         <Button type="button" variant={perPersona ? "default" : "outline"} size="sm" className="h-10 gap-1.5"
                 onClick={() => setPerPersona((v) => !v)} title={perPersona ? "Una riga per persona, utenze espandibili" : "Una riga per utenza"} data-testid="toggle-vista-persona">
           <Users className="h-4 w-4" /> {perPersona ? `Per persona (${persone})` : `Per utenza (${clients.length})`}
@@ -295,6 +300,7 @@ export default function Clienti() {
                     ) : c.lavorazione ? (
                       <span className={`status-badge ${lavorazioneBadge(c.lavorazione)}`}>{lavorazioneLabel(c.lavorazione)}</span>
                     ) : <span className="text-xs text-slate-400">Nessuna pratica energia</span>}
+                    {c.bollette_msg_sent_at && <span className="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800" title="Invito bollette inviato via WhatsApp" data-testid={`cliente-bollette-badge-${i}`}>WA bollette {fmtDate(c.bollette_msg_sent_at)}</span>}
                   </td>
                   <td className="px-4 py-3">
                     {c.data_rinnovo ? (

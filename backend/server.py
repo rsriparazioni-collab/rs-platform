@@ -923,7 +923,7 @@ def cliente_energia(c: dict) -> bool:
 @api_router.get("/clients")
 async def list_clients(user: dict = Depends(get_current_user),
                        lavorazione: str = "", tipo_bolletta: str = "", tipo_servizio: str = "",
-                       venditore_id: str = "", q: str = "", no_recensioni: str = "", tipo_cliente: str = "", gestione: str = "", sezione: str = ""):
+                       venditore_id: str = "", q: str = "", no_recensioni: str = "", tipo_cliente: str = "", gestione: str = "", sezione: str = "", bollette_inviato: str = ""):
     scope = client_scope_filter(user)
     sez_f = await sezione_filter(sezione) if sezione else None
     if sez_f:
@@ -934,6 +934,8 @@ async def list_clients(user: dict = Depends(get_current_user),
         scope["gestione"] = {"$ne": "enel"}
     if no_recensioni == "1":
         scope["no_recensioni"] = True
+    if bollette_inviato == "1":
+        scope["bollette_msg_sent_at"] = {"$nin": [None, ""]}
     if lavorazione:
         scope["lavorazione"] = lavorazione
     if tipo_cliente == "privato":
@@ -954,7 +956,7 @@ async def list_clients(user: dict = Depends(get_current_user),
             "telefono": 1, "email": 1, "codice_fiscale": 1, "pod": 1, "pdr": 1,
             "tipo_bolletta": 1, "fornitore_provenienza": 1, "lavorazione": 1,
             "data_contratto": 1, "venditore_id": 1, "pagato": 1, "last_payment_date": 1,
-            "privacy_firmata": 1, "created_at": 1, "no_recensioni": 1, "gestione": 1, "enel_operazione": 1, "origine": 1, "indirizzo": 1}
+            "privacy_firmata": 1, "created_at": 1, "no_recensioni": 1, "gestione": 1, "enel_operazione": 1, "origine": 1, "indirizzo": 1, "bollette_msg_sent_at": 1}
     clients = await db.clients.find(scope, proj).sort("created_at", -1).to_list(5000)
     tipi_per_client = {}
     async for row in db.servizi.aggregate([{"$group": {"_id": "$client_id", "tipi": {"$addToSet": "$tipo"}}}]):

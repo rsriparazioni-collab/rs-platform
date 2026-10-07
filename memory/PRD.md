@@ -574,3 +574,4 @@ Vedi /app/memory/test_credentials.md
 - Endpoint: GET /energia/avvisi-bollette/anteprima, POST /energia/avvisi-bollette/invia-ora (admin). Cron: webhook /cron (whatsapp) + loop interno avvisi_bollette_loop ore 10 Italia.
 - UI: Dashboard Centro Alert tasto "WA bollette (N)" con lista e conferma (AvvisiBolletteButton.jsx); voce in messaggi-previsti cliente.
 - Dopo invio WA bollette: lavorazione -> "richieste_bollette" (su tutte le utenze con stesso telefono/contratto); Centro Alert mostra badge "WA bollette <data>" (campo bollette_msg_sent_at in /alerts rinnovi).
+- Clienti: filtro toggle "WA bollette inviato" (?bollette_inviato=1) + badge data invio in lista.
