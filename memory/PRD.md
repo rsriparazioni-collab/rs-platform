@@ -555,3 +555,8 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-05 — Avviso manuale 'arrivato / disponibile in negozio'
 - POST /api/clients/{id}/whatsapp/disponibile {articolo, saldo?}: WA dal negozio del cliente (MSG_DISPONIBILE), per qualsiasi cliente; bottone 'Avvisa: arrivato / disponibile in negozio' nella card WhatsApp di ClientDetail (prompt articolo).
 - POST /api/vendite/{id}/whatsapp/arrivato: invia/reinvia MSG_ARRIVATO in qualsiasi stato; bottone nel dettaglio vendita.
+
+## 2026-10-07 — WhatsApp personalizzato dalla scheda cliente
+- Backend: POST /api/clients/{id}/whatsapp/custom (message, phone opzionale tra telefono/telefoni_extra; segnaposto {nome}; sessione WA del negozio del cliente; log wa_log tipo "custom"); GET stesso path = ultimi 5 invii custom.
+- Frontend: WaCustomDialog.jsx + tasto "Scrivi WhatsApp" (wa-custom-button) in ClientDetail; messaggio precompilato "Ciao {nome}, ", scelta destinatario, storico ultimi 5. Testato con testing_agent (iteration_30) OK.
+- Backlog P1: refactor server.py / ClientForm.jsx / ServizioDetail.jsx. P2: email automatiche compensi venditori.

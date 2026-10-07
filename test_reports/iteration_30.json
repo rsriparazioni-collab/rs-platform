@@ -1,0 +1,26 @@
+{
+  "summary": "Frontend-only testing of nuova feature 'Scrivi WhatsApp' nella scheda cliente. Login admin con MFA TOTP OK, apertura /clienti OK, apertura sheet ClientDetail per TEST_82685b OK, dialog wa-custom-dialog si apre correttamente, select wa-custom-phone popolato con telefono principale (+390000000001), textarea wa-custom-message precompilata con 'Ciao TEST_82685b, ', invio tramite wa-custom-send mostra toast 'WhatsApp inviato', dialog si chiude e alla riapertura la sezione wa-custom-history mostra il messaggio inviato. Tutti i criteri del requisito sono soddisfatti.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "WaCustomDialog + altri dialog", "issues": ["Console warning React: 'Missing Description or aria-describedby for DialogContent' (a11y, non bloccante). Consigliato aggiungere <DialogDescription> al componente."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Opzionale) Aggiungere DialogDescription a WaCustomDialog (e ad altri dialog Radix) per rimuovere warning accessibilità."
+  ],
+  "critical_code_review_comments": [
+    "WaCustomDialog.jsx: lista `phones` ricalcolata ad ogni render; useEffect dipende solo da open/client.id -> OK per flusso corrente.",
+    "Mancanza DialogDescription -> warning a11y."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (non testato come da richiesta)", "frontend": "100%"},
+  "test_credentials": "rsriparazioni@gmail.com / EnricoRS@26 + TOTP ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV",
+  "seed_data_creation": "Nessuna; usato cliente esistente TEST_82685b. Inviato 1 messaggio WA custom in dry-run (persistito nello storico).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Flusso WA custom completamente funzionante end-to-end (dry-run). Il cliente TEST_82685b (id 22a88213-b106-44f1-829b-cd5f0b9049be) ha ora 2 messaggi personalizzati in history. Un solo warning React non bloccante su DialogContent."
+}
