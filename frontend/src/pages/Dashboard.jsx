@@ -286,7 +286,7 @@ export default function Dashboard() {
                     : <Zap className="h-4 w-4 shrink-0 text-sky-500" />}
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-900">{r.cognome} {r.nome}</p>
-                    <p className="text-xs text-slate-500">Rinnovo: {fmtDate(r.data_rinnovo)} · {lavorazioneLabel(r.lavorazione)}</p>
+                    <p className="text-xs text-slate-500">Rinnovo: {fmtDate(r.data_rinnovo)} · {lavorazioneLabel(r.lavorazione)}{r.bollette_msg_sent_at && <span className="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800" data-testid={`alert-rinnovo-bollette-${r.client_id}`}>WA bollette {fmtDate(r.bollette_msg_sent_at)}</span>}</p>
                     <ContattoBadge contatto={r.ultimo_contatto} testid={`alert-rinnovo-contatto-${r.client_id}`} />
                   </div>
                 </Link>

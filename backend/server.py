@@ -222,7 +222,7 @@ def compute_dates(c: dict) -> dict:
 async def build_alerts(user: dict) -> dict:
     scope = client_scope_filter(user)
     projection = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "data_contratto": 1,
-                  "lavorazione": 1, "tipo_bolletta": 1, "pagato": 1, "last_payment_date": 1}
+                  "lavorazione": 1, "tipo_bolletta": 1, "pagato": 1, "last_payment_date": 1, "bollette_msg_sent_at": 1}
     clients = await db.clients.find(scope, projection).to_list(5000)
     stores = await db.stores.find({}, {"_id": 0}).to_list(500)
     rinnovi, pagamenti_clienti, pagamenti_negozi = [], [], []
@@ -231,7 +231,7 @@ async def build_alerts(user: dict) -> dict:
         gr = c.get("giorni_al_rinnovo")
         if gr is not None and -30 <= gr <= 45 and c.get("lavorazione") != "rinnovato":
             rinnovi.append({"client_id": c["id"], "nome": c.get("nome", ""), "cognome": c.get("cognome", ""),
-                            "data_rinnovo": c["data_rinnovo"], "giorni": gr,
+                            "data_rinnovo": c["data_rinnovo"], "giorni": gr, "bollette_msg_sent_at": c.get("bollette_msg_sent_at"),
                             "tipo_bolletta": c.get("tipo_bolletta", ""), "lavorazione": c.get("lavorazione", "")})
         if c.get("pagato") and not c.get("pagato_effettivo"):
             pagamenti_clienti.append({"client_id": c["id"], "nome": c.get("nome", ""), "cognome": c.get("cognome", ""),
@@ -5268,6 +5268,7 @@ async def invia_avvisi_bollette() -> dict:
         try:
             await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="bollette", client_id=c["id"])
             await db.clients.update_many({"telefono": c["telefono"], "data_contratto": c.get("data_contratto")}, {"$set": {"bollette_msg_sent_for": c["data_rinnovo"],
+                                                                   "lavorazione": "richieste_bollette", "updated_at": datetime.now(timezone.utc).isoformat(),
                                                                    "bollette_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
             report.append({"client_id": c["id"], "nome": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "inviato": True})
         except HTTPException as e:

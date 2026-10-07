@@ -573,3 +573,4 @@ Vedi /app/memory/test_credentials.md
 - Clienti in alert rinnovo da >=20 gg (giorni_al_rinnovo <= 25, >= -30), lavorazione non rinnovato/cambio_effettuato, con telefono, 1 invio per scadenza (bollette_msg_sent_for), dedupe per telefono. Template msg_bollette per negozio (Negozi -> Messaggi).
 - Endpoint: GET /energia/avvisi-bollette/anteprima, POST /energia/avvisi-bollette/invia-ora (admin). Cron: webhook /cron (whatsapp) + loop interno avvisi_bollette_loop ore 10 Italia.
 - UI: Dashboard Centro Alert tasto "WA bollette (N)" con lista e conferma (AvvisiBolletteButton.jsx); voce in messaggi-previsti cliente.
+- Dopo invio WA bollette: lavorazione -> "richieste_bollette" (su tutte le utenze con stesso telefono/contratto); Centro Alert mostra badge "WA bollette <data>" (campo bollette_msg_sent_at in /alerts rinnovi).
