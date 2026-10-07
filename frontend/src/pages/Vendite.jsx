@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, ShoppingBag, Trash2, Wrench, Smartphone, Wifi, PackageOpen, Zap, FileDown } from "lucide-react";
+import { Plus, Search, ShoppingBag, Trash2, Wrench, Smartphone, Wifi, PackageOpen, Zap, FileDown, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -188,6 +188,12 @@ export default function Vendite() {
                 {detail.acconto > 0 && <Info l="Acconto / Saldo" v={`${eur(detail.acconto)} / ${eur(detail.prezzo * (detail.quantita || 1) - detail.acconto)}`} />}
                 {detail.note && <div className="col-span-full"><p className="text-xs text-slate-500">Note</p><p>{detail.note}</p></div>}
               </div>
+              {detail.client_id && (
+                <Button size="sm" variant="outline" className="gap-1.5 border-sky-300 text-sky-800" data-testid="vendita-wa-arrivato"
+                        onClick={async () => { try { const r = await api.post(`/vendite/${detail.id}/whatsapp/arrivato`); toast.success("WhatsApp 'telefono arrivato in negozio' inviato al cliente"); setDetail(r.data); load(); } catch (e) { toast.error(apiError(e, "Invio fallito")); } }}>
+                  <MessageCircle className="h-4 w-4" /> {detail.wa_arrivato_sent_at ? `Reinvia avviso "arrivato" (inviato ${fmtDate(detail.wa_arrivato_sent_at)})` : 'Avvisa il cliente: "il tuo telefono è arrivato"'}
+                </Button>
+              )}
               {(detail.stato === "ordinato" || detail.stato === "arrivato") && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="vendita-avanzamento">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Avanzamento</p>

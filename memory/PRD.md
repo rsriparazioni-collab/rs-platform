@@ -551,3 +551,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-05 — Uso utenza + stato 'Ricambio arrivato'
 - Clienti energia: campo `uso_utenza` (residenza|non_residenza|business) con chip nel form (sezione indirizzo) e nel dettaglio.
 - Riparazioni: nuovo stato `ricambio_arrivato` (RIP_STATI backend/frontend, STATI_RIP_APERTI, label). Al passaggio (manuale via PATCH o automatico dal carico arrivo in Magazzino per riparazioni in attesa ricambio) parte il WA al cliente dal negozio: MSG_RICAMBIO_ARRIVATO 'Ciao {nome}! Il ricambio del tuo {dispositivo} è arrivato: passa o contattaci per la riparazione. Buona giornata!'; esito in ricambio_msg_sent_at/_error con badge in ServizioDetail.
+
+## 2026-10-05 — Avviso manuale 'arrivato / disponibile in negozio'
+- POST /api/clients/{id}/whatsapp/disponibile {articolo, saldo?}: WA dal negozio del cliente (MSG_DISPONIBILE), per qualsiasi cliente; bottone 'Avvisa: arrivato / disponibile in negozio' nella card WhatsApp di ClientDetail (prompt articolo).
+- POST /api/vendite/{id}/whatsapp/arrivato: invia/reinvia MSG_ARRIVATO in qualsiasi stato; bottone nel dettaglio vendita.

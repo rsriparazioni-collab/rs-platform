@@ -327,6 +327,21 @@ async def avvisi_ordini_fermi() -> list:
     return esiti
 
 
+@router.post("/vendite/{vendita_id}/whatsapp/arrivato")
+async def wa_arrivato_manuale(vendita_id: str, user: dict = _user()):
+    """Reinvia (o invia) al cliente l'avviso 'il tuo telefono è arrivato in negozio', in qualsiasi stato."""
+    scope = vendite_scope(user)
+    scope["id"] = vendita_id
+    v = await _deps["db"].vendite.find_one(scope, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Vendita non trovata")
+    await _wa_vendita(v, MSG_ARRIVATO, "arrivato", _saldo_txt(v))
+    v = await _deps["db"].vendite.find_one({"id": vendita_id}, {"_id": 0})
+    if v.get("wa_arrivato_error"):
+        raise HTTPException(status_code=400, detail=v["wa_arrivato_error"])
+    return v
+
+
 @router.post("/vendite/{vendita_id}/stato")
 async def cambia_stato_vendita(vendita_id: str, input: StatoVenditaInput, user: dict = _user()):
     """Ordinato → Arrivato (magazzino torna a 0 + WA cliente) → Consegnato/Ritirato (recensione)."""

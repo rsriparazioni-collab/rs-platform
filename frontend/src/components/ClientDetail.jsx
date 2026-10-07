@@ -410,6 +410,16 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                     <MessageCircle className="h-4 w-4" />
                     {waLoading === "review" ? "Invio..." : "Invia richiesta recensione"}
                   </Button>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                            const articolo = window.prompt("Cosa è arrivato? (es. iPhone 16 128GB)", "telefono");
+                            if (articolo === null) return;
+                            setWaLoading("disponibile");
+                            try { await api.post(`/clients/${detail.id}/whatsapp/disponibile`, { articolo }); toast.success("WhatsApp 'disponibile in negozio' inviato"); }
+                            catch (e) { toast.error(apiError(e, "Invio fallito")); } finally { setWaLoading(""); }
+                          }} disabled={waLoading !== ""} data-testid="wa-disponibile-button" className="gap-2 border-sky-300 text-sky-800">
+                    <Package className="h-4 w-4" />
+                    {waLoading === "disponibile" ? "Invio..." : "Avvisa: arrivato / disponibile in negozio"}
+                  </Button>
                   <Button size="sm" variant="outline" onClick={toggleBlacklist} data-testid="client-blacklist-button" className="gap-2">
                     <Ban className="h-4 w-4" /> {detail.no_recensioni ? "Riattiva recensioni" : "Blacklist recensioni"}
                   </Button>

@@ -3817,6 +3817,26 @@ async def whatsapp_privacy(client_id: str, user: dict = Depends(get_current_user
     c = await get_scoped_client(client_id, user)
     return await invia_privacy_cliente(c)
 
+class DisponibileInput(BaseModel):
+    articolo: str = "telefono"
+    saldo: Optional[float] = None
+
+MSG_DISPONIBILE = "Ciao {nome}! 😊\nIl tuo {articolo} è arrivato ed è disponibile in negozio: ti aspettiamo per prepararlo insieme e partire con la tua nuova esperienza!{saldo}\n{negozio}"
+
+@api_router.post("/clients/{client_id}/whatsapp/disponibile")
+async def whatsapp_disponibile(client_id: str, input: DisponibileInput, user: dict = Depends(get_current_user)):
+    """Avviso manuale 'è arrivato / disponibile in negozio', dal numero del negozio del cliente. Disponibile per ogni cliente."""
+    c = await get_scoped_client(client_id, user)
+    if not c.get("telefono"):
+        raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
+    store_id = c.get("venditore_id") or (user.get("store_ids") or [None])[0]
+    store = await db.stores.find_one({"id": store_id}, {"_id": 0, "nome": 1}) if store_id else None
+    saldo = f"\nSaldo alla consegna: {input.saldo:.2f} €." if input.saldo and input.saldo > 0 else ""
+    msg = MSG_DISPONIBILE.format(nome=c.get("nome", ""), articolo=(input.articolo or "telefono").strip(), saldo=saldo, negozio=(store or {}).get("nome", ""))
+    await wa_send(c["telefono"], msg, session=store_id or "default", tipo="disponibile", client_id=client_id)
+    await db.clients.update_one({"id": client_id}, {"$set": {"disponibile_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
+    return {"status": "ok", "message": msg}
+
 async def invia_privacy_cliente(c: dict, queue_review: bool = True) -> dict:
     client_id = c["id"]
     if not c.get("telefono"):
