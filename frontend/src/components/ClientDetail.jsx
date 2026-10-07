@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { PerIproButton } from "./PerIproButton";
 import WhatsAppLog from "./WhatsAppLog";
 import MessaggiPrevisti from "./MessaggiPrevisti";
+import WaCustomDialog from "./WaCustomDialog";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import PortaleBox from "./PortaleBox";
@@ -20,6 +21,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
   const [servizi, setServizi] = useState([]);
   const [collegati, setCollegati] = useState([]);
   const [logKey, setLogKey] = useState(0);
+  const [waCustomOpen, setWaCustomOpen] = useState(false);
 
   const loadCollegati = useCallback(async () => {
     if (!client) return;
@@ -420,6 +422,11 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                     <Package className="h-4 w-4" />
                     {waLoading === "disponibile" ? "Invio..." : "Avvisa: arrivato / disponibile in negozio"}
                   </Button>
+                  <Button size="sm" variant="outline" onClick={() => setWaCustomOpen(true)} disabled={waLoading !== ""}
+                          data-testid="wa-custom-button" className="gap-2 border-emerald-300 text-emerald-800">
+                    <MessageCircle className="h-4 w-4" /> Scrivi WhatsApp
+                  </Button>
+                  <WaCustomDialog client={detail} open={waCustomOpen} onOpenChange={setWaCustomOpen} onSent={() => setLogKey((k) => k + 1)} />
                   <Button size="sm" variant="outline" onClick={toggleBlacklist} data-testid="client-blacklist-button" className="gap-2">
                     <Ban className="h-4 w-4" /> {detail.no_recensioni ? "Riattiva recensioni" : "Blacklist recensioni"}
                   </Button>

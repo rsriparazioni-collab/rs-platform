@@ -3837,6 +3837,32 @@ async def whatsapp_disponibile(client_id: str, input: DisponibileInput, user: di
     await db.clients.update_one({"id": client_id}, {"$set": {"disponibile_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
     return {"status": "ok", "message": msg}
 
+class WaCustomInput(BaseModel):
+    message: str
+    phone: Optional[str] = None
+
+@api_router.post("/clients/{client_id}/whatsapp/custom")
+async def whatsapp_custom(client_id: str, input: WaCustomInput, user: dict = Depends(get_current_user)):
+    """Messaggio WhatsApp libero scritto dall'operatore, dal numero del negozio del cliente."""
+    c = await get_scoped_client(client_id, user)
+    msg = (input.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="Scrivi un messaggio")
+    allowed = [p for p in [c.get("telefono")] + (c.get("telefoni_extra") or []) if p]
+    if not allowed:
+        raise HTTPException(status_code=400, detail="Il cliente non ha un numero di telefono")
+    phone = (input.phone or "").strip() or allowed[0]
+    if phone not in allowed:
+        raise HTTPException(status_code=400, detail="Numero non associato al cliente")
+    msg = msg.replace("{nome}", c.get("nome", ""))
+    await wa_send(phone, msg, session=await wa_session_cliente(c), tipo="custom", client_id=client_id)
+    return {"status": "ok", "message": msg, "phone": phone}
+
+@api_router.get("/clients/{client_id}/whatsapp/custom")
+async def whatsapp_custom_list(client_id: str, user: dict = Depends(get_current_user)):
+    await get_scoped_client(client_id, user)
+    return await db.wa_log.find({"client_id": client_id, "tipo": "custom"}, {"_id": 0}).sort("at", -1).to_list(5)
+
 async def invia_privacy_cliente(c: dict, queue_review: bool = True) -> dict:
     client_id = c["id"]
     if not c.get("telefono"):
