@@ -163,7 +163,7 @@ export const isCategoriaUsato = (id) => id === "telefono_rigenerato" || id === "
 export const ivaDefaultPerCategoria = (id) => (id === "telefono_usato" ? "art36" : "iva22");
 export const VENDITA_STATI = [
   { id: "ordinato", label: "Ordinato", badge: "bg-amber-500/15 text-amber-700 border-amber-300" },
-  { id: "arrivato", label: "Arrivato", badge: "bg-sky-500/15 text-sky-700 border-sky-300" },
+  { id: "arrivato", label: "In attesa di ritiro", badge: "bg-sky-500/15 text-sky-700 border-sky-300" },
   { id: "consegnato", label: "Ritirato", badge: "bg-emerald-500/15 text-emerald-700 border-emerald-300" },
 ];
 export const venditaStatoLabel = (id) => VENDITA_STATI.find((s) => s.id === (id || "consegnato"))?.label || id;

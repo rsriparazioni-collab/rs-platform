@@ -60,7 +60,7 @@ export default function Vendite() {
   const cambiaStato = async (v, stato, pagato) => {
     try {
       const r = await api.post(`/vendite/${v.id}/stato`, { stato, pagato: pagato ?? null });
-      toast.success(stato === "arrivato" ? "Segnato arrivato · magazzino aggiornato · WhatsApp al cliente inviato" : stato === "consegnato" ? "Vendita chiusa · richiesta recensione in partenza" : "Stato aggiornato");
+      toast.success(stato === "arrivato" ? "In attesa di ritiro · magazzino aggiornato · WhatsApp al cliente inviato" : stato === "consegnato" ? "Vendita chiusa · richiesta recensione in partenza" : "Stato aggiornato");
       setDetail(r.data); load();
     } catch (e) { toast.error(apiError(e, "Aggiornamento fallito")); }
   };
@@ -219,14 +219,15 @@ export default function Vendite() {
               <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4" data-testid="vendita-avanzamento">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Stato: {venditaStatoLabel(detail.stato)}</p>
                 <div className="flex flex-wrap gap-2">
-                  {detail.stato !== "ordinato" && <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "ordinato")} data-testid="vendita-segna-ordinato">Riporta a "Ordinato"</Button>}
-                  {detail.stato === "ordinato" && <Button size="sm" className="bg-sky-600 hover:bg-sky-700" onClick={() => cambiaStato(detail, "arrivato")} data-testid="vendita-segna-arrivato">Arrivato in negozio → avvisa il cliente</Button>}
-                  {detail.stato === "consegnato" && <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "arrivato")} data-testid="vendita-segna-arrivato-indietro">Riporta a "Arrivato (in attesa ritiro)"</Button>}
-                  {detail.stato !== "consegnato" && <>
+                  {detail.stato === "ordinato" && <Button size="sm" className="bg-sky-600 hover:bg-sky-700" onClick={() => cambiaStato(detail, "arrivato")} data-testid="vendita-segna-arrivato">Arrivato in negozio → avvisa il cliente (in attesa di ritiro)</Button>}
+                  {detail.stato === "arrivato" && <>
                     <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => cambiaStato(detail, "consegnato", true)} data-testid="vendita-segna-ritirato">Ritirato e pagato → recensione</Button>
                     <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "consegnato", false)} data-testid="vendita-segna-ritirato-da-pagare">Ritirato, da pagare</Button>
                   </>}
+                  {detail.stato !== "ordinato" && <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "ordinato")} data-testid="vendita-segna-ordinato">Riporta a "Ordinato"</Button>}
+                  {detail.stato === "consegnato" && <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "arrivato")} data-testid="vendita-segna-arrivato-indietro">Riporta a "In attesa di ritiro"</Button>}
                 </div>
+                {detail.stato === "arrivato" && <p className="mt-2 text-xs text-slate-500">Il telefono è in negozio: resta "In attesa di ritiro" finché il cliente non lo ritira davvero. Nessun passaggio automatico.</p>}
                   {(detail.wa_ordinato_sent_at || detail.wa_arrivato_sent_at || detail.wa_ordinato_error || detail.wa_arrivato_error) && (
                     <p className="mt-2 text-xs text-slate-600">
                       {detail.wa_ordinato_sent_at && <span>WA ordine inviato {fmtDate(detail.wa_ordinato_sent_at)} · </span>}

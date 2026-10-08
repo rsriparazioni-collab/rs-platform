@@ -581,3 +581,4 @@ Vedi /app/memory/test_credentials.md
 - GET /clients/{id}/servizi aggiunge le vendite come tipo "vendita_ordine"; ClientDetail le mostra e le apre in /vendite?apri=<id>.
 - Dettaglio vendita: tasto "Ritira l'usato" -> /ritiri?cliente=<id>&negozio=<store_id> (Ritiri.jsx precompila cliente + negozio della vendita).
 - Permuta: RitiroInput.vendita_id -> la vendita riceve permuta_ritiro_id/numero/articolo/valore; saldo WA e "Totale da incassare" nel dettaglio = prezzo*q - acconto - permuta. Lista vendite mostra "permuta -X". Dopo la bolla si torna a /vendite?apri=<id>.
+- Vendite stati: label "arrivato" = "In attesa di ritiro"; flusso guidato nel dettaglio: Ordinato -> (solo) Arrivato/avvisa -> In attesa di ritiro -> Ritirato pagato / da pagare; nessun salto automatico a Ritirato.

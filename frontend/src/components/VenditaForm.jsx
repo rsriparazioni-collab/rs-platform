@@ -188,7 +188,7 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
               {!vendita && (
               <p className="text-xs text-slate-600">
                 {form.stato === "ordinato" && "Il telefono viene messo in ordine al fornitore: magazzino a −1 e WhatsApp al cliente 'il tuo nuovo telefono è stato ordinato, grazie di averci scelto'. All'arrivo lo segni Arrivato."}
-                {form.stato === "arrivato" && "Il telefono è in negozio in attesa del cliente: parte il WhatsApp 'il tuo telefono è arrivato, ti aspettiamo'."}
+                {form.stato === "arrivato" && "Il telefono è in negozio in attesa che il cliente lo ritiri: parte il WhatsApp 'il tuo telefono è arrivato, ti aspettiamo'. Resta in attesa finché non lo segni Ritirato."}
                 {form.stato === "consegnato" && "Vendita completata e ritirata dal cliente: parte la richiesta di recensione dal numero del negozio."}
               </p>
               )}
