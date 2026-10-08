@@ -5689,6 +5689,7 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
     background_tasks.add_task(invia_avvisi_bollette)
     background_tasks.add_task(invia_avvisi_truffe)
     background_tasks.add_task(vendite_module.avvisi_ordini_fermi)
+    background_tasks.add_task(vendite_module.sollecita_ritiri_in_attesa)
     background_tasks.add_task(pulizia_retention_gdpr)
     return {"status": "accepted"}
 
@@ -5903,6 +5904,7 @@ async def avvisi_bollette_loop() -> None:
             last = await db.cron_log.find_one({"job": "bollette-loop"}, {"_id": 0, "last_day": 1})
             if ora.hour >= 10 and (last or {}).get("last_day") != oggi:
                 await invia_avvisi_bollette()
+                await vendite_module.sollecita_ritiri_in_attesa()
                 await db.cron_log.update_one({"job": "bollette-loop"}, {"$set": {"last_day": oggi, "last_run": datetime.now(timezone.utc).isoformat()}}, upsert=True)
         except Exception as e:
             logger.error(f"avvisi_bollette_loop errore: {e}")

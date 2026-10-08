@@ -227,7 +227,7 @@ export default function Vendite() {
                   {detail.stato !== "ordinato" && <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "ordinato")} data-testid="vendita-segna-ordinato">Riporta a "Ordinato"</Button>}
                   {detail.stato === "consegnato" && <Button size="sm" variant="outline" onClick={() => cambiaStato(detail, "arrivato")} data-testid="vendita-segna-arrivato-indietro">Riporta a "In attesa di ritiro"</Button>}
                 </div>
-                {detail.stato === "arrivato" && <p className="mt-2 text-xs text-slate-500">Il telefono è in negozio: resta "In attesa di ritiro" finché il cliente non lo ritira davvero. Nessun passaggio automatico.</p>}
+                {detail.stato === "arrivato" && <p className="mt-2 text-xs text-slate-500">Il telefono è in negozio: resta "In attesa di ritiro" finché il cliente non lo ritira davvero. Nessun passaggio automatico. Dopo 7 giorni parte un WhatsApp di sollecito al cliente{detail.wa_sollecito_ritiro_sent_at ? ` (ultimo inviato ${fmtDate(detail.wa_sollecito_ritiro_sent_at)})` : ""}.</p>}
                   {(detail.wa_ordinato_sent_at || detail.wa_arrivato_sent_at || detail.wa_ordinato_error || detail.wa_arrivato_error) && (
                     <p className="mt-2 text-xs text-slate-600">
                       {detail.wa_ordinato_sent_at && <span>WA ordine inviato {fmtDate(detail.wa_ordinato_sent_at)} · </span>}

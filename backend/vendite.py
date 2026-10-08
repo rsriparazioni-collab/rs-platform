@@ -329,6 +329,36 @@ async def avvisi_ordini_fermi() -> list:
     return esiti
 
 
+RITIRO_SOLLECITO_GIORNI = 7
+MSG_SOLLECITO_RITIRO = ("Ciao {nome}! 😊\nTi ricordiamo che il tuo {articolo} è pronto in negozio da qualche giorno e ti aspetta.{saldo}\n"
+                        "Passa quando vuoi negli orari di apertura, oppure scrivici qui per fissare un orario.\n{negozio}")
+
+
+async def sollecita_ritiri_in_attesa() -> list:
+    """Ogni giorno: WA al cliente per i telefoni 'in attesa di ritiro' da oltre 7 giorni (ripetuto ogni 7 giorni)."""
+    db = _deps["db"]
+    now = datetime.now(timezone.utc)
+    limite = (now - timedelta(days=RITIRO_SOLLECITO_GIORNI)).isoformat()
+    esiti = []
+    async for v in db.vendite.find({"stato": "arrivato", "client_id": {"$nin": [None, ""]}, "arrivato_at": {"$lte": limite}}, {"_id": 0}):
+        ultimo = v.get("wa_sollecito_ritiro_sent_at")
+        if ultimo and ultimo > limite:
+            continue
+        await _wa_vendita(v, MSG_SOLLECITO_RITIRO, "sollecito_ritiro", _saldo_txt(v))
+        esiti.append({"vendita_id": v["id"], "cliente": v.get("client_name", ""), "articolo": v.get("articolo", "")})
+    if esiti:
+        await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "sollecito_ritiro", "at": now.isoformat(), "esiti": esiti})
+    return esiti
+
+
+@router.post("/vendite/sollecita-ritiri")
+async def sollecita_ritiri_ora(user: dict = _user()):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo admin")
+    esiti = await sollecita_ritiri_in_attesa()
+    return {"inviati": len(esiti), "esiti": esiti}
+
+
 @router.post("/vendite/{vendita_id}/whatsapp/arrivato")
 async def wa_arrivato_manuale(vendita_id: str, user: dict = _user()):
     """Reinvia (o invia) al cliente l'avviso 'il tuo telefono è arrivato in negozio', in qualsiasi stato."""
