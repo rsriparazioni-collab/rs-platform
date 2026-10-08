@@ -30,6 +30,7 @@ export default function Vendite() {
   const [importing, setImporting] = useState(false);
   const [assegnaOpen, setAssegnaOpen] = useState(false);
   const presetClientId = useMemo(() => new URLSearchParams(window.location.search).get("cliente"), []);
+  const apriId = useMemo(() => new URLSearchParams(window.location.search).get("apri"), []);
   const canSeeAll = user.role === "admin" || user.can_view_all || user.role === "tecnico";
 
   const load = useCallback(() => {
@@ -45,6 +46,11 @@ export default function Vendite() {
   useEffect(() => { api.get("/meta").then((r) => setMeta(r.data)).catch(() => {}); }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (presetClientId) { setEditing(null); setFormOpen(true); } }, [presetClientId]);
+  useEffect(() => {
+    if (!apriId) return;
+    api.get(`/vendite/${apriId}`).then((r) => { setDetail(r.data); navigate("/vendite", { replace: true }); }).catch(() => toast.error("Vendita non trovata"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apriId]);
 
   const remove = async (v) => {
     if (!window.confirm("Eliminare questa vendita? Se collegata al magazzino la giacenza viene ripristinata.")) return;

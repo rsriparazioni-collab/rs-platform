@@ -962,8 +962,17 @@ async def list_clients(user: dict = Depends(get_current_user),
     async for row in db.servizi.aggregate([{"$group": {"_id": "$client_id", "tipi": {"$addToSet": "$tipo"}}}]):
         tipi_per_client[row["_id"]] = row["tipi"]
     ultimo_servizio = {}
-    async for row in db.servizi.aggregate([{"$sort": {"updated_at": -1}}, {"$group": {"_id": "$client_id", "tipo": {"$first": "$tipo"}, "stato": {"$first": "$stato"}}}]):
-        ultimo_servizio[row["_id"]] = {"tipo": row["tipo"], "stato": row.get("stato") or ""}
+    async for row in db.servizi.aggregate([{"$sort": {"updated_at": -1}}, {"$group": {"_id": "$client_id", "tipo": {"$first": "$tipo"}, "stato": {"$first": "$stato"}, "at": {"$first": "$updated_at"}}}]):
+        ultimo_servizio[row["_id"]] = {"tipo": row["tipo"], "stato": row.get("stato") or "", "at": row.get("at") or ""}
+    vendite_per_client = {}
+    async for row in db.vendite.aggregate([{"$match": {"client_id": {"$nin": [None, ""]}}}, {"$sort": {"updated_at": -1, "created_at": -1}},
+                                           {"$group": {"_id": "$client_id", "stato": {"$first": "$stato"}, "articolo": {"$first": "$articolo"}, "fornitore": {"$first": "$fornitore"},
+                                                       "categoria": {"$first": "$categoria"}, "pagato": {"$first": "$pagato"}, "at": {"$first": {"$ifNull": ["$updated_at", "$created_at"]}}, "n": {"$sum": 1}}}]):
+        vendite_per_client[row["_id"]] = row
+        tipi_per_client.setdefault(row["_id"], []).append("vendita")
+        prev = ultimo_servizio.get(row["_id"])
+        if not prev or (row.get("at") or "") > (prev.get("at") or ""):
+            ultimo_servizio[row["_id"]] = {"tipo": "vendita_ordine", "stato": row.get("stato") or "consegnato", "articolo": row.get("articolo", ""), "pagato": row.get("pagato")}
     out = []
     def _pkey(c):
         for k in ("codice_fiscale", "p_iva", "telefono"):
@@ -985,6 +994,10 @@ async def list_clients(user: dict = Depends(get_current_user),
         tipi = set(tipi_per_client.get(c["id"], []))
         if not cliente_energia(c):
             c["stato_servizio"] = ultimo_servizio.get(c["id"])
+            v = vendite_per_client.get(c["id"])
+            if v and not c.get("fornitore_provenienza"):
+                c["vendita_fornitore"] = v.get("fornitore") or ""
+                c["vendita_articolo"] = v.get("articolo") or ""
         cats = set()
         if c.get("data_contratto"):
             cats.add("energia")
@@ -5519,7 +5532,12 @@ async def list_servizio_attachments(servizio_id: str, user: dict = Depends(get_c
 async def client_servizi(client_id: str, user: dict = Depends(get_current_user)):
     await get_scoped_client(client_id, user)
     servizi = await db.servizi.find({"client_id": client_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return [serialize_servizio(s) for s in servizi]
+    out = [serialize_servizio(s) for s in servizi]
+    async for v in db.vendite.find({"client_id": client_id}, {"_id": 0}).sort("data_vendita", -1):
+        out.append({"id": v["id"], "tipo": "vendita_ordine", "prodotto": v.get("articolo", ""), "fornitore": v.get("fornitore", ""), "categoria": v.get("categoria", ""),
+                    "stato": v.get("stato") or "consegnato", "pagato": v.get("pagato"), "prezzo": v.get("prezzo"), "data_vendita": v.get("data_vendita"),
+                    "store_id": v.get("store_id"), "created_at": v.get("created_at"), "_vendita": v})
+    return out
 
 @api_router.get("/vincoli")
 async def report_vincoli(user: dict = Depends(get_current_user), giorni: int = 90):

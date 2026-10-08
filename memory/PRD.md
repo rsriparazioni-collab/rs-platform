@@ -575,3 +575,7 @@ Vedi /app/memory/test_credentials.md
 - UI: Dashboard Centro Alert tasto "WA bollette (N)" con lista e conferma (AvvisiBolletteButton.jsx); voce in messaggi-previsti cliente.
 - Dopo invio WA bollette: lavorazione -> "richieste_bollette" (su tutte le utenze con stesso telefono/contratto); Centro Alert mostra badge "WA bollette <data>" (campo bollette_msg_sent_at in /alerts rinnovi).
 - Clienti: filtro toggle "WA bollette inviato" (?bollette_inviato=1) + badge data invio in lista.
+
+## 2026-10-07 — Clienti <-> Vendite collegati
+- list_clients include db.vendite: tag "rip", stato_servizio tipo "vendita_ordine" (stato/articolo/pagato), vendita_fornitore/vendita_articolo (colonna Fornitore).
+- GET /clients/{id}/servizi aggiunge le vendite come tipo "vendita_ordine"; ClientDetail le mostra e le apre in /vendite?apri=<id>.

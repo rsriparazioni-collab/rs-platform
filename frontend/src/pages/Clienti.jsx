@@ -293,7 +293,7 @@ export default function Clienti() {
                       {!(c.tipi_servizi || []).length && <span className="text-xs text-slate-400">-</span>}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{c.fornitore_provenienza || "-"}</td>
+                  <td className="px-4 py-3 text-slate-600">{c.fornitore_provenienza || c.vendita_fornitore || "-"}{c.vendita_articolo && <span className="block text-xs text-slate-400">{c.vendita_articolo}</span>}</td>
                   <td className="px-4 py-3">
                     {c.stato_servizio ? (
                       <span className={`status-badge ${statoServizioBadge(c.stato_servizio)}`} data-testid={`cliente-stato-servizio-${i}`}>{statoServizioLabel(c.stato_servizio)}</span>
@@ -352,6 +352,7 @@ export default function Clienti() {
                       if (tipo === "apri_utenza") { setDetailRow(d); return; }
                       if (tipo === "ritiro") { navigate(`/ritiri?cliente=${d.id}`); return; }
                       if (tipo === "apri_servizio") { setServizioDetail(d); return; }
+                      if (tipo === "apri_vendita") { navigate(`/vendite?apri=${d.id}`); return; }
                       setServizioForm({ tipo, client: { id: d.id, label: `${d.cognome} ${d.nome}` } });
                     }} />
       <ServizioDetail servizio={servizioDetail} onClose={() => setServizioDetail(null)} onChanged={() => { load(); setDetailRow((r) => (r ? { ...r } : r)); }}
