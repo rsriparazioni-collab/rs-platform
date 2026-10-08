@@ -199,10 +199,15 @@ export default function Vendite() {
                 {detail.note && <div className="col-span-full"><p className="text-xs text-slate-500">Note</p><p>{detail.note}</p></div>}
               </div>
               {detail.client_id ? (
+                <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" className="gap-1.5 border-sky-300 text-sky-800" data-testid="vendita-wa-arrivato"
                         onClick={async () => { try { const r = await api.post(`/vendite/${detail.id}/whatsapp/arrivato`); toast.success("WhatsApp 'telefono arrivato in negozio' inviato al cliente"); setDetail(r.data); load(); } catch (e) { toast.error(apiError(e, "Invio fallito")); } }}>
                   <MessageCircle className="h-4 w-4" /> {detail.wa_arrivato_sent_at ? `Reinvia avviso "arrivato" (inviato ${fmtDate(detail.wa_arrivato_sent_at)})` : 'Avvisa il cliente: "il tuo telefono è arrivato"'}
                 </Button>
+                <Button size="sm" className="gap-1.5 bg-teal-600 hover:bg-teal-700" onClick={() => navigate(`/ritiri?cliente=${detail.client_id}&negozio=${detail.store_id}`)} data-testid="vendita-add-ritiro">
+                  <PackageOpen className="h-4 w-4" /> Ritira l'usato
+                </Button>
+                </div>
               ) : (
                 <Button size="sm" className="gap-1.5 bg-amber-600 hover:bg-amber-700" onClick={() => setAssegnaOpen(true)} data-testid="vendita-assegna-cliente-main">
                   <UserPlus className="h-4 w-4" /> Collega a un cliente (esistente o nuovo)
@@ -238,7 +243,6 @@ export default function Vendite() {
                     <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setServizioForm({ tipo: "riparazione", client: { id: detail.client_id, label: detail.client_name } })} data-testid="vendita-add-riparazione"><Wrench className="h-4 w-4" /> Riparazione</Button>
                     <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setServizioForm({ tipo: "sim", client: { id: detail.client_id, label: detail.client_name } })} data-testid="vendita-add-sim"><Smartphone className="h-4 w-4" /> SIM</Button>
                     <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setServizioForm({ tipo: "internet", client: { id: detail.client_id, label: detail.client_name } })} data-testid="vendita-add-internet"><Wifi className="h-4 w-4" /> Internet / Fisso</Button>
-                    <Button size="sm" variant="outline" className="gap-1.5" onClick={() => navigate(`/ritiri?cliente=${detail.client_id}`)} data-testid="vendita-add-ritiro"><PackageOpen className="h-4 w-4" /> Ritiro telefono</Button>
                     <Button size="sm" variant="outline" className="gap-1.5" onClick={() => navigate(`/clienti?apri=${detail.client_id}`)} data-testid="vendita-add-utenza"><Zap className="h-4 w-4" /> Scheda cliente / Utenze</Button>
                   </div>
                 </div>

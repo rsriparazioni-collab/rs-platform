@@ -579,3 +579,4 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-07 — Clienti <-> Vendite collegati
 - list_clients include db.vendite: tag "rip", stato_servizio tipo "vendita_ordine" (stato/articolo/pagato), vendita_fornitore/vendita_articolo (colonna Fornitore).
 - GET /clients/{id}/servizi aggiunge le vendite come tipo "vendita_ordine"; ClientDetail le mostra e le apre in /vendite?apri=<id>.
+- Dettaglio vendita: tasto "Ritira l'usato" -> /ritiri?cliente=<id>&negozio=<store_id> (Ritiri.jsx precompila cliente + negozio della vendita).
