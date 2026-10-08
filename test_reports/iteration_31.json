@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only E2E test of new feature 'Ritira l'usato' in /vendite. Logged in as admin with MFA, linked existing TEST_82685b client to a vendita (all vendite were 'senza scheda'), opened detail dialog, clicked data-testid='vendita-add-ritiro'. Navigation to /ritiri?cliente=...&negozio=... worked; the Ritiro dialog opened automatically and was correctly prefilled with: Negozio=Sondrio (matches vendita store), Cognome=TEST_82685b, Nome=TEST_Regression, Telefono=+390000000001. Form was cancelled without saving as requested.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Ritiri — Nuova bolla", "issues": ["Campo 'Data ritiro' usa <input type='date'> (date picker nativo browser, mostra placeholder mm/dd/yyyy). Non blocca il flusso ma non è coerente con shadcn Calendar/DatePicker usato altrove."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Vendite.jsx L207: navigate uses template string with client_id/store_id — OK. Consider URL-encoding (safe since IDs are UUIDs).",
+    "Ritiri.jsx L112-122: useEffect depends on meta.stores — if cliente param is set but store list not yet loaded, effect waits; after it reruns correctly. OK."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "test_credentials": "Admin rsriparazioni@gmail.com / EnricoRS@26 + TOTP (secret ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV)",
+  "seed_data_creation": "No new seed data. Linked existing client TEST_Regression / TEST_82685b (phone +390000000001) to existing vendita (first row, Sondrio, IPHONE 11 Cristina Caudullo) via /api/vendite/{id}/cliente to make the flow testable.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Prima vendita in lista è ora associata al cliente TEST_Regression TEST_82685b (prima era 'senza scheda'). Il resto delle vendite rimane 'senza scheda'. Flow 'Ritira l'usato' verificato OK (prefill negozio+nome+cognome+telefono). Ritiro NON salvato.",
+  "rca of the issue": "N/A — nessun bug trovato nel flusso richiesto."
+}
