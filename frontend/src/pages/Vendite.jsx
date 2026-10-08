@@ -161,7 +161,7 @@ export default function Vendite() {
                 <td className="px-4 py-3"><span className="flex flex-wrap gap-1"><span className={`status-badge ${venditaStatoBadge(v.stato)}`} data-testid={`vendita-stato-badge-${i}`}>{venditaStatoLabel(v.stato)}</span>{v.pagato === false && <span className="status-badge border-rose-300 bg-rose-500/10 text-rose-700">Da pagare</span>}</span></td>
                 <td className="px-4 py-3 text-slate-700"><ClienteLink clientId={v.client_id}>{v.client_name || v.cliente_nome || "-"}</ClienteLink>{!v.client_id && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" data-testid={`vendita-senza-scheda-${v.id}`}>senza scheda</span>}</td>
                 <td className="px-4 py-3 text-slate-600">{storeName(v.store_id)}</td>
-                <td className="px-4 py-3 text-right font-semibold">{eur(v.prezzo * (v.quantita || 1))}</td>
+                <td className="px-4 py-3 text-right font-semibold">{eur(v.prezzo * (v.quantita || 1))}{v.permuta_valore > 0 && <span className="block text-xs font-normal text-teal-700" data-testid={`vendita-permuta-${v.id}`}>permuta -{eur(v.permuta_valore)}</span>}</td>
                 <td className="px-4 py-3 text-right text-emerald-700">{v.costo != null ? eur((v.prezzo - v.costo) * (v.quantita || 1)) : "-"}</td>
                 <td className="px-4 py-3 text-slate-600">{v.numero_fattura || "-"}</td>
               </tr>
@@ -195,7 +195,9 @@ export default function Vendite() {
                 <Info l="N° fattura" v={detail.numero_fattura || "-"} />
                 <Info l="Fornitore (ordinato da)" v={detail.fornitore || "-"} />
                 <Info l="Stato" v={`${venditaStatoLabel(detail.stato)}${detail.pagato === false ? " · Da pagare" : detail.stato === "consegnato" ? " · Pagato" : ""}`} />
-                {detail.acconto > 0 && <Info l="Acconto / Saldo" v={`${eur(detail.acconto)} / ${eur(detail.prezzo * (detail.quantita || 1) - detail.acconto)}`} />}
+                {detail.acconto > 0 && <Info l="Acconto" v={eur(detail.acconto)} />}
+                {detail.permuta_ritiro_id && <Info l={`Permuta usato (bolla ${detail.permuta_numero})`} v={`- ${eur(detail.permuta_valore)} · ${detail.permuta_articolo}`} />}
+                {(detail.acconto > 0 || detail.permuta_ritiro_id) && <div data-testid="vendita-totale-netto"><p className="text-xs text-slate-500">Totale da incassare</p><p className="font-bold text-emerald-700">{eur(detail.prezzo * (detail.quantita || 1) - (detail.acconto || 0) - (detail.permuta_valore || 0))}</p></div>}
                 {detail.note && <div className="col-span-full"><p className="text-xs text-slate-500">Note</p><p>{detail.note}</p></div>}
               </div>
               {detail.client_id ? (
@@ -204,8 +206,8 @@ export default function Vendite() {
                         onClick={async () => { try { const r = await api.post(`/vendite/${detail.id}/whatsapp/arrivato`); toast.success("WhatsApp 'telefono arrivato in negozio' inviato al cliente"); setDetail(r.data); load(); } catch (e) { toast.error(apiError(e, "Invio fallito")); } }}>
                   <MessageCircle className="h-4 w-4" /> {detail.wa_arrivato_sent_at ? `Reinvia avviso "arrivato" (inviato ${fmtDate(detail.wa_arrivato_sent_at)})` : 'Avvisa il cliente: "il tuo telefono è arrivato"'}
                 </Button>
-                <Button size="sm" className="gap-1.5 bg-teal-600 hover:bg-teal-700" onClick={() => navigate(`/ritiri?cliente=${detail.client_id}&negozio=${detail.store_id}`)} data-testid="vendita-add-ritiro">
-                  <PackageOpen className="h-4 w-4" /> Ritira l'usato
+                <Button size="sm" className="gap-1.5 bg-teal-600 hover:bg-teal-700" onClick={() => navigate(`/ritiri?cliente=${detail.client_id}&negozio=${detail.store_id}&vendita=${detail.id}`)} data-testid="vendita-add-ritiro" disabled={Boolean(detail.permuta_ritiro_id)}>
+                  <PackageOpen className="h-4 w-4" /> {detail.permuta_ritiro_id ? `Usato ritirato (bolla ${detail.permuta_numero})` : "Ritira l'usato"}
                 </Button>
                 </div>
               ) : (

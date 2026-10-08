@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Plus, Search, Recycle, FileDown, Trash2, Wrench, Paperclip, Package, PenLine, KeyRound, MessageCircle, Camera } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
@@ -33,6 +33,7 @@ export default function Ritiri() {
   const [filters, setFilters] = useState({ q: "", venditore_id: "all" });
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
   const [nuoviDoc, setNuoviDoc] = useState([]);
   const [docCliente, setDocCliente] = useState([]);
@@ -111,15 +112,16 @@ export default function Ritiri() {
 
   const clienteParam = new URLSearchParams(window.location.search).get("cliente");
   const negozioParam = new URLSearchParams(window.location.search).get("negozio");
+  const venditaParam = new URLSearchParams(window.location.search).get("vendita");
   useEffect(() => {
     if (!clienteParam || !meta.stores.length) return;
     api.get(`/clients/${clienteParam}`).then((r) => {
       const c = r.data;
       const storeOk = meta.stores.some((s) => s.id === negozioParam);
-      setForm({ ...EMPTY, store_id: (storeOk && negozioParam) || c.venditore_id || meta.stores[0]?.id || "", client_id: c.id, nome: c.nome || "", cognome: c.cognome || "", codice_fiscale: c.codice_fiscale || "", telefono: c.telefono || "" });
+      setForm({ ...EMPTY, store_id: (storeOk && negozioParam) || c.venditore_id || meta.stores[0]?.id || "", client_id: c.id, nome: c.nome || "", cognome: c.cognome || "", codice_fiscale: c.codice_fiscale || "", telefono: c.telefono || "", vendita_id: venditaParam || "" });
       setFormOpen(true);
     }).catch(() => {});
-  }, [clienteParam, negozioParam, meta.stores]);
+  }, [clienteParam, negozioParam, venditaParam, meta.stores]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -141,10 +143,11 @@ export default function Ritiri() {
         try { await api.post(`/ritiri/${res.data.id}/documenti-da-cliente`, { attachment_ids: riusaIds }); esiti.push(`${riusaIds.length} documenti riusati dalla scheda cliente`); }
         catch (e) { toast.error(apiError(e, "Documenti del cliente non allegati")); }
       }
-      toast.success(`Bolla ${res.data.numero} generata${esiti.length ? ` con ${esiti.join(" e ")}` : ""} · firma inviata via WhatsApp`);
+      toast.success(`Bolla ${res.data.numero} generata${esiti.length ? ` con ${esiti.join(" e ")}` : ""} · firma inviata via WhatsApp${form.vendita_id ? " · permuta scalata dalla vendita" : ""}`);
       setNuoviDoc([]);
       setRiusaIds([]);
       setFormOpen(false);
+      if (form.vendita_id) { navigate(`/vendite?apri=${form.vendita_id}`); return; }
       load();
     } catch (err) {
       toast.error(apiError(err, "Salvataggio fallito"));
@@ -420,7 +423,7 @@ export default function Ritiri() {
                 <Input value={form.imei} onChange={(e) => setForm({ ...form, imei: e.target.value })} data-testid="ritiro-form-imei" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prezzo ritiro €</Label>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prezzo ritiro €{form.vendita_id ? " (scalato dalla vendita come permuta)" : ""}</Label>
                 <Input type="number" step="0.01" value={form.prezzo_ritiro}
                        onChange={(e) => setForm({ ...form, prezzo_ritiro: e.target.value })} data-testid="ritiro-form-prezzo" />
               </div>

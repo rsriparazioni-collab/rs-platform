@@ -272,7 +272,7 @@ async def create_vendita(input: VenditaInput, user: dict = _user()):
 
 
 def _saldo_txt(v: dict) -> str:
-    saldo = round(float(v.get("prezzo") or 0) * int(v.get("quantita") or 1) - float(v.get("acconto") or 0), 2)
+    saldo = round(float(v.get("prezzo") or 0) * int(v.get("quantita") or 1) - float(v.get("acconto") or 0) - float(v.get("permuta_valore") or 0), 2)
     return f"\nSaldo alla consegna: {saldo:.2f} €." if not v.get("pagato") and saldo > 0 else ""
 
 

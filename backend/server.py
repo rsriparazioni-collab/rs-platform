@@ -3207,6 +3207,7 @@ class RitiroInput(BaseModel):
     costo_ricambi: Optional[float] = None  # costo a nostro carico (es. display), NON in bolla
     crea_rigenerato: bool = True
     telefono: str = ""
+    vendita_id: str = ""
 
 def ritiri_scope(user: dict) -> dict:
     if "riparazioni" not in user_sections(user):
@@ -3306,6 +3307,10 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
     asyncio.create_task(firma_ritiro_module.invia_richiesta_firma(data))
     if data.get("client_id"):
         await db.clients.update_one({"id": data["client_id"], "$or": [{"telefono": ""}, {"telefono": None}]}, {"$set": {"telefono": data["telefono"]}})
+    if data.get("vendita_id"):
+        await db.vendite.update_one({"id": data["vendita_id"]}, {"$set": {"permuta_ritiro_id": data["id"], "permuta_numero": data["numero"],
+                                                                        "permuta_articolo": data["articolo"], "permuta_valore": round(float(data.get("prezzo_ritiro") or 0), 2),
+                                                                        "updated_at": now}})
     return data
 
 @api_router.post("/ritiri/{ritiro_id}/firma-otp")
