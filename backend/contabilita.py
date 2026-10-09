@@ -152,14 +152,12 @@ def _norm(c: dict) -> dict:
     c["scontrini"] = round(c["riparazioni"] + c["merce"] + c["art74"], 2)
     c["fatture_pos"] = round(sum(x["importo"] for x in fatt if x["pagamento"].lower() == "pos"), 2)
     c["fatture_contanti"] = round(sum(x["importo"] for x in fatt if x["pagamento"].lower() == "contanti"), 2)
-    if "contanti_inseriti" in c:
-        c["contanti_inseriti"] = _f(c.get("contanti_inseriti"))
-        c["pos_inseriti"] = _f(c.get("pos_inseriti"))
-        c["contanti"] = round(c["contanti_inseriti"] + c["fatture_contanti"], 2)
-        c["pos"] = round(c["pos_inseriti"] + c["fatture_pos"], 2)
-    else:
-        c["contanti_inseriti"] = round(c["contanti"] - c["fatture_contanti"], 2)
-        c["pos_inseriti"] = round(c["pos"] - c["fatture_pos"], 2)
+    if "contanti_inseriti" not in c:
+        c["contanti_inseriti"], c["pos_inseriti"] = c["contanti"], c["pos"]
+    c["contanti_inseriti"] = _f(c.get("contanti_inseriti"))
+    c["pos_inseriti"] = _f(c.get("pos_inseriti"))
+    c["contanti"] = round(c["contanti_inseriti"] + c["fatture_contanti"], 2)
+    c["pos"] = round(c["pos_inseriti"] + c["fatture_pos"], 2)
     c["pos_scontrini"] = c["pos_inseriti"]
     c["contanti_scontrini"] = c["contanti_inseriti"]
     c["incassato"] = round(c["contanti"] + c["pos"], 2)

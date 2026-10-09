@@ -590,3 +590,4 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-09 — Clienti <-> Ritiri collegati
 - list_clients include db.ritiri: tag "ritiro" (filtro tipo_servizio=ritiro), stato_servizio tipo "ritiro" (articolo, bolla, firma_stato). GET /clients/{id}/servizi aggiunge i ritiri; ClientDetail li elenca e apre /ritiri?apri=<id> (riga evidenziata + ricerca su n. bolla). Nuovo GET /ritiri/{id}.
+- Fix 2026-10-09: _norm tratta SEMPRE contanti/pos salvati come "solo scontrini" (anche docs legacy senza *_inseriti) e somma le fatture; verificato con caso Morbegno 08/10 (fattura 183 contanti) -> diff 0.
