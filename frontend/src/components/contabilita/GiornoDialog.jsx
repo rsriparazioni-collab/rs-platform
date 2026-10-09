@@ -10,16 +10,16 @@ import { Num, eur } from "./shared";
 const CAMPI = [["riparazioni", "Riparazioni"], ["merce", "Merce"], ["art74", "Art. 74"], ["contanti", "Contanti"], ["pos", "POS"], ["versati", "Versati"]];
 
 export const GiornoDialog = ({ storeId, riga, onClose, onSaved }) => {
-  const [f, setF] = useState({ riparazioni: riga.riparazioni || "", merce: riga.merce || "", art74: riga.art74 || "", contanti: riga.contanti || "", pos: riga.pos || "", versati: riga.versati || "", non_riscosso: riga.non_riscosso || "", non_riscosso_note: riga.non_riscosso_note || "", note: riga.note || "", fatture_dettaglio: riga.fatture_dettaglio || [] });
+  const [f, setF] = useState({ riparazioni: riga.riparazioni || "", merce: riga.merce || "", art74: riga.art74 || "", contanti: riga.contanti_inseriti ?? riga.contanti ?? "", pos: riga.pos_inseriti ?? riga.pos ?? "", versati: riga.versati || "", non_riscosso: riga.non_riscosso || "", non_riscosso_note: riga.non_riscosso_note || "", note: riga.note || "", fatture_dettaglio: riga.fatture_dettaglio || [] });
   const [saving, setSaving] = useState(false);
   const n = (k) => parseFloat(f[k]) || 0;
   const fatture = f.fatture_dettaglio.reduce((a, x) => a + (parseFloat(x.importo) || 0), 0);
   const fattPos = f.fatture_dettaglio.filter((x) => x.pagamento === "pos").reduce((a, x) => a + (parseFloat(x.importo) || 0), 0);
   const fattCont = f.fatture_dettaglio.filter((x) => x.pagamento === "contanti").reduce((a, x) => a + (parseFloat(x.importo) || 0), 0);
   const scontrini = n("riparazioni") + n("merce") + n("art74");
-  const incassato = n("contanti") + n("pos");
+  const incassato = n("contanti") + n("pos") + fattPos + fattCont;
   const nonRiscosso = n("non_riscosso");
-  const diff = scontrini - (n("contanti") - fattCont) - (n("pos") - fattPos) - nonRiscosso;
+  const diff = scontrini - n("contanti") - n("pos") - nonRiscosso;
   const nonQuadra = incassato > 0 && Math.abs(diff) >= 1;
   const totale = scontrini + fatture;
   const setFatt = (i, k, v) => setF({ ...f, fatture_dettaglio: f.fatture_dettaglio.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
@@ -41,7 +41,7 @@ export const GiornoDialog = ({ storeId, riga, onClose, onSaved }) => {
         <div className="rounded-lg border border-slate-200 p-3">
           <div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase text-slate-500">Fatture ({eur(fatture)})</p>
             <Button size="sm" variant="ghost" onClick={() => setF({ ...f, fatture_dettaglio: [...f.fatture_dettaglio, { numero: "", importo: "", pagamento: "pos" }] })} data-testid="giorno-add-fattura">+ fattura</Button></div>
-          <p className="text-[11px] text-slate-500">Contanti e POS vanno inseriti con il totale del terminale/cassa (fatture comprese): le fatture pagate POS o contanti vengono scalate automaticamente nella quadratura.{fattPos || fattCont ? ` Scalate: POS ${eur(fattPos)} · contanti ${eur(fattCont)}.` : ""}</p>
+          <p className="text-[11px] text-slate-500">Nei campi Contanti e POS inserisci solo l'incasso da scontrini: le fatture pagate POS o contanti vengono aggiunte automaticamente ai totali.{fattPos || fattCont ? ` Totali finali: contanti ${eur(n("contanti") + fattCont)} · POS ${eur(n("pos") + fattPos)}.` : ""}</p>
           {f.fatture_dettaglio.map((x, i) => (
             <div key={i} className="mt-2 grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2">
               <Input placeholder="N° 133/A" value={x.numero} onChange={(e) => setFatt(i, "numero", e.target.value)} className="h-8" data-testid={`fattura-numero-${i}`} />
@@ -63,7 +63,7 @@ export const GiornoDialog = ({ storeId, riga, onClose, onSaved }) => {
         </div>
         <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
           <span>Totale scontrinato (scontrini + fatture) <b data-testid="giorno-totale">{eur(totale)}</b></span>
-          <span className={nonQuadra ? "font-medium text-amber-600" : "text-slate-500"} data-testid="giorno-quadratura">Scontrini {eur(scontrini)} / incassato {eur(incassato)}{fattPos || fattCont ? ` − fatture ${eur(fattPos + fattCont)}` : ""}{nonRiscosso ? ` + non riscosso ${eur(nonRiscosso)}` : ""}{nonQuadra ? ` ≠ (diff. ${eur(diff)})` : " ✓"}</span>
+          <span className={nonQuadra ? "font-medium text-amber-600" : "text-slate-500"} data-testid="giorno-quadratura">Scontrini {eur(scontrini)} / incassato da scontrini {eur(n("contanti") + n("pos"))}{nonRiscosso ? ` + non riscosso ${eur(nonRiscosso)}` : ""}{nonQuadra ? ` ≠ (diff. ${eur(diff)})` : " ✓"}{fattPos || fattCont ? ` · incasso totale con fatture ${eur(incassato)}` : ""}</span>
         </div>
         {nonQuadra && <p className="text-xs text-amber-700" data-testid="giorno-quadratura-avviso">Al salvataggio il negozio riceverà un WhatsApp di avviso sulla differenza.</p>}
         <div className="flex justify-between">

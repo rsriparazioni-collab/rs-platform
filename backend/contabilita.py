@@ -152,8 +152,16 @@ def _norm(c: dict) -> dict:
     c["scontrini"] = round(c["riparazioni"] + c["merce"] + c["art74"], 2)
     c["fatture_pos"] = round(sum(x["importo"] for x in fatt if x["pagamento"].lower() == "pos"), 2)
     c["fatture_contanti"] = round(sum(x["importo"] for x in fatt if x["pagamento"].lower() == "contanti"), 2)
-    c["pos_scontrini"] = round(c["pos"] - c["fatture_pos"], 2)
-    c["contanti_scontrini"] = round(c["contanti"] - c["fatture_contanti"], 2)
+    if "contanti_inseriti" in c:
+        c["contanti_inseriti"] = _f(c.get("contanti_inseriti"))
+        c["pos_inseriti"] = _f(c.get("pos_inseriti"))
+        c["contanti"] = round(c["contanti_inseriti"] + c["fatture_contanti"], 2)
+        c["pos"] = round(c["pos_inseriti"] + c["fatture_pos"], 2)
+    else:
+        c["contanti_inseriti"] = round(c["contanti"] - c["fatture_contanti"], 2)
+        c["pos_inseriti"] = round(c["pos"] - c["fatture_pos"], 2)
+    c["pos_scontrini"] = c["pos_inseriti"]
+    c["contanti_scontrini"] = c["contanti_inseriti"]
     c["incassato"] = round(c["contanti"] + c["pos"], 2)
     c["quadratura_diff"] = round(c["scontrini"] - c["contanti_scontrini"] - c["pos_scontrini"] - c["non_riscosso"], 2)
     c["totale"] = round(c["scontrini"] + c["fatture"], 2)
@@ -312,8 +320,8 @@ async def avviso_quadratura(store_id: str, c: dict) -> None:
     d = c["data"]
     testo = (f"⚠️ *{s['nome']}* - corrispettivo del {d[8:]}/{d[5:7]}/{d[:4]} NON quadra\n"
              f"Scontrini (riparazioni+merce+art.74): {_eur(c['scontrini'])}\n"
-             f"Contanti {_eur(c['contanti'])} + POS {_eur(c['pos'])}"
-             + (f" - fatture pagate POS/contanti {_eur(c.get('fatture_pos', 0) + c.get('fatture_contanti', 0))}" if (c.get("fatture_pos") or c.get("fatture_contanti")) else "")
+             f"Contanti da scontrini {_eur(c['contanti_scontrini'])} + POS da scontrini {_eur(c['pos_scontrini'])}"
+             + (f" (fatture a parte: POS {_eur(c.get('fatture_pos', 0))}, contanti {_eur(c.get('fatture_contanti', 0))})" if (c.get("fatture_pos") or c.get("fatture_contanti")) else "")
              + (f" + non riscosso {_eur(c['non_riscosso'])}" if c.get("non_riscosso") else "")
              + f" = {_eur(c['contanti_scontrini'] + c['pos_scontrini'] + c.get('non_riscosso', 0))}\n"
              f"Differenza: *{_eur(diff)}* ({'mancano' if diff > 0 else 'in più'} rispetto agli scontrini). Controlla e correggi il corrispettivo.")
@@ -331,7 +339,9 @@ async def put_corrispettivo(store_id: str, data: str, body: CorrispettivoInput, 
         date.fromisoformat(data)
     except ValueError:
         raise HTTPException(status_code=400, detail="Data non valida")
-    doc = _norm(body.model_dump())
+    raw = body.model_dump()
+    raw["contanti_inseriti"], raw["pos_inseriti"] = raw.get("contanti") or 0, raw.get("pos") or 0
+    doc = _norm(raw)
     doc.update({"store_id": store_id, "data": data, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("name", "")})
     await _d["db"].corrispettivi.update_one({"store_id": store_id, "data": data}, {"$set": doc, "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
     asyncio.create_task(avviso_quadratura(store_id, doc))
