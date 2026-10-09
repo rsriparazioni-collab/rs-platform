@@ -583,3 +583,6 @@ Vedi /app/memory/test_credentials.md
 - Permuta: RitiroInput.vendita_id -> la vendita riceve permuta_ritiro_id/numero/articolo/valore; saldo WA e "Totale da incassare" nel dettaglio = prezzo*q - acconto - permuta. Lista vendite mostra "permuta -X". Dopo la bolla si torna a /vendite?apri=<id>.
 - Vendite stati: label "arrivato" = "In attesa di ritiro"; flusso guidato nel dettaglio: Ordinato -> (solo) Arrivato/avvisa -> In attesa di ritiro -> Ritirato pagato / da pagare; nessun salto automatico a Ritirato.
 - Sollecito ritiro: vendite.sollecita_ritiri_in_attesa (stato arrivato, arrivato_at > 7gg, ripetuto ogni 7gg, campo wa_sollecito_ritiro_sent_at), nel cron webhook + loop interno ore 10. POST /vendite/sollecita-ritiri (admin) per invio manuale.
+
+## 2026-10-08 — Corrispettivi: fatture POS/contanti scalate nella quadratura
+- _norm: fatture_pos/fatture_contanti, pos_scontrini=pos-fatture_pos, contanti_scontrini=contanti-fatture_contanti; quadratura_diff = scontrini - contanti_scontrini - pos_scontrini - non_riscosso. Contanti/POS restano lordi (da versare include fatture contanti). Totali mese includono fatture_pos/fatture_contanti; GiornoDialog e riepilogo aggiornati.

@@ -150,8 +150,12 @@ def _norm(c: dict) -> dict:
         c[k] = _f(c.get(k))
     c["non_riscosso_note"] = (c.get("non_riscosso_note") or "")[:200]
     c["scontrini"] = round(c["riparazioni"] + c["merce"] + c["art74"], 2)
+    c["fatture_pos"] = round(sum(x["importo"] for x in fatt if x["pagamento"].lower() == "pos"), 2)
+    c["fatture_contanti"] = round(sum(x["importo"] for x in fatt if x["pagamento"].lower() == "contanti"), 2)
+    c["pos_scontrini"] = round(c["pos"] - c["fatture_pos"], 2)
+    c["contanti_scontrini"] = round(c["contanti"] - c["fatture_contanti"], 2)
     c["incassato"] = round(c["contanti"] + c["pos"], 2)
-    c["quadratura_diff"] = round(c["scontrini"] - c["incassato"] - c["non_riscosso"], 2)
+    c["quadratura_diff"] = round(c["scontrini"] - c["contanti_scontrini"] - c["pos_scontrini"] - c["non_riscosso"], 2)
     c["totale"] = round(c["scontrini"] + c["fatture"], 2)
     c["iva"] = round((c["riparazioni"] + c["merce"] + c["fatture"]) * 22 / 122, 2)
     return c
@@ -239,7 +243,7 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     for g in range(1, n + 1):
         d = f"{pref}-{g:02d}"
         righe.append(giorni.get(d) or {"data": d, "vuoto": True})
-    keys = ("riparazioni", "merce", "art74", "fatture", "totale", "contanti", "pos", "incassato", "versati", "iva", "non_riscosso")
+    keys = ("riparazioni", "merce", "art74", "fatture", "totale", "contanti", "pos", "incassato", "versati", "iva", "non_riscosso", "fatture_pos", "fatture_contanti")
     tot = {k: round(sum(_f(c.get(k)) for c in giorni.values()), 2) for k in keys}
     tot["spese_contanti"] = round(sum(_f(s.get("importo")) for s in spese), 2)
     tot["cassa_netta"] = round(tot["contanti"] - tot["spese_contanti"], 2)
@@ -308,7 +312,10 @@ async def avviso_quadratura(store_id: str, c: dict) -> None:
     d = c["data"]
     testo = (f"⚠️ *{s['nome']}* - corrispettivo del {d[8:]}/{d[5:7]}/{d[:4]} NON quadra\n"
              f"Scontrini (riparazioni+merce+art.74): {_eur(c['scontrini'])}\n"
-             f"Contanti {_eur(c['contanti'])} + POS {_eur(c['pos'])}" + (f" + non riscosso {_eur(c['non_riscosso'])}" if c.get("non_riscosso") else "") + f" = {_eur(c['incassato'] + c.get('non_riscosso', 0))}\n"
+             f"Contanti {_eur(c['contanti'])} + POS {_eur(c['pos'])}"
+             + (f" - fatture pagate POS/contanti {_eur(c.get('fatture_pos', 0) + c.get('fatture_contanti', 0))}" if (c.get("fatture_pos") or c.get("fatture_contanti")) else "")
+             + (f" + non riscosso {_eur(c['non_riscosso'])}" if c.get("non_riscosso") else "")
+             + f" = {_eur(c['contanti_scontrini'] + c['pos_scontrini'] + c.get('non_riscosso', 0))}\n"
              f"Differenza: *{_eur(diff)}* ({'mancano' if diff > 0 else 'in più'} rispetto agli scontrini). Controlla e correggi il corrispettivo.")
     try:
         await _d["wa_send"](numero, testo, session=store_id, tipo="corrispettivi_quadratura")
@@ -542,7 +549,8 @@ def _testo_wa_store(nome: str, c: Optional[dict], spese: list, data: str) -> str
     if c["fatture"]:
         det = ", ".join(f"{x['numero']} {x['pagamento']}".strip() for x in c["fatture_dettaglio"])
         righe.append(f"Fatture: {_eur(c['fatture'])}" + (f" ({det})" if det else ""))
-    righe += [f"Contanti: {_eur(c['contanti'])} | POS: {_eur(c['pos'])}", f"*TOTALE SCONTRINATO (scontrini+fatture): {_eur(c['totale'])}*"]
+    righe += [f"Contanti: {_eur(c['contanti'])} | POS: {_eur(c['pos'])}" + (f" (di cui fatture: POS {_eur(c.get('fatture_pos', 0))}, contanti {_eur(c.get('fatture_contanti', 0))})" if (c.get("fatture_pos") or c.get("fatture_contanti")) else ""),
+              f"*TOTALE SCONTRINATO (scontrini+fatture): {_eur(c['totale'])}*"]
     if c.get("non_riscosso"):
         righe.append(f"Non riscosso: {_eur(c['non_riscosso'])}" + (f" ({c['non_riscosso_note']})" if c.get("non_riscosso_note") else ""))
     if c.get("incassato") and abs(c.get("quadratura_diff") or 0) >= QUADRATURA_TOLLERANZA:

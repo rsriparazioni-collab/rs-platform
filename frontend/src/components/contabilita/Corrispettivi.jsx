@@ -51,7 +51,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7" data-testid="corrispettivi-totali">
-        {[["Totale scontrinato (scontrini+fatture)", t.totale, "text-slate-900"], ["Contanti", t.contanti, "text-emerald-700"], ["POS", t.pos, "text-sky-700"], ["Non riscosso", t.non_riscosso, "text-amber-700"], ["Spese contanti", t.spese_contanti, "text-rose-700"], ["Versati", t.versati_totale, "text-slate-700"], ["IVA 22% scorporata", t.iva, "text-amber-700"]].map(([l, v, c]) => (
+        {[["Totale scontrinato (scontrini+fatture)", t.totale, "text-slate-900"], ["Contanti", t.contanti, "text-emerald-700"], ["POS", t.pos, "text-sky-700"], ["di cui fatture POS/contanti", (t.fatture_pos || 0) + (t.fatture_contanti || 0), "text-slate-500"], ["Non riscosso", t.non_riscosso, "text-amber-700"], ["Spese contanti", t.spese_contanti, "text-rose-700"], ["Versati", t.versati_totale, "text-slate-700"], ["IVA 22% scorporata", t.iva, "text-amber-700"]].map(([l, v, c]) => (
           <div key={l} className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase tracking-wide text-slate-500">{l}</p><p className={`mt-1 text-xl font-semibold tabular-nums ${c}`}>{eur(v)}</p></div>
         ))}
       </div>
