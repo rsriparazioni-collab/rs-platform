@@ -972,7 +972,14 @@ async def list_clients(user: dict = Depends(get_current_user),
         tipi_per_client.setdefault(row["_id"], []).append("vendita")
         prev = ultimo_servizio.get(row["_id"])
         if not prev or (row.get("at") or "") > (prev.get("at") or ""):
-            ultimo_servizio[row["_id"]] = {"tipo": "vendita_ordine", "stato": row.get("stato") or "consegnato", "articolo": row.get("articolo", ""), "pagato": row.get("pagato")}
+            ultimo_servizio[row["_id"]] = {"tipo": "vendita_ordine", "stato": row.get("stato") or "consegnato", "articolo": row.get("articolo", ""), "pagato": row.get("pagato"), "at": row.get("at") or ""}
+    async for row in db.ritiri.aggregate([{"$match": {"client_id": {"$nin": [None, ""]}}}, {"$sort": {"created_at": -1}},
+                                          {"$group": {"_id": "$client_id", "numero": {"$first": "$numero"}, "articolo": {"$first": "$articolo"}, "firma_stato": {"$first": "$firma_stato"},
+                                                      "prezzo_ritiro": {"$first": "$prezzo_ritiro"}, "at": {"$first": "$created_at"}}}]):
+        tipi_per_client.setdefault(row["_id"], []).append("ritiro")
+        prev = ultimo_servizio.get(row["_id"])
+        if not prev or (row.get("at") or "") > (prev.get("at") or ""):
+            ultimo_servizio[row["_id"]] = {"tipo": "ritiro", "stato": row.get("firma_stato") or "da_firmare", "articolo": row.get("articolo", ""), "numero": row.get("numero", ""), "at": row.get("at") or ""}
     out = []
     def _pkey(c):
         for k in ("codice_fiscale", "p_iva", "telefono"):
@@ -1003,7 +1010,7 @@ async def list_clients(user: dict = Depends(get_current_user),
             cats.add("energia")
         if tipi & {"sim", "internet", "fisso"}:
             cats.add("telefonia")
-        if tipi & {"riparazione", "accessori", "vendita"}:
+        if tipi & {"riparazione", "accessori", "vendita", "ritiro"}:
             cats.add("riparazioni")
         c["premium_step"] = len(cats)
         tags = []
@@ -1015,6 +1022,8 @@ async def list_clients(user: dict = Depends(get_current_user),
             tags.append("mob")
         if tipi & {"internet", "fisso"}:
             tags.append("fis")
+        if "ritiro" in tipi:
+            tags.append("ritiro")
         c["tipi_servizi"] = tags
         if tipo_servizio and tipo_servizio not in tags:
             continue
@@ -3215,6 +3224,16 @@ def ritiri_scope(user: dict) -> dict:
     if user["role"] == "admin" or user.get("can_view_all"):
         return {}
     return {"store_id": {"$in": user.get("store_ids", [])}}
+
+@api_router.get("/ritiri/{ritiro_id}")
+async def get_ritiro(ritiro_id: str, user: dict = Depends(get_current_user)):
+    scope = ritiri_scope(user)
+    scope["id"] = ritiro_id
+    r = await db.ritiri.find_one(scope, {"_id": 0, "firma_png": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Ritiro non trovato")
+    return r
+
 
 @api_router.get("/ritiri")
 async def list_ritiri(user: dict = Depends(get_current_user), venditore_id: str = "", q: str = ""):
@@ -5542,6 +5561,9 @@ async def client_servizi(client_id: str, user: dict = Depends(get_current_user))
         out.append({"id": v["id"], "tipo": "vendita_ordine", "prodotto": v.get("articolo", ""), "fornitore": v.get("fornitore", ""), "categoria": v.get("categoria", ""),
                     "stato": v.get("stato") or "consegnato", "pagato": v.get("pagato"), "prezzo": v.get("prezzo"), "data_vendita": v.get("data_vendita"),
                     "store_id": v.get("store_id"), "created_at": v.get("created_at"), "_vendita": v})
+    async for r in db.ritiri.find({"client_id": client_id}, {"_id": 0, "firma_png": 0}).sort("created_at", -1):
+        out.append({"id": r["id"], "tipo": "ritiro", "prodotto": r.get("articolo", ""), "numero": r.get("numero", ""), "stato": r.get("firma_stato") or "da_firmare",
+                    "prezzo": r.get("prezzo_ritiro"), "imei": r.get("imei", ""), "store_id": r.get("store_id"), "created_at": r.get("created_at"), "servizio_id": r.get("servizio_id")})
     return out
 
 @api_router.get("/vincoli")

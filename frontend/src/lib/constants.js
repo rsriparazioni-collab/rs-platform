@@ -72,11 +72,12 @@ export const statoServizioLabel = (s) => {
   if (!s) return "-";
   if (s.tipo === "riparazione") return `Riparazione: ${ripStatoLabel(s.stato)}`;
   if (["sim", "internet", "fisso"].includes(s.tipo)) return `${s.tipo === "sim" ? "SIM" : s.tipo === "internet" ? "Internet" : "Fisso"}: ${TEL_STATI[s.stato] ?? s.stato}`;
-  if (s.tipo === "ritiro") return "Ritiro usato";
+  if (s.tipo === "ritiro") return `Ritiro usato${s.articolo ? ` ${s.articolo}` : ""}${s.numero ? ` · bolla ${s.numero}` : ""}: ${s.stato === "firmata" ? "firmato" : "da firmare"}`;
   if (s.tipo === "vendita_ordine") return `Vendita${s.articolo ? ` ${s.articolo}` : ""}: ${venditaStatoLabel(s.stato)}${s.stato === "consegnato" && s.pagato === false ? " (da pagare)" : ""}`;
   return s.tipo === "vendita" || s.tipo === "accessori" ? "Vendita effettuata" : s.tipo;
 };
 export const statoServizioBadge = (s) => (s?.tipo === "riparazione" ? ripStatoBadge(s.stato)
+  : s?.tipo === "ritiro" ? (s.stato === "firmata" ? "bg-teal-500/15 text-teal-700 border-teal-300" : "bg-amber-500/15 text-amber-700 border-amber-300")
   : s?.tipo === "vendita_ordine" ? (s.stato === "ordinato" ? "bg-amber-500/15 text-amber-700 border-amber-300" : s.stato === "arrivato" ? "bg-sky-500/15 text-sky-700 border-sky-300" : s.pagato === false ? "bg-rose-500/15 text-rose-700 border-rose-300" : "bg-emerald-500/15 text-emerald-700 border-emerald-300")
   : "bg-indigo-500/15 text-indigo-700 border-indigo-300");
 

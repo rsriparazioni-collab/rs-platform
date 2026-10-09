@@ -113,6 +113,11 @@ export default function Ritiri() {
   const clienteParam = new URLSearchParams(window.location.search).get("cliente");
   const negozioParam = new URLSearchParams(window.location.search).get("negozio");
   const venditaParam = new URLSearchParams(window.location.search).get("vendita");
+  const apriParam = new URLSearchParams(window.location.search).get("apri");
+  useEffect(() => {
+    if (!apriParam) return;
+    api.get(`/ritiri/${apriParam}`).then((r) => setFilters((f) => ({ ...f, q: r.data.numero || "" }))).catch(() => {});
+  }, [apriParam]);
   useEffect(() => {
     if (!clienteParam || !meta.stores.length) return;
     api.get(`/clients/${clienteParam}`).then((r) => {
@@ -263,7 +268,7 @@ export default function Ritiri() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {ritiri.map((r, i) => (
-                <tr key={r.id} className="transition-colors hover:bg-slate-50" data-testid={`ritiro-row-${i}`}>
+                <tr key={r.id} className={`transition-colors hover:bg-slate-50 ${r.id === apriParam ? "bg-teal-50" : ""}`} data-testid={`ritiro-row-${i}`}>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-slate-800">
                       <Recycle className="h-3.5 w-3.5 text-emerald-600" /> {r.numero}

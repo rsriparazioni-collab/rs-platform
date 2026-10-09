@@ -587,3 +587,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-08 — Corrispettivi: fatture POS/contanti scalate nella quadratura
 - _norm: fatture_pos/fatture_contanti, pos_scontrini=pos-fatture_pos, contanti_scontrini=contanti-fatture_contanti; quadratura_diff = scontrini - contanti_scontrini - pos_scontrini - non_riscosso. Contanti/POS restano lordi (da versare include fatture contanti). Totali mese includono fatture_pos/fatture_contanti; GiornoDialog e riepilogo aggiornati.
 - (Invertito su richiesta) Contanti/POS inseriti = solo scontrini (campi contanti_inseriti/pos_inseriti); contanti/pos finali = inseriti + fatture pagate contanti/POS. Docs legacy (senza *_inseriti, es. import fogli) trattati come lordi. _norm idempotente.
+
+## 2026-10-09 — Clienti <-> Ritiri collegati
+- list_clients include db.ritiri: tag "ritiro" (filtro tipo_servizio=ritiro), stato_servizio tipo "ritiro" (articolo, bolla, firma_stato). GET /clients/{id}/servizi aggiunge i ritiri; ClientDetail li elenca e apre /ritiri?apri=<id> (riga evidenziata + ricerca su n. bolla). Nuovo GET /ritiri/{id}.

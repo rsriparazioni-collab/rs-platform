@@ -381,14 +381,17 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
 
               {servizi.length > 0 && (
                 <div data-testid="client-servizi-collegati">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Servizi collegati (riparazioni, telefonia, vendite)</p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Servizi collegati (riparazioni, telefonia, vendite, ritiri)</p>
                   <div className="space-y-1.5">
                     {servizi.map((s) => (
-                      <button type="button" key={s.id} onClick={() => onNuovoServizio(s.tipo === "vendita_ordine" ? "apri_vendita" : "apri_servizio", s)} className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-left text-xs hover:bg-sky-50" data-testid={`client-servizio-${s.id}`}>
+                      <button type="button" key={s.id} onClick={() => onNuovoServizio(s.tipo === "vendita_ordine" ? "apri_vendita" : s.tipo === "ritiro" ? "apri_ritiro" : "apri_servizio", s)} className="flex w-full items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-left text-xs hover:bg-sky-50" data-testid={`client-servizio-${s.id}`}>
                         <span className="font-medium text-slate-800">
-                          {s.tipo === "vendita_ordine" ? `Vendita · ${s.prodotto}${s.fornitore ? ` · ${s.fornitore}` : ""}${s.prezzo != null ? ` · € ${Number(s.prezzo).toFixed(2)}` : ""}${s.data_vendita ? ` · ${fmtDate(s.data_vendita)}` : ""}` : <>{servizioTipoLabel(s.tipo)}{s.dispositivo ? ` · ${s.dispositivo}` : ""}{s.prodotto ? ` · ${s.prodotto}` : ""}{s.operatore_tel ? ` · ${s.operatore_tel}` : ""}</>}
+                          {s.tipo === "ritiro" ? `Ritiro usato · ${s.prodotto}${s.numero ? ` · bolla ${s.numero}` : ""}${s.prezzo != null ? ` · € ${Number(s.prezzo).toFixed(2)}` : ""}${s.created_at ? ` · ${fmtDate(s.created_at)}` : ""}`
+                            : s.tipo === "vendita_ordine" ? `Vendita · ${s.prodotto}${s.fornitore ? ` · ${s.fornitore}` : ""}${s.prezzo != null ? ` · € ${Number(s.prezzo).toFixed(2)}` : ""}${s.data_vendita ? ` · ${fmtDate(s.data_vendita)}` : ""}` : <>{servizioTipoLabel(s.tipo)}{s.dispositivo ? ` · ${s.dispositivo}` : ""}{s.prodotto ? ` · ${s.prodotto}` : ""}{s.operatore_tel ? ` · ${s.operatore_tel}` : ""}</>}
                         </span>
-                        {s.tipo === "vendita_ordine"
+                        {s.tipo === "ritiro"
+                          ? <span className={`status-badge ${statoServizioBadge(s)}`}>{s.stato === "firmata" ? "Bolla firmata" : "Firma in attesa"}</span>
+                          : s.tipo === "vendita_ordine"
                           ? <span className={`status-badge ${statoServizioBadge(s)}`}>{venditaStatoLabel(s.stato)}{s.stato === "consegnato" ? (s.pagato === false ? " · da pagare" : " · pagato") : ""}</span>
                           : s.tipo === "riparazione"
                           ? <span className={`status-badge ${ripStatoBadge(s.stato)}`}>{ripStatoLabel(s.stato)}</span>

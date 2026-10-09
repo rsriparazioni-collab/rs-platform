@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban, Wrench, Smartphone, Wifi, RefreshCw, Users, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
+import { Plus, Search, Zap, Flame, CheckCircle2, XCircle, Pencil, Upload, Download, Crown, Ban, Wrench, Smartphone, Wifi, RefreshCw, Users, ChevronDown, ChevronRight, MessageCircle, PackageOpen } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import SyncFogliDialog from "../components/SyncFogliDialog";
@@ -12,6 +12,7 @@ const TIPI_SERVIZI = {
   rip: { label: "Rip", badge: "bg-violet-50 text-violet-700", icon: <Wrench className="h-3 w-3" /> },
   mob: { label: "Mob", badge: "bg-emerald-50 text-emerald-700", icon: <Smartphone className="h-3 w-3" /> },
   fis: { label: "Fis", badge: "bg-indigo-50 text-indigo-700", icon: <Wifi className="h-3 w-3" /> },
+  ritiro: { label: "Ritiro", badge: "bg-teal-50 text-teal-700", icon: <PackageOpen className="h-3 w-3" /> },
 };
 import ClientForm from "../components/ClientForm";
 import ClientDetail from "../components/ClientDetail";
@@ -202,6 +203,7 @@ export default function Clienti() {
             <SelectItem value="rip">Rip (riparazioni)</SelectItem>
             <SelectItem value="mob">Mob (mobile)</SelectItem>
             <SelectItem value="fis">Fis (fisso/internet)</SelectItem>
+            <SelectItem value="ritiro">Ritiro usato</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filters.tipo_cliente} onValueChange={(v) => setFilters((f) => ({ ...f, tipo_cliente: v }))}>
@@ -289,7 +291,7 @@ export default function Clienti() {
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex flex-wrap items-center gap-1" data-testid={`client-tipi-${i}`}>
-                      {(c.tipi_servizi || []).map((t) => <span key={t} className={`status-badge ${TIPI_SERVIZI[t].badge}`}>{TIPI_SERVIZI[t].icon}{TIPI_SERVIZI[t].label}</span>)}
+                      {(c.tipi_servizi || []).filter((t) => TIPI_SERVIZI[t]).map((t) => <span key={t} className={`status-badge ${TIPI_SERVIZI[t].badge}`}>{TIPI_SERVIZI[t].icon}{TIPI_SERVIZI[t].label}</span>)}
                       {!(c.tipi_servizi || []).length && <span className="text-xs text-slate-400">-</span>}
                     </span>
                   </td>
@@ -353,6 +355,7 @@ export default function Clienti() {
                       if (tipo === "ritiro") { navigate(`/ritiri?cliente=${d.id}`); return; }
                       if (tipo === "apri_servizio") { setServizioDetail(d); return; }
                       if (tipo === "apri_vendita") { navigate(`/vendite?apri=${d.id}`); return; }
+                      if (tipo === "apri_ritiro") { navigate(`/ritiri?apri=${d.id}`); return; }
                       setServizioForm({ tipo, client: { id: d.id, label: `${d.cognome} ${d.nome}` } });
                     }} />
       <ServizioDetail servizio={servizioDetail} onClose={() => setServizioDetail(null)} onChanged={() => { load(); setDetailRow((r) => (r ? { ...r } : r)); }}
