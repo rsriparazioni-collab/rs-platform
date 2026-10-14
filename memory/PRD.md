@@ -627,3 +627,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-14 — Import notturno PDP + giorni discordanti
 - Cron pdp-fogli-notte (02:00 Europe/Rome) -> POST /api/cron/pdp-fogli-notte -> contabilita.import_pdp_notturno(): import, confronto, stato in pdp_import_stato{id:ultimo,chiavi}, WA a NUMERO_AMMINISTRAZIONE solo per differenze nuove (tipo pdp_import_notturno).
 - Righe "Corrispettivi <negozio>" del confronto hanno store_id + giorni[{data,scontrini,foglio,diff}]; PdpImportReport espande la riga al click.
+
+## 2026-10-14 — Correzione rapida giorno + allineamento dal foglio
+- POST /contabilita/pdp/allinea-giorni {store_id, giorni:[{data,foglio}]}: crea SOLO i giorni vuoti (merce=contanti=totale RT, nota "Compilato dal foglio Google", fonte foglio_google), salta esistenti.
+- PdpImportReport: matita per giorno -> GiornoDialogLoader carica la riga e apre GiornoDialog; tasto "Usa il valore del foglio (N giorni mancanti)"; onChanged ricarica PDP e rilancia import per aggiornare il report.

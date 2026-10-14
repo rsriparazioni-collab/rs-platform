@@ -348,6 +348,32 @@ async def put_corrispettivo(store_id: str, data: str, body: CorrispettivoInput, 
     return await _d["db"].corrispettivi.find_one({"store_id": store_id, "data": data}, {"_id": 0})
 
 
+class AllineaInput(BaseModel):
+    store_id: str
+    giorni: list  # [{data, foglio}]
+
+
+@router.post("/pdp/allinea-giorni")
+async def allinea_giorni_foglio(body: AllineaInput, request: Request):
+    """Compila i giorni mancanti del negozio con il totale del registratore preso dal foglio (merce = scontrini, contanti = pari importo)."""
+    user = await _user(request)
+    await _store_completo(user, body.store_id)
+    db = _d["db"]
+    now = datetime.now(timezone.utc).isoformat()
+    creati, saltati = [], []
+    for g in body.giorni:
+        data, tot = g.get("data"), _f(g.get("foglio"))
+        if not data or tot <= 0 or await db.corrispettivi.find_one({"store_id": body.store_id, "data": data}, {"_id": 0, "id": 1}):
+            saltati.append(data)
+            continue
+        raw = {"merce": tot, "contanti": tot, "pos": 0, "contanti_inseriti": tot, "pos_inseriti": 0, "note": "Compilato dal foglio Google (registratore) – verifica contanti/POS"}
+        doc = _norm(raw)
+        doc.update({"store_id": body.store_id, "data": data, "updated_at": now, "updated_by": f"{user.get('name', '')} (foglio Google)", "fonte": "foglio_google"})
+        await db.corrispettivi.update_one({"store_id": body.store_id, "data": data}, {"$set": doc, "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
+        creati.append(data)
+    return {"creati": creati, "saltati": saltati}
+
+
 @router.delete("/corrispettivi/{store_id}/{data}")
 async def del_corrispettivo(store_id: str, data: str, request: Request):
     user = await _user(request)

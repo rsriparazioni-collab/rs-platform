@@ -57,7 +57,7 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
         <Button size="sm" onClick={salva} data-testid="pdp-salva">Salva valori</Button>
         <Button size="sm" variant="outline" disabled={importing} data-testid="pdp-importa-fogli" onClick={async () => { setImporting(true); try { const r = await api.post("/contabilita/pdp/importa-fogli"); setReport(r.data.esito); load(); } catch (e) { toast.error(apiError(e)); } finally { setImporting(false); } }}>{importing ? "Importo…" : "Importa dai fogli Google"}</Button>
       </div>
-      <PdpImportReport esito={report} onClose={() => setReport(null)} />
+      <PdpImportReport esito={report} onClose={() => setReport(null)} onChanged={async () => { load(); try { const r = await api.post("/contabilita/pdp/importa-fogli"); setReport(r.data.esito); } catch (e) { toast.error(apiError(e)); } }} />
       <p className="text-xs text-slate-500" data-testid="pdp-centro-negozi">Centro di costo <b>{d.centro.nome}</b>: {d.centro.negozi.join(" + ")} — i corrispettivi dei negozi entrano automaticamente nelle entrate.</p>
       {d.ereditato_da && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900" data-testid="pdp-ereditato">
