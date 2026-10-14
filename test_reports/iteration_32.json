@@ -1,0 +1,34 @@
+{
+  "summary": "E2E test della nuova sezione 'Punto di pareggio' in /contabilita. Backend GET /api/contabilita/pdp e /pdp/trend verificati con admin+MFA. Frontend: login admin con MFA, tab 'Punto di pareggio', centro Morbegno+Gravedona, periodo Agosto 2026. Tutti i testid richiesti presenti e coerenti (pdp-panel, pdp-dashboard, 4 KPI, pdp-bep-box, pdp-bep-valore, pdp-mdc, pdp-sicurezza, pdp-media-giorno, pdp-trend con 6 colonne pdp-trend-2026-{5..10}, pdp-spese-cassa-auto = € 1.257,07 come atteso, pdp-val-spese_fisse-Affitti, pdp-salva, pdp-centro-select). Live update KPI spese/utile funziona modificando Affitti. Toast 'Punto di pareggio salvato' su pdp-salva. Settembre 2026 mostra BEP numerico € 16.152,40 (atteso). UNICO BUG: pdp-bep-motivo NON esiste nel DOM quando BEP è None (Agosto): si vede solo '—' in pdp-bep-valore ma manca il messaggio motivazionale richiesto dalla spec.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PdpDashboard.jsx (box BEP)", "issue": "Manca il testid 'pdp-bep-motivo'. La spec richiede: 'pdp-bep-valore (valore in € oppure messaggio pdp-bep-motivo)'. Quando bep_fatturato è null (es. Agosto 2026 per Morbegno+Gravedona, MdC negativo -30.6%), il componente mostra solo '—' in pdp-bep-valore ma non renderizza nessun elemento <p data-testid=\"pdp-bep-motivo\"> con la motivazione ('MdC negativo' / 'fatturato insufficiente' / 'costi variabili > fatturato'). Grep conferma assenza totale di 'pdp-bep-motivo' in frontend/src.", "selector": "[data-testid=\"pdp-bep-motivo\"]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "PdpDashboard - trend 6 mesi", "issues": ["Warning Recharts in console al primo render: 'The width(-1) and height(-1) of chart should be greater than 0'. Non blocca, ma il ResponsiveContainer non ha minWidth/minHeight. Fix: aggiungere minWidth={0} o aspect fisso."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "PdpDashboard.jsx linea ~47: quando bep è null, renderizzare in aggiunta un <p data-testid=\"pdp-bep-motivo\"> con la motivazione (es. break_even.mdc_pct < 0 ⇒ 'Margine di contribuzione negativo', costi_variabili > fatturato ⇒ 'Costi variabili superiori al fatturato'). Il backend già restituisce i dati necessari (mdc, mdc_pct, costi_variabili vs fatturato).",
+    "Opzionale: ResponsiveContainer del grafico trend — passare minWidth={0} per evitare warning iniziale."
+  ],
+  "critical_code_review_comments": [
+    "Backend /api/contabilita/pdp risponde correttamente con break_even.{costi_fissi, bep_fatturato, mdc, ...}, incasso.{incassato, contanti, pos, fatturato}, spese_cassa (dict), tot_spese_cassa (1257.07 per Agosto M+G).",
+    "Trend endpoint restituisce esattamente 6 elementi con mesi 5..10/2026 e campi label/fatturato/costi_fissi/costi_variabili/risultato/bep/mdc_pct/compilato — OK.",
+    "La riga automatica 'Spese contanti prima nota' (pdp-spese-cassa-auto) è correttamente inclusa nei costi fissi totali: 14340 (fisse manuali) + 1257.07 (auto) = 15597.07 ✓."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "95%"},
+  "test_credentials": "Admin rsriparazioni@gmail.com / EnricoRS@26 + TOTP (ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV)",
+  "seed_data_creation": "Nessuno. Il test ha solo cliccato 'Salva valori' con gli stessi valori precompilati per Agosto 2026 (nessuna modifica persistente ai dati seed).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Il testid 'periodo-mese' (non 'pdp-mese-select') è lo shared selector per il mese. Centro-select è un <select> nativo (usare select_option). Settembre 2026 ha BEP numerico (€16.152,40, MdC positivo 100%). Agosto 2026 ha BEP non calcolabile (MdC -30.6%). Dopo il fix di pdp-bep-motivo, retest richiesto solo per Agosto per vedere il messaggio.",
+  "rca of the issue": "Il backend restituisce bep_fatturato=null quando MdC<=0 (vedi contabilita.py _pdp_calcolo). Il frontend PdpDashboard.jsx L47 fa solo `bep != null ? eur(bep) : '—'` senza aggiungere il messaggio motivazionale richiesto dalla spec. Manca l'elemento con data-testid='pdp-bep-motivo'."
+}

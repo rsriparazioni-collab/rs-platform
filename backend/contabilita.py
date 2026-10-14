@@ -875,7 +875,8 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     costi_variabili = tot_spese["fornitori"]
     mdc = round(tot_entrate - costi_variabili, 2)
     mdc_pct = round(mdc / tot_entrate * 100, 1) if tot_entrate else None
-    bep = round(costi_fissi / (mdc / tot_entrate), 2) if tot_entrate and mdc > 0 else None
+    bep = round(costi_fissi / (mdc / tot_entrate), 2) if tot_entrate and mdc > 0 else (costi_fissi if not costi_variabili else None)
+    bep_motivo = "" if bep is not None else "I costi variabili (fornitori) superano il fatturato: il pareggio non è raggiungibile a questo margine. Controlla che tra i fornitori non ci siano costi passanti (es. bollette Enel/Eolo rivendute) o sposta le voci fisse."
     import calendar
     giorni_mese = calendar.monthrange(anno, mese)[1]
     oggi = date.today()
@@ -885,7 +886,7 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     giorni_apertura_stimati = max(giorni_inseriti, round(giorni_mese * 26 / 30))
     proiezione = round(media_giorno * giorni_apertura_stimati, 2) if in_corso and giorni_inseriti else tot_entrate
     bep_giorno = round(bep / giorni_apertura_stimati, 2) if bep else None
-    break_even = {"costi_fissi": costi_fissi, "costi_variabili": costi_variabili, "mdc": mdc, "mdc_pct": mdc_pct, "bep_fatturato": bep,
+    break_even = {"costi_fissi": costi_fissi, "costi_variabili": costi_variabili, "mdc": mdc, "mdc_pct": mdc_pct, "bep_fatturato": bep, "bep_motivo": bep_motivo,
                   "margine_sicurezza": round(tot_entrate - bep, 2) if bep is not None else None,
                   "margine_sicurezza_pct": round((tot_entrate - bep) / tot_entrate * 100, 1) if bep is not None and tot_entrate else None,
                   "bep_giorno": bep_giorno, "media_giorno": media_giorno, "giorni_inseriti": giorni_inseriti, "giorni_mese": giorni_mese,

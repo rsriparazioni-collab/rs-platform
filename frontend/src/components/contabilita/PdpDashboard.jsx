@@ -22,7 +22,7 @@ export const PdpDashboard = ({ centroId, anno, mese, fatturato, fissi, variabili
 
   const mdc = fatturato - variabili;
   const mdcPct = fatturato ? mdc / fatturato : 0;
-  const bep = fatturato && mdc > 0 ? fissi / mdcPct : null;
+  const bep = fatturato && mdc > 0 ? fissi / mdcPct : (!variabili ? fissi : null);
   const uscite = fissi + variabili;
   const risultato = fatturato - uscite;
   const sicurezza = bep != null ? fatturato - bep : null;
@@ -45,7 +45,7 @@ export const PdpDashboard = ({ centroId, anno, mese, fatturato, fissi, variabili
           <div>
             <p className="text-xs uppercase tracking-wide text-indigo-700">Punto di pareggio (Break Even Point)</p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-indigo-900" data-testid="pdp-bep-valore">{bep != null ? eur(bep) : "—"}</p>
-            <p className="text-xs text-slate-600">fatturato minimo del mese per coprire tutte le spese{bepGiorno != null ? ` · ${eur(bepGiorno)} al giorno su ${giorniAp} giorni di apertura` : ""}</p>
+            <p className="text-xs text-slate-600">{bep != null ? `fatturato minimo del mese per coprire tutte le spese${bepGiorno != null ? ` · ${eur(bepGiorno)} al giorno su ${giorniAp} giorni di apertura` : ""}` : <span className="text-rose-700" data-testid="pdp-bep-motivo">{be?.bep_motivo || "Pareggio non calcolabile con questi dati."}</span>}</p>
           </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
             <div><p className="text-xs text-slate-500">Margine di contribuzione</p><p className="font-semibold tabular-nums" data-testid="pdp-mdc">{eur(mdc)} <span className="text-xs font-normal text-slate-500">({pct(mdcPct * 100)})</span></p></div>
