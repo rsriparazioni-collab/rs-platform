@@ -6163,6 +6163,9 @@ api_router.include_router(contabilita_module.router)
 import fatture_ade as fatture_ade_module
 fatture_ade_module.setup(db=db, get_current_user=get_current_user, centro=contabilita_module._centro)
 api_router.include_router(fatture_ade_module.router)
+import corrispettivi_ade as corrispettivi_ade_module
+corrispettivi_ade_module.setup(db=db, get_current_user=get_current_user)
+api_router.include_router(corrispettivi_ade_module.router)
 import pdp_analisi as pdp_analisi_module
 pdp_analisi_module.setup(db=db, get_current_user=get_current_user, centro=contabilita_module._centro, pdp_calcolo=contabilita_module._pdp_calcolo, fatturato_mese=contabilita_module._fatturato_mese)
 api_router.include_router(pdp_analisi_module.router)

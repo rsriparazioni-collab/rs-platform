@@ -7,8 +7,9 @@ import { MESI, PeriodoPicker, eur } from "./shared";
 import { GiornoDialog } from "./GiornoDialog";
 import { SpeseCassa } from "./SpeseCassa";
 import { VersatiDopo } from "./VersatiDopo";
+import { CorrispettiviAde } from "./CorrispettiviAde";
 
-export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }) => {
+export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin, stores }) => {
   const [dati, setDati] = useState(null);
   const [giorno, setGiorno] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -62,24 +63,26 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm" data-testid="corrispettivi-table">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr>{["Giorno", "Riparazioni", "Merce", "Art. 74", "Fatture", "Contanti", "POS", "Non riscosso", "Totale", "Versati", ""].map((h) => <th key={h} className="px-3 py-2 text-right first:text-left">{h}</th>)}</tr>
+            <tr>{["Giorno", "Riparazioni", "Merce", "Art. 74", "Fatture", "Contanti", "POS", "Non riscosso", "Totale", "Versati", dati.confronto_ade?.presente ? "AdE" : null, ""].filter((h) => h !== null).map((h) => <th key={h} className="px-3 py-2 text-right first:text-left">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {dati.righe.map((r) => (
               <tr key={r.data} className={`cursor-pointer hover:bg-sky-50 ${r.vuoto ? "text-slate-400" : ""}`} onClick={() => setGiorno(r)} data-testid={`corr-row-${r.data}`}>
                 <td className="px-3 py-1.5 font-medium">{r.data.slice(8)} {MESI[mese].slice(0, 3)}</td>
-                {r.vuoto ? <td colSpan={9} className="px-3 py-1.5 text-right text-xs">— non inserito —</td> : (
-                  ["riparazioni", "merce", "art74", "fatture", "contanti", "pos", "non_riscosso", "totale", "versati"].map((k) => <td key={k} className={`px-3 py-1.5 text-right tabular-nums ${k === "totale" ? "font-semibold" : ""} ${k === "non_riscosso" && r[k] ? "text-amber-700" : ""}`} title={k === "non_riscosso" ? r.non_riscosso_note : undefined}>{r[k] || k === "totale" ? eur(r[k]) : ""}{k === "totale" && r.incassato > 0 && Math.abs(r.quadratura_diff || 0) >= 1 ? <span className="ml-1 text-amber-600" title={`Non quadra: differenza ${eur(r.quadratura_diff)}`} data-testid={`corr-nonquadra-${r.data}`}>⚠</span> : null}</td>)
-                )}
+                {r.vuoto ? <td colSpan={dati.confronto_ade?.presente ? 10 : 9} className="px-3 py-1.5 text-right text-xs">— non inserito —{r.ade_totale != null && <span className="ml-2 font-medium text-rose-600" data-testid={`corr-ade-${r.data}`}>AdE {eur(r.ade_totale)} non inserito!</span>}</td> : (<>
+                  {["riparazioni", "merce", "art74", "fatture", "contanti", "pos", "non_riscosso", "totale", "versati"].map((k) => <td key={k} className={`px-3 py-1.5 text-right tabular-nums ${k === "totale" ? "font-semibold" : ""} ${k === "non_riscosso" && r[k] ? "text-amber-700" : ""}`} title={k === "non_riscosso" ? r.non_riscosso_note : undefined}>{r[k] || k === "totale" ? eur(r[k]) : ""}{k === "totale" && r.incassato > 0 && Math.abs(r.quadratura_diff || 0) >= 1 ? <span className="ml-1 text-amber-600" title={`Non quadra: differenza ${eur(r.quadratura_diff)}`} data-testid={`corr-nonquadra-${r.data}`}>⚠</span> : null}</td>)}
+                  {dati.confronto_ade?.presente && <td className={`px-3 py-1.5 text-right text-xs tabular-nums ${r.ade_totale == null ? "text-amber-600" : Math.abs(r.ade_diff || 0) < 0.01 ? "text-emerald-700" : "text-rose-700 font-semibold"}`} title={r.ade_totale == null ? "Nessuna chiusura AdE per questo giorno" : `Scontrini − AdE = ${eur(r.ade_diff)}`} data-testid={`corr-ade-${r.data}`}>{r.ade_totale == null ? "—" : Math.abs(r.ade_diff || 0) < 0.01 ? "✓" : `${eur(r.ade_totale)} (${r.ade_diff > 0 ? "+" : ""}${eur(r.ade_diff)})`}</td>}
+                </>)}
                 <td className="px-2 py-1.5 text-right">{!r.vuoto && <button className="text-slate-400 hover:text-emerald-600" title="Invia WhatsApp del giorno" onClick={(e) => { e.stopPropagation(); inviaWa(r.data); }} data-testid={`corr-wa-${r.data}`}><MessageCircle className="h-4 w-4" /></button>}</td>
               </tr>
             ))}
           </tbody>
           <tfoot className="bg-slate-50 font-semibold">
-            <tr><td className="px-3 py-2">Totale</td>{["riparazioni", "merce", "art74", "fatture", "contanti", "pos", "non_riscosso", "totale", "versati"].map((k) => <td key={k} className="px-3 py-2 text-right tabular-nums" data-testid={`corr-tot-${k}`}>{eur(t[k])}</td>)}<td /></tr>
+            <tr><td className="px-3 py-2">Totale</td>{["riparazioni", "merce", "art74", "fatture", "contanti", "pos", "non_riscosso", "totale", "versati"].map((k) => <td key={k} className="px-3 py-2 text-right tabular-nums" data-testid={`corr-tot-${k}`}>{eur(t[k])}</td>)}{dati.confronto_ade?.presente && <td className="px-3 py-2 text-right text-xs tabular-nums" data-testid="corr-tot-ade">{eur(dati.confronto_ade.tot_ade)}</td>}<td /></tr>
           </tfoot>
         </table>
       </div>
+      <CorrispettiviAde storeId={storeId} anno={anno} mese={mese} confronto={dati.confronto_ade} stores={stores || []} reload={load} isAdmin={isAdmin} />
       <SpeseCassa storeId={storeId} anno={anno} mese={mese} spese={dati.spese} reload={load} />
       <VersatiDopo storeId={storeId} anno={anno} mese={mese} versati={dati.versati_dopo} totali={t} riporto={dati.riporto} riportoNote={dati.riporto_note} riportoAuto={dati.riporto_auto} proposto={dati.riporto_proposto} propostoMese={dati.riporto_proposto_mese} reload={load} />
       {giorno && <GiornoDialog storeId={storeId} riga={giorno} onClose={() => setGiorno(null)} onSaved={() => { setGiorno(null); load(); }} />}

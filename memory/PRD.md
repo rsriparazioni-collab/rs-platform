@@ -595,3 +595,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-14 — Punto di pareggio completo
 - _pdp_calcolo: include spese_cassa (prima nota + import fogli) raggruppate per motivo come costi fissi; incasso {incassato, contanti, pos, non_riscosso, iva}; break_even {costi_fissi, costi_variabili(fornitori), mdc, mdc_pct, bep_fatturato=fissi/(mdc/fatturato), bep_motivo, margine_sicurezza, bep_giorno, media_giorno, proiezione}. GET /pdp/trend (6 mesi).
 - PdpDashboard.jsx: KPI fatturato/incassato/spese/utile, box BEP con formula, grafico trend. PuntoPareggio: riga auto "Spese contanti prima nota" in semi-fisse, calcolo live.
+
+## 2026-10-14 — Verifica corrispettivi telematici AdE
+- backend/corrispettivi_ade.py: import CSV/XLSX/ZIP/XML (POST /contabilita/corrispettivi-ade/importa), abbinamento matricola RT -> negozio (GET/PUT /matricole, collection rt_matricole), collection corrispettivi_ade (chiave matricola+data). confronto_mese iniettato in GET /contabilita/corrispettivi (confronto_ade + ade_totale/ade_diff per riga): confronta scontrini (rip+merce+art74) con AdE.
+- CorrispettiviAde.jsx nel tab Corrispettivi + colonna "AdE" in tabella.

@@ -59,7 +59,7 @@ export default function Contabilita() {
             <TabsTrigger value="report" className="gap-1.5" data-testid="contabilita-tab-report"><TrendingUp className="h-4 w-4" /> Report fatturato</TabsTrigger>
             <TabsTrigger value="impostazioni" className="gap-1.5" data-testid="contabilita-tab-impostazioni"><Settings2 className="h-4 w-4" /> Invii e impostazioni</TabsTrigger>
           </TabsList>
-          <TabsContent value="corrispettivi"><Corrispettivi {...periodo} isAdmin={meta.is_admin} /></TabsContent>
+          <TabsContent value="corrispettivi"><Corrispettivi {...periodo} isAdmin={meta.is_admin} stores={meta.stores} /></TabsContent>
           <TabsContent value="pdp"><PuntoPareggio {...periodo} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="report"><ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="impostazioni"><ContabilitaImpostazioni meta={meta} storeId={storeId} reload={loadMeta} /></TabsContent>
