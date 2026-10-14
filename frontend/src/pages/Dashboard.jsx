@@ -118,7 +118,7 @@ export default function Dashboard() {
           <Kpi icon={Users} label="Clienti totali" value={stats.totale_clienti}
                sub={`${stats.contratti_mese} contratti questo mese`} color="bg-sky-100 text-sky-700" testid="kpi-clienti" />
           <Kpi icon={RefreshCw} label="Rinnovi entro 30gg" value={stats.rinnovi_30gg}
-               sub="Finestra rinnovo 10 mesi" color="bg-amber-100 text-amber-700" testid="kpi-rinnovi" />
+               sub="Da ricontattare: 2 mesi prima della scadenza (12 mesi)" color="bg-amber-100 text-amber-700" testid="kpi-rinnovi" />
           <Kpi icon={Wallet} label="Non pagati" value={stats.non_pagati}
                sub="Incluso reset automatico a 6 mesi" color="bg-rose-100 text-rose-700" testid="kpi-non-pagati" />
           <Kpi icon={FileText} label="Luce / Gas" value={`${stats.luce} / ${stats.gas}`}
@@ -170,7 +170,7 @@ export default function Dashboard() {
                         : <Zap className="h-3.5 w-3.5 shrink-0 text-sky-500" />}
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-900">{r.cognome} {r.nome}</p>
-                        <p className="text-xs text-slate-500">Rinnovo: {fmtDate(r.data_rinnovo)}</p>
+                        <p className="text-xs text-slate-500">Scade {fmtDate(r.data_scadenza)} · ricontatto dal {fmtDate(r.data_rinnovo)}</p>
                         <ContattoBadge contatto={r.ultimo_contatto} testid={`scadenza-rinnovo-contatto-${r.client_id}`} />
                       </div>
                     </Link>
@@ -286,7 +286,7 @@ export default function Dashboard() {
                     : <Zap className="h-4 w-4 shrink-0 text-sky-500" />}
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-900">{r.cognome} {r.nome}</p>
-                    <p className="text-xs text-slate-500">Rinnovo: {fmtDate(r.data_rinnovo)} · {lavorazioneLabel(r.lavorazione)}{r.bollette_msg_sent_at && <span className="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800" data-testid={`alert-rinnovo-bollette-${r.client_id}`}>WA bollette {fmtDate(r.bollette_msg_sent_at)}</span>}</p>
+                    <p className="text-xs text-slate-500">Scade {fmtDate(r.data_scadenza)} · ricontatto dal {fmtDate(r.data_rinnovo)} · {lavorazioneLabel(r.lavorazione)}{r.bollette_msg_sent_at && <span className="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-800" data-testid={`alert-rinnovo-bollette-${r.client_id}`}>WA bollette {fmtDate(r.bollette_msg_sent_at)}</span>}</p>
                     <ContattoBadge contatto={r.ultimo_contatto} testid={`alert-rinnovo-contatto-${r.client_id}`} />
                   </div>
                 </Link>

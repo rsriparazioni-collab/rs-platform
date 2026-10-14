@@ -208,12 +208,13 @@ def compute_dates(c: dict) -> dict:
         try:
             d0 = date.fromisoformat(dc[:10])
             att = d0 + relativedelta(months=2)
-            rin = d0 + relativedelta(months=10)
-            scad = att + relativedelta(months=12)
+            scad = d0 + relativedelta(months=12)
+            rin = scad - relativedelta(months=2)
             c["data_attivazione"] = att.isoformat()
             c["data_rinnovo"] = rin.isoformat()
             c["data_scadenza"] = scad.isoformat()
             c["giorni_al_rinnovo"] = (rin - date.today()).days
+            c["giorni_alla_scadenza"] = (scad - date.today()).days
         except ValueError:
             pass
     c["pagato_effettivo"] = effective_pagato(c.get("pagato", False), c.get("last_payment_date"))
@@ -231,7 +232,7 @@ async def build_alerts(user: dict) -> dict:
         gr = c.get("giorni_al_rinnovo")
         if gr is not None and -30 <= gr <= 45 and c.get("lavorazione") != "rinnovato":
             rinnovi.append({"client_id": c["id"], "nome": c.get("nome", ""), "cognome": c.get("cognome", ""),
-                            "data_rinnovo": c["data_rinnovo"], "giorni": gr, "bollette_msg_sent_at": c.get("bollette_msg_sent_at"),
+                            "data_rinnovo": c["data_rinnovo"], "data_scadenza": c.get("data_scadenza"), "giorni": gr, "bollette_msg_sent_at": c.get("bollette_msg_sent_at"),
                             "tipo_bolletta": c.get("tipo_bolletta", ""), "lavorazione": c.get("lavorazione", "")})
         if c.get("pagato") and not c.get("pagato_effettivo"):
             pagamenti_clienti.append({"client_id": c["id"], "nome": c.get("nome", ""), "cognome": c.get("cognome", ""),
@@ -350,6 +351,7 @@ async def send_digest_email():
         f'<tr><td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">{escape(r["cognome"])} {escape(r["nome"])}</td>'
         f'<td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">{escape(r["tipo_bolletta"])}</td>'
         f'<td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">{escape(r["data_rinnovo"])}</td>'
+        f'<td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">{escape(r.get("data_scadenza") or "")}</td>'
         f'<td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">{r["giorni"]} gg</td></tr>'
         for r in alerts["rinnovi"])
     rows_s = "".join(
@@ -1430,7 +1432,7 @@ async def scadenze_settimana(user: dict = Depends(get_current_user)):
             gr = c.get("giorni_al_rinnovo")
             if gr is not None and 0 <= gr <= 7 and c.get("lavorazione") != "rinnovato":
                 out["rinnovi"].append({"client_id": c["id"], "nome": c.get("nome", ""), "cognome": c.get("cognome", ""),
-                                       "data_rinnovo": c["data_rinnovo"], "giorni": gr,
+                                       "data_rinnovo": c["data_rinnovo"], "data_scadenza": c.get("data_scadenza"), "giorni": gr,
                                        "tipo_bolletta": c.get("tipo_bolletta", "")})
         out["rinnovi"].sort(key=lambda x: x["giorni"])
     if "telefonia" in sections:
@@ -4005,7 +4007,7 @@ EXPORT_COLUMNS = [
     ("tipo_contratto", "Tipo contratto"), ("costo_kwh_nuovo", "€/kWh nuovo"),
     ("costo_smc_nuovo", "€/Smc nuovo"), ("spese_fisse_nuovo", "Spese fisse nuove"),
     ("data_contratto", "Data contratto"), ("data_attivazione", "Attivazione"),
-    ("data_rinnovo", "Rinnovo (10 mesi)"), ("data_scadenza", "Scadenza"),
+    ("data_rinnovo", "Da ricontattare (2 mesi prima)"), ("data_scadenza", "Scadenza (12 mesi)"),
     ("data_verifica", "Data verifica"), ("data_cambio", "Data cambio"),
     ("lavorazione_label", "Lavorazione"), ("pagato_label", "Pagato"),
     ("privacy_label", "Privacy firmata"), ("negozio_nome", "Negozio"), ("note", "Note"),

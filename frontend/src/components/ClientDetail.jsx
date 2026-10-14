@@ -260,8 +260,8 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                 <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                   <div><p className="text-xs text-slate-500">Contratto</p><p className="font-semibold" data-testid="detail-data-contratto">{fmtDate(detail.data_contratto)}</p></div>
                   <div><p className="text-xs text-slate-500">Attivazione (+2m)</p><p className="font-semibold" data-testid="detail-data-attivazione">{fmtDate(detail.data_attivazione)}</p></div>
-                  <div><p className="text-xs text-slate-500">Rinnovo (+10m)</p><p className="font-semibold text-amber-700" data-testid="detail-data-rinnovo">{fmtDate(detail.data_rinnovo)}</p></div>
-                  <div><p className="text-xs text-slate-500">Scadenza</p><p className="font-semibold" data-testid="detail-data-scadenza">{fmtDate(detail.data_scadenza)}</p></div>
+                  <div><p className="text-xs text-slate-500">Da ricontattare (2 mesi prima)</p><p className="font-semibold text-amber-700" data-testid="detail-data-rinnovo">{fmtDate(detail.data_rinnovo)}</p></div>
+                  <div><p className="text-xs text-slate-500">Scadenza (12 mesi)</p><p className="font-semibold" data-testid="detail-data-scadenza">{fmtDate(detail.data_scadenza)}</p></div>
                 </div>
               </div>
 

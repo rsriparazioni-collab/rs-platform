@@ -610,3 +610,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-14 — Sotto scorta + barcode vendita
 - magazzino.scorta_minima (default accessori 2, sim 3); controlla_sotto_scorta(item_id) dopo ogni scarico (servizi + vendite): WA al telefono_avvisi del negozio, tipo magazzino_sotto_scorta, una volta (sotto_scorta_avvisato_at, reset quando torna sopra soglia). Badge "sotto scorta" in Magazzino, campo soglia nel form.
 - GET /magazzino/barcode/{codice}?store_id=: articolo con giacenza>0; ServizioForm accessori: digitando/scansionando 8-14 cifre nel campo ricerca seleziona automaticamente l'articolo.
+
+## 2026-10-14 — Scadenze energia su 12 mesi
+- compute_dates: data_scadenza = contratto + 12 mesi; data_rinnovo (ricontatto) = scadenza - 2 mesi; giorni_alla_scadenza aggiunto. Prima: scadenza = attivazione(+2m)+12m = +14m.
+- Etichette aggiornate (Clienti, Dashboard, ClientDetail, export, digest email con colonna scadenza). WA rinnovo (60 gg prima della scadenza) ora coincide col ricontatto.

@@ -248,7 +248,7 @@ export default function Clienti() {
                 <th className="px-4 py-3">Tipo</th>
                 <th className="px-4 py-3">Fornitore</th>
                 <th className="px-4 py-3">Lavorazione</th>
-                <th className="px-4 py-3">Rinnovo (10 mesi)</th>
+                <th className="px-4 py-3">Scadenza (12 mesi) · ricontatto</th>
                 {canSeeAll && <th className="px-4 py-3">Negozio</th>}
                 <th className="px-4 py-3">Pagato</th>
                 <th className="px-4 py-3"></th>
@@ -307,9 +307,10 @@ export default function Clienti() {
                   <td className="px-4 py-3">
                     {c.data_rinnovo ? (
                       <div>
-                        <p className="text-xs font-medium text-slate-900">{fmtDate(c.data_rinnovo)}</p>
+                        <p className="text-xs font-medium text-slate-900" data-testid={`cliente-scadenza-${i}`}>Scade {fmtDate(c.data_scadenza)}</p>
+                        <p className="text-[11px] text-slate-500">ricontatto dal {fmtDate(c.data_rinnovo)}</p>
                         <p className={`text-xs font-semibold ${c.giorni_al_rinnovo < 0 ? "text-rose-600" : c.giorni_al_rinnovo <= 30 ? "text-amber-600" : "text-slate-400"}`}>
-                          {c.giorni_al_rinnovo < 0 ? `scaduto da ${-c.giorni_al_rinnovo} gg` : `tra ${c.giorni_al_rinnovo} gg`}
+                          {c.giorni_al_rinnovo < 0 ? (c.giorni_alla_scadenza < 0 ? `scaduto da ${-c.giorni_alla_scadenza} gg` : `da ricontattare · scade tra ${c.giorni_alla_scadenza} gg`) : `ricontatto tra ${c.giorni_al_rinnovo} gg`}
                         </p>
                       </div>
                     ) : <span className="text-slate-400">-</span>}
