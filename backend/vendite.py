@@ -250,6 +250,8 @@ async def create_vendita(input: VenditaInput, user: dict = _user()):
             upd["$set"].update({"stato": "venduto", "venduto_at": now.isoformat(), "venduto_prezzo": data["prezzo"],
                                 "venduto_da": user["name"], "margine": data["prezzo"] - float(item.get("prezzo_acquisto") or 0)})
         await db.magazzino.update_one({"id": item["id"]}, upd)
+        if _deps.get("sotto_scorta"):
+            await _deps["sotto_scorta"](item["id"])
         data["magazzino_nome"] = item.get("nome")
         if item.get("store_id") and item.get("store_id") != data["store_id"]:
             import trasferimenti as _tr

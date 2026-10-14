@@ -101,6 +101,15 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
     const t = setTimeout(() => api.get("/magazzino/disponibilita", { params: { q: magSearch.trim(), ...(tipo === "sim" ? { categoria: "sim" } : {}) } }).then((r) => setMagResults(r.data.slice(0, 8))).catch(() => {}), 300);
     return () => clearTimeout(t);
   }, [magSearch, form.magazzino_item_id, ricambioMag, tipo]);
+  useEffect(() => {
+    const code = magSearch.trim();
+    if (!isShop || form.magazzino_item_id || !/^\d{8,14}$/.test(code)) return undefined;
+    const t = setTimeout(() => api.get(`/magazzino/barcode/${encodeURIComponent(code)}`, { params: { store_id: form.venditore_id || "" } })
+      .then((r) => { const s = r.data; pickMag({ nome: s.nome }, s); toast.success(`Barcode riconosciuto: ${s.nome} (${s.store_name}, ${s.quantita} pz)`); })
+      .catch(() => toast.error("Codice a barre non trovato in magazzino")), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [magSearch]);
   const pickMag = (g, s) => {
     if (tipo === "sim") { setForm((f) => ({ ...f, magazzino_item_id: s.item_id, quantita: 1 })); setMagLabel(`${g.nome} · ${s.store_name}`); setMagSearch(""); setMagResults([]); return; }
     setForm((f) => ({ ...f, magazzino_item_id: s.item_id, quantita: 1, prodotto: g.nome, importo: s.prezzo_vendita ?? f.importo }));
@@ -607,7 +616,8 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                     </div>
                   ) : (
                     <>
-                      <Input placeholder="Cerca per nome, marca, barcode…" value={magSearch} onChange={(e) => setMagSearch(e.target.value)} data-testid="servizio-magazzino-search" />
+                      <Input placeholder="Scansiona il codice a barre oppure cerca per nome, marca…" value={magSearch} onChange={(e) => setMagSearch(e.target.value)} autoFocus data-testid="servizio-magazzino-search" />
+                      <p className="text-[11px] text-slate-500">Con il lettore barcode: spara il codice qui e l'articolo viene selezionato e scaricato al salvataggio.</p>
                       {magResults.length > 0 && (
                         <div className="space-y-1 rounded-md border border-slate-200 p-2" data-testid="servizio-magazzino-risultati">
                           {magResults.map((g) => g.stores.filter((s) => s.quantita > 0).map((s) => (

@@ -2765,6 +2765,7 @@ MAGAZZINO_CATEGORIE = ["display", "ricambi", "accessori", "sim", "rigenerati", "
 class MagazzinoInput(BaseModel):
     nome: str
     barcode: str = ""
+    scorta_minima: Optional[int] = None
     condizione: str = ""  # nuovo | rigenerato | usato
     regime_iva: str = ""  # iva22 | art36 | art17 (solo rigenerato/usato)
     categoria: str = "altro"
@@ -2814,6 +2815,21 @@ async def list_magazzino(user: dict = Depends(get_current_user), categoria: str 
     for i in items:
         i["store_name"] = smap.get(i.get("store_id", ""), "-")
     return items
+
+@api_router.get("/magazzino/barcode/{codice}")
+async def magazzino_per_barcode(codice: str, user: dict = Depends(get_current_user), store_id: str = ""):
+    """Lettura barcode in cassa: ritorna l'articolo (preferendo il negozio indicato) con giacenza > 0."""
+    code = codice.strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Codice vuoto")
+    items = await db.magazzino.find({"barcode": code, "quantita": {"$gt": 0}}, {"_id": 0}).to_list(50)
+    if not items:
+        raise HTTPException(status_code=404, detail="Nessun articolo con questo codice a barre disponibile")
+    items.sort(key=lambda i: (i.get("store_id") != store_id, -(i.get("quantita") or 0)))
+    it = items[0]
+    s = await db.stores.find_one({"id": it.get("store_id")}, {"_id": 0, "nome": 1})
+    return {"item_id": it["id"], "nome": it.get("nome", ""), "quantita": it.get("quantita", 0), "prezzo_vendita": it.get("prezzo_vendita"),
+            "store_id": it.get("store_id", ""), "store_name": (s or {}).get("nome", ""), "categoria": it.get("categoria", "")}
 
 @api_router.get("/magazzino/disponibilita")
 async def disponibilita_magazzino(user: dict = Depends(get_current_user), q: str = "", categoria: str = "", tipologia: str = ""):
@@ -4530,6 +4546,39 @@ async def list_servizi(user: dict = Depends(get_current_user), tipo: str = "", s
                    or ql in s.get("operatore_tel", "").lower() or ql in s.get("prodotto", "").lower()]
     return [serialize_servizio(s, names.get(s["client_id"], "")) for s in servizi]
 
+SCORTA_DEFAULT = {"accessori": 2, "sim": 3}
+
+def soglia_scorta(item: dict) -> int:
+    s = item.get("scorta_minima")
+    return int(s) if s not in (None, "") else SCORTA_DEFAULT.get(item.get("categoria"), 0)
+
+async def controlla_sotto_scorta(item_id: str) -> None:
+    """Dopo uno scarico: se l'articolo è sotto la soglia minima avvisa il negozio su WhatsApp (una volta, finché non viene ricaricato)."""
+    item = await db.magazzino.find_one({"id": item_id}, {"_id": 0})
+    if not item or item.get("categoria") == "rigenerati":
+        return
+    soglia = soglia_scorta(item)
+    qta = int(item.get("quantita") or 0)
+    if soglia <= 0:
+        return
+    if qta > soglia:
+        if item.get("sotto_scorta_avvisato_at"):
+            await db.magazzino.update_one({"id": item_id}, {"$unset": {"sotto_scorta_avvisato_at": ""}})
+        return
+    if item.get("sotto_scorta_avvisato_at"):
+        return
+    s = await db.stores.find_one({"id": item.get("store_id")}, {"_id": 0, "nome": 1, "telefono_avvisi": 1})
+    numero = re.sub(r"\D", "", (s or {}).get("telefono_avvisi") or "")
+    if not numero:
+        return
+    testo = (f"📦 *{s['nome']}* – articolo sotto scorta:\n• {item.get('nome', '')}" + (f" ({item.get('barcode')})" if item.get("barcode") else "")
+             + f"\nRimasti: *{qta}* (soglia {soglia}). Ricorda di riordinarlo.")
+    try:
+        await wa_send(numero, testo, session=item.get("store_id") or "default", tipo="magazzino_sotto_scorta")
+        await db.magazzino.update_one({"id": item_id}, {"$set": {"sotto_scorta_avvisato_at": datetime.now(timezone.utc).isoformat()}})
+    except HTTPException as e:
+        logger.warning(f"sotto scorta WA non inviato: {e.detail}")
+
 async def scarica_articolo_servizio(data: dict, user: dict) -> None:
     """Vendita accessori/prodotti: scala l'articolo di magazzino e registra il trasferimento se di un altro negozio."""
     qta = max(int(data.get("quantita") or 1), 1)
@@ -4543,6 +4592,7 @@ async def scarica_articolo_servizio(data: dict, user: dict) -> None:
     if item.get("categoria") == "rigenerati" and (item.get("quantita") or 0) - qta <= 0:
         upd["$set"].update({"stato": "venduto", "venduto_at": now, "venduto_prezzo": data.get("importo"), "venduto_da": user["name"]})
     await db.magazzino.update_one({"id": item["id"]}, upd)
+    await controlla_sotto_scorta(item["id"])
     data["quantita"] = qta
     data["magazzino_nome"] = item.get("nome")
     data["magazzino_store_id"] = item.get("store_id", "")
@@ -6097,7 +6147,7 @@ async def accoda_recensione_vendita(client_id: str, store_id: str) -> bool:
     programma_svuota_coda()
     return True
 
-vendite_module.setup(db, get_current_user, magazzino_scope, wa_send=wa_send, accoda_recensione=accoda_recensione_vendita)
+vendite_module.setup(db, get_current_user, magazzino_scope, wa_send=wa_send, accoda_recensione=accoda_recensione_vendita, sotto_scorta=controlla_sotto_scorta)
 api_router.include_router(vendite_module.router)
 
 import report_ritiri as report_ritiri_module

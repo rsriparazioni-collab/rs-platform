@@ -14,7 +14,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
-const EMPTY = { nome: "", barcode: "", categoria: "altro", condizione: "", regime_iva: "", store_id: "", quantita: 0, prezzo_acquisto: "", prezzo_vendita: "", note: "", marca: "", modello: "", tipologia: "" };
+const EMPTY = { nome: "", barcode: "", scorta_minima: null, categoria: "altro", condizione: "", regime_iva: "", store_id: "", quantita: 0, prezzo_acquisto: "", prezzo_vendita: "", note: "", marca: "", modello: "", tipologia: "" };
 
 export default function Magazzino() {
   const { user } = useAuth();
@@ -205,6 +205,7 @@ export default function Magazzino() {
                       <Package className="h-3.5 w-3.5 text-slate-400" /> {m.nome}
                       {m.in_ordine && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-rose-700" data-testid={`magazzino-in-ordine-${i}`}>In ordine{m.ordine_servizio_numero ? ` · rip. ${m.ordine_servizio_numero}` : ""}</span>}
                       {m.barcode && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600" data-testid={`magazzino-barcode-${m.id}`}>{m.barcode}</span>}
+                      {m.sotto_scorta_avvisato_at && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700" data-testid={`magazzino-sotto-scorta-${m.id}`}>sotto scorta</span>}
                     </span>
                     {(m.marca || m.modello || m.tipologia) && <p className="text-xs text-slate-500">{[tipologiaLabel(m.tipologia), m.marca, m.modello].filter(Boolean).join(" · ")}</p>}
                     {m.note && <p className="text-xs text-slate-400">{m.note}</p>}
@@ -319,6 +320,13 @@ export default function Magazzino() {
               <Input placeholder="Scansiona o digita il codice a barre (EAN / codice Sifar)" value={form.barcode || ""}
                      onChange={(e) => setForm({ ...form, barcode: e.target.value.trim() })} data-testid="magazzino-form-barcode" />
             </div>
+            {["accessori", "sim"].includes(form.categoria) && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Scorta minima (avviso WhatsApp al negozio)</Label>
+                <Input type="number" min="0" placeholder={form.categoria === "sim" ? "predefinito 3" : "predefinito 2"} value={form.scorta_minima ?? ""}
+                       onChange={(e) => setForm({ ...form, scorta_minima: e.target.value === "" ? null : parseInt(e.target.value) })} data-testid="magazzino-form-scorta" />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Categoria</Label>

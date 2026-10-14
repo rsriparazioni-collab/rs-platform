@@ -606,3 +606,7 @@ Vedi /app/memory/test_credentials.md
 - Servizi accessori/vendita: obbligo magazzino_item_id o non_a_magazzino (400 altrimenti). SIM: picker "SIM dal magazzino" (categoria sim) con scarico. Ritiri: rigenerato sempre creato (checkbox rimossa).
 - KPI: voci pellicola/cover/cavo_caricatore automatiche da servizi accessori scaricati (_voce_accessorio per parole chiave).
 - Portali: apriPortaleDopoSalvataggio -> evento portale:apri -> PortaleDialogHost (App.js) con tasto grande "Apri portale".
+
+## 2026-10-14 — Sotto scorta + barcode vendita
+- magazzino.scorta_minima (default accessori 2, sim 3); controlla_sotto_scorta(item_id) dopo ogni scarico (servizi + vendite): WA al telefono_avvisi del negozio, tipo magazzino_sotto_scorta, una volta (sotto_scorta_avvisato_at, reset quando torna sopra soglia). Badge "sotto scorta" in Magazzino, campo soglia nel form.
+- GET /magazzino/barcode/{codice}?store_id=: articolo con giacenza>0; ServizioForm accessori: digitando/scansionando 8-14 cifre nel campo ricerca seleziona automaticamente l'articolo.
