@@ -623,3 +623,7 @@ Vedi /app/memory/test_credentials.md
 - pdp_import.scopri_schede(): legge htmlview del foglio e riconosce tab tipo nov26/DIC26/gen27 (>=2026-01); unione con GIDS_PDP fissi. esito[].nuova_scheda.
 - _confronto(): per mese righe {voce, foglio, gestionale, diff, ok}: corrispettivi per negozio, voci spese/entrate, totali fatture emesse/ricevute. Endpoint passa _mese_dati.
 - Frontend: PdpImportReport.jsx (dialog, righe rosse se diff) aperto dopo "Importa dai fogli Google".
+
+## 2026-10-14 — Import notturno PDP + giorni discordanti
+- Cron pdp-fogli-notte (02:00 Europe/Rome) -> POST /api/cron/pdp-fogli-notte -> contabilita.import_pdp_notturno(): import, confronto, stato in pdp_import_stato{id:ultimo,chiavi}, WA a NUMERO_AMMINISTRAZIONE solo per differenze nuove (tipo pdp_import_notturno).
+- Righe "Corrispettivi <negozio>" del confronto hanno store_id + giorni[{data,scontrini,foglio,diff}]; PdpImportReport espande la riga al click.

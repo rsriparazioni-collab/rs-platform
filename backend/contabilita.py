@@ -1063,11 +1063,16 @@ async def importa_storico_fogli(request: Request):
 
 @router.post("/pdp/importa-fogli")
 async def importa_pdp_fogli_endpoint(request: Request):
-    import httpx
-    import pdp_import
     user = await _user(request)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Solo amministratore")
+    esito = await _esegui_import_pdp(user)
+    return {"esito": esito}
+
+
+async def _esegui_import_pdp(user: dict) -> list:
+    import httpx
+    import pdp_import
     db = _d["db"]
     centri = await _centri(user)
     stores = await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(100)
@@ -1078,7 +1083,37 @@ async def importa_pdp_fogli_endpoint(request: Request):
             return r.text
         esito = await pdp_import.importa_pdp_fogli(db, fetch, centri, stores, user.get("name", ""), _mese_dati)
     await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "import_pdp", "esito": esito, "by": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()})
-    return {"esito": esito}
+    return esito
+
+
+async def import_pdp_notturno() -> dict:
+    """Cron notturno: rilegge il foglio, salva lo stato delle differenze e avvisa su WhatsApp solo quelle nuove."""
+    db = _d["db"]
+    admin = await db.users.find_one({"role": "admin"}, {"_id": 0}) or {"role": "admin", "name": "cron"}
+    admin["name"] = "cron notturno"
+    esito = await _esegui_import_pdp(admin)
+    prev = await db.pdp_import_stato.find_one({"id": "ultimo"}, {"_id": 0}) or {}
+    viste = set(prev.get("chiavi") or [])
+    attuali, nuove = [], []
+    for m in esito:
+        for r in m.get("confronto") or []:
+            if r["ok"]:
+                continue
+            k = f"{m['anno']}-{m['mese']:02d}|{r['voce']}|{r['diff']}"
+            attuali.append(k)
+            if k not in viste:
+                nuove.append(f"• {MESI_IT[m['mese']]} {m['anno']} – {r['voce']}: foglio {_eur(r['foglio'])} / gestionale {_eur(r['gestionale'])} ({'+' if r['diff'] > 0 else ''}{_eur(r['diff'])})")
+    nuove_schede = [f"{MESI_IT[m['mese']]} {m['anno']}" for m in esito if m.get("nuova_scheda") and not m.get("errore")]
+    await db.pdp_import_stato.update_one({"id": "ultimo"}, {"$set": {"chiavi": attuali, "at": datetime.now(timezone.utc).isoformat(), "nuove_schede": nuove_schede}}, upsert=True)
+    inviato = False
+    if nuove:
+        testo = "📊 *Import notturno fogli Google – Punto di pareggio*\nNuove differenze foglio ↔ gestionale:\n" + "\n".join(nuove[:15]) + (f"\n… e altre {len(nuove) - 15}" if len(nuove) > 15 else "") + "\nControlla nel Punto di pareggio → Importa dai fogli Google."
+        try:
+            await _d["wa_send"](NUMERO_AMMINISTRAZIONE, testo, session="default", tipo="pdp_import_notturno")
+            inviato = True
+        except HTTPException as e:
+            logger.warning(f"WA import PDP non inviato: {e.detail}")
+    return {"mesi": len(esito), "differenze": len(attuali), "nuove": len(nuove), "wa_inviato": inviato}
 
 
 @router.post("/corrispettivi/importa-fogli")

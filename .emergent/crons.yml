@@ -67,3 +67,11 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/obiettivi"
     method: POST
     enabled: true
+  - name: pdp-fogli-notte
+    description: "Alle 02:00 rilegge il foglio Google del Punto di pareggio e avvisa su WhatsApp l'amministrazione se compaiono nuove differenze"
+    cron: "0 2 * * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/pdp-fogli-notte"
+    method: POST
+    enabled: true

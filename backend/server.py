@@ -6249,6 +6249,17 @@ async def cron_corrispettivi_mensile(request: Request, background_tasks: Backgro
     background_tasks.add_task(contabilita_module.invia_email_mensile_tutti)
     return {"status": "accepted"}
 
+@api_router.post("/cron/pdp-fogli-notte")
+async def cron_pdp_fogli_notte(request: Request, background_tasks: BackgroundTasks):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(contabilita_module.import_pdp_notturno)
+    return {"status": "accepted"}
+
 @api_router.post("/cron/corrispettivi-fine-mese")
 async def cron_corrispettivi_fine_mese(request: Request, background_tasks: BackgroundTasks):
     auth = request.headers.get("Authorization", "")

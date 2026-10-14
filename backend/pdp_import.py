@@ -82,8 +82,8 @@ def parse_pdp_sheet(csv_text: str) -> dict:
     return {"negozi": negozi, "emesse": emesse, "ricevute": ricevute, "corrispettivi": corr, "mese_rilevato": mesi.most_common(1)[0][0] if mesi else None}
 
 
-def _riga(voce, foglio, gest):
-    return {"voce": voce, "foglio": round(foglio, 2), "gestionale": round(gest, 2), "diff": round(gest - foglio, 2), "ok": abs(gest - foglio) < 0.01}
+def _riga(voce, foglio, gest, **extra):
+    return {"voce": voce, "foglio": round(foglio, 2), "gestionale": round(gest, 2), "diff": round(gest - foglio, 2), "ok": abs(gest - foglio) < 0.01, **extra}
 
 
 async def _confronto(db, p, anno, mese, cid_fatt, per_centro, slug_store, store_centro, mese_dati) -> list:
@@ -92,7 +92,17 @@ async def _confronto(db, p, anno, mese, cid_fatt, per_centro, slug_store, store_
     for nome, d in p["negozi"].items():
         s = slug_store.get(nome)
         if s and d["corrispettivi_foglio"]:
-            out.append(_riga(f"Corrispettivi {s['nome']}", d["corrispettivi_foglio"], (await mese_dati(s["id"], anno, mese))["totali"]["totale"]))
+            md = await mese_dati(s["id"], anno, mese)
+            giorni_rt = {c["data"]: c["totale"] for c in p["corrispettivi"] if re.sub(r"\d+", "", c["negozio"]).strip() == nome}
+            giorni = []
+            for r in md["righe"]:
+                sc = 0.0 if r.get("vuoto") else round(num(r.get("riparazioni")) + num(r.get("merce")) + num(r.get("art74")), 2)
+                fg = giorni_rt.get(r["data"])
+                if fg is None and r.get("vuoto"):
+                    continue
+                if fg is None or abs(sc - fg) >= 0.01:
+                    giorni.append({"data": r["data"], "scontrini": sc, "foglio": fg, "diff": round(sc - fg, 2) if fg is not None else None})
+            out.append(_riga(f"Corrispettivi {s['nome']}", d["corrispettivi_foglio"], md["totali"]["totale"], store_id=s["id"], giorni=giorni))
     for cid, valori in per_centro.items():
         doc = await db.pdp.find_one({"centro_id": cid, "anno": anno, "mese": mese}, {"_id": 0, "valori": 1}) or {}
         salvati = doc.get("valori") or {}
