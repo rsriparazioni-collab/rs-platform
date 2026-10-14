@@ -853,10 +853,51 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     sezioni["fornitori"] = {"Fatture ricevute non abbinate (AdE)": tot_non_abb, **sezioni["fornitori"]}
     tot_entrate = round(sum(entrate.values()), 2)
     tot_spese = {cat: round(sum(d.values()), 2) for cat, d in sezioni.items()}
+    # Spese contanti da prima nota (incluse quelle importate dai fogli Google), raggruppate per motivo
+    pref = f"{anno:04d}-{mese:02d}"
+    spese_cassa: dict = {}
+    async for s in db.spese_cassa.find({"store_id": {"$in": centro["store_ids"]}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "motivo": 1, "importo": 1}):
+        k = re.sub(r"\s+", " ", (s.get("motivo") or "Varie").strip()).title()[:40] or "Varie"
+        spese_cassa[k] = round(spese_cassa.get(k, 0.0) + _f(s.get("importo")), 2)
+    tot_spese_cassa = round(sum(spese_cassa.values()), 2)
+    tot_spese["spese_cassa"] = tot_spese_cassa
     tot_uscite = round(sum(tot_spese.values()), 2)
+    # Incassato reale e giorni lavorati
+    incassato = contanti = pos = non_riscosso = iva = 0.0
+    giorni_inseriti = 0
+    for sid in centro["store_ids"]:
+        t = (await _mese_dati(sid, anno, mese))["totali"]
+        contanti += t["contanti"]; pos += t["pos"]; non_riscosso += t["non_riscosso"]; iva += t["iva"]
+        giorni_inseriti = max(giorni_inseriti, t.get("giorni_inseriti") or 0)
+    incassato = round(contanti + pos, 2)
+    # Break-even: costi fissi / margine di contribuzione %
+    costi_fissi = round(tot_spese["spese_fisse"] + tot_spese["spese_semifisse"] + tot_spese_cassa, 2)
+    costi_variabili = tot_spese["fornitori"]
+    mdc = round(tot_entrate - costi_variabili, 2)
+    mdc_pct = round(mdc / tot_entrate * 100, 1) if tot_entrate else None
+    bep = round(costi_fissi / (mdc / tot_entrate), 2) if tot_entrate and mdc > 0 else None
+    import calendar
+    giorni_mese = calendar.monthrange(anno, mese)[1]
+    oggi = date.today()
+    in_corso = (anno, mese) == (oggi.year, oggi.month)
+    giorni_trascorsi = oggi.day if in_corso else giorni_mese
+    media_giorno = round(tot_entrate / giorni_inseriti, 2) if giorni_inseriti else 0.0
+    giorni_apertura_stimati = max(giorni_inseriti, round(giorni_mese * 26 / 30))
+    proiezione = round(media_giorno * giorni_apertura_stimati, 2) if in_corso and giorni_inseriti else tot_entrate
+    bep_giorno = round(bep / giorni_apertura_stimati, 2) if bep else None
+    break_even = {"costi_fissi": costi_fissi, "costi_variabili": costi_variabili, "mdc": mdc, "mdc_pct": mdc_pct, "bep_fatturato": bep,
+                  "margine_sicurezza": round(tot_entrate - bep, 2) if bep is not None else None,
+                  "margine_sicurezza_pct": round((tot_entrate - bep) / tot_entrate * 100, 1) if bep is not None and tot_entrate else None,
+                  "bep_giorno": bep_giorno, "media_giorno": media_giorno, "giorni_inseriti": giorni_inseriti, "giorni_mese": giorni_mese,
+                  "giorni_trascorsi": giorni_trascorsi, "giorni_apertura_stimati": giorni_apertura_stimati, "in_corso": in_corso, "proiezione_fatturato": proiezione,
+                  "proiezione_risultato": round(proiezione - costi_variabili * (proiezione / tot_entrate if tot_entrate else 1) - costi_fissi, 2) if in_corso else round(tot_entrate - tot_uscite, 2)}
     return {"centro": {"id": centro["id"], "nome": centro["nome"], "negozi": centro["negozi"]}, "anno": anno, "mese": mese, "voci": voci, "valori": valori,
             "entrate": entrate, "corrispettivi_per_negozio": per_negozio, "ade": ade, "ade_fornitori": ade_fornitori, "ade_non_abbinate": non_abbinate, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
-            "punto_pareggio": tot_uscite, "risultato": round(tot_entrate - tot_uscite, 2),
+            "spese_cassa": spese_cassa, "tot_spese_cassa": tot_spese_cassa,
+            "incasso": {"incassato": incassato, "contanti": round(contanti, 2), "pos": round(pos, 2), "non_riscosso": round(non_riscosso, 2), "iva": round(iva, 2), "fatturato": tot_entrate,
+                        "da_incassare": round(tot_entrate - incassato, 2)},
+            "break_even": break_even,
+            "punto_pareggio": bep if bep is not None else tot_uscite, "risultato": round(tot_entrate - tot_uscite, 2),
             "copertura_pct": round(tot_entrate / tot_uscite * 100, 1) if tot_uscite else None, "note": doc.get("note", ""), "ereditato_da": ereditato_da,
             "compilato": bool(doc) or (anno, mese) in SEED_PDP.get(centro["id"], {})}
 
@@ -865,6 +906,25 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
 async def get_pdp(centro_id: str, anno: int, mese: int, request: Request):
     user = await _user(request)
     return await _pdp_calcolo(await _centro(user, centro_id), anno, mese)
+
+
+@router.get("/pdp/trend")
+async def get_pdp_trend(centro_id: str, anno: int, mese: int, request: Request, mesi: int = 6):
+    """Serie degli ultimi N mesi (fatturato, incassato, costi fissi/variabili, risultato, BEP) per il centro di costo."""
+    user = await _user(request)
+    centro = await _centro(user, centro_id)
+    out = []
+    a, m = anno, mese
+    for _ in range(max(1, min(mesi, 12))):
+        d = await _pdp_calcolo(centro, a, m)
+        be = d["break_even"]
+        out.append({"anno": a, "mese": m, "label": f"{MESI_IT[m][:3]} {str(a)[2:]}", "fatturato": d["tot_entrate"], "incassato": d["incasso"]["incassato"],
+                    "costi_fissi": be["costi_fissi"], "costi_variabili": be["costi_variabili"], "uscite": d["tot_uscite"], "risultato": d["risultato"],
+                    "bep": be["bep_fatturato"], "mdc_pct": be["mdc_pct"], "compilato": d["compilato"]})
+        m -= 1
+        if m == 0:
+            a, m = a - 1, 12
+    return list(reversed(out))
 
 
 class PdpInput(BaseModel):

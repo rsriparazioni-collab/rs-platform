@@ -7,8 +7,9 @@ import { MESI, Num, PeriodoPicker, eur } from "./shared";
 import { CentriCostoEditor } from "./CentriCostoEditor";
 import { FattureAde } from "./FattureAde";
 import { PdpAnalisi } from "./PdpAnalisi";
+import { PdpDashboard } from "./PdpDashboard";
 
-const CAT = [["entrate", "Entrate", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse modificabili", "text-amber-700"], ["fornitori", "Fornitori / acquisti", "text-slate-700"]];
+const CAT = [["entrate", "Entrate (fatturato)", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse e contanti", "text-amber-700"], ["fornitori", "Fornitori / acquisti (costi variabili)", "text-slate-700"]];
 
 export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }) => {
   const [centri, setCentri] = useState([]);
@@ -36,8 +37,9 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
   const autoVal = (cat) => (AUTO[cat] || []).reduce((a, k) => a + ((cat === "entrate" ? d.entrate[k] : d.sezioni[cat][k]) || 0), 0) + (cat === "fornitori" ? Object.values(adeF).reduce((a, v) => a + v, 0) : 0);
   const somma = (cat) => voci[cat].reduce((a, v) => a + (parseFloat(valori[`${cat}|${v}`]) || 0), 0);
   const entrate = autoVal("entrate") + somma("entrate");
-  const uscite = somma("spese_fisse") + somma("spese_semifisse") + somma("fornitori") + autoVal("fornitori");
-  const ris = entrate - uscite;
+  const speseCassa = d.tot_spese_cassa || 0;
+  const fissi = somma("spese_fisse") + somma("spese_semifisse") + speseCassa;
+  const variabili = somma("fornitori") + autoVal("fornitori");
   return (
     <div className="space-y-5" data-testid="pdp-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -57,20 +59,21 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
           <Button size="sm" variant="outline" onClick={salva} data-testid="pdp-conferma-ereditato">Conferma per {MESI[mese]}</Button>
         </div>
       )}
-      <div className="grid gap-3 sm:grid-cols-4" data-testid="pdp-riepilogo">
-        <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">Entrate</p><p className="mt-1 text-xl font-semibold text-emerald-700" data-testid="pdp-entrate">{eur(entrate)}</p></div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">Punto di pareggio (uscite)</p><p className="mt-1 text-xl font-semibold text-rose-700" data-testid="pdp-uscite">{eur(uscite)}</p></div>
-        <div className={`rounded-xl border p-4 ${ris >= 0 ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}><p className="text-xs uppercase text-slate-500">{ris >= 0 ? "Guadagno" : "Sotto pareggio"}</p><p className="mt-1 text-xl font-semibold" data-testid="pdp-risultato">{eur(ris)}</p></div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">Copertura</p><p className="mt-1 text-xl font-semibold" data-testid="pdp-copertura">{uscite ? `${(entrate / uscite * 100).toFixed(1)}%` : "—"}</p>
-          <div className="mt-2 h-2 rounded-full bg-slate-100"><div className={`h-2 rounded-full ${ris >= 0 ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${Math.min(100, uscite ? entrate / uscite * 100 : 0)}%` }} /></div></div>
-      </div>
+      <PdpDashboard centroId={centroId} anno={anno} mese={mese} fatturato={entrate} fissi={fissi} variabili={variabili} incasso={d.incasso} be={d.break_even} />
       <FattureAde centroId={centroId} anno={anno} mese={mese} onChanged={load} />
       <PdpAnalisi centroId={centroId} anno={anno} mese={mese} />
       <div className="grid gap-4 lg:grid-cols-2">
         {CAT.map(([cat, label, color]) => (
           <div key={cat} className="rounded-xl border border-slate-200 bg-white" data-testid={`pdp-sezione-${cat}`}>
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5"><h3 className={`text-sm font-semibold ${color}`}>{label}</h3><span className="text-sm font-semibold tabular-nums">{eur(somma(cat) + autoVal(cat))}</span></div>
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5"><h3 className={`text-sm font-semibold ${color}`}>{label}</h3><span className="text-sm font-semibold tabular-nums">{eur(somma(cat) + autoVal(cat) + (cat === "spese_semifisse" ? speseCassa : 0))}</span></div>
             <div className="divide-y divide-slate-50 px-4">
+              {cat === "spese_semifisse" && (
+                <div className="py-1.5 text-sm" data-testid="pdp-spese-cassa-auto">
+                  <div className="flex items-center justify-between"><span className="text-slate-600">Spese contanti prima nota <span className="text-xs text-slate-400">(automatico dai corrispettivi e dai fogli importati)</span></span><span className="tabular-nums font-medium">{eur(speseCassa)}</span></div>
+                  {Object.keys(d.spese_cassa || {}).length > 0 && <p className="mt-0.5 text-[11px] text-slate-400">{Object.entries(d.spese_cassa).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${k} ${eur(v)}`).join(" · ")}</p>}
+                  {speseCassa > 0 && <p className="mt-0.5 text-[11px] text-amber-600">Non reinserire a mano sotto le stesse spese (es. Ritiri) per evitare il doppio conteggio.</p>}
+                </div>
+              )}
               {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Corrispettivi negozi <span className="text-xs text-slate-400">(automatico: {d.centro.negozi.join(" + ")})</span></span><span className="tabular-nums font-medium" data-testid="pdp-corrispettivi-auto">{eur(d.entrate["Corrispettivi negozi"])}</span></div>}
               {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture emesse <span className="text-xs text-slate-400">(automatico da Agenzia Entrate)</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-emesse-auto">{eur(d.entrate["Fatture emesse (AdE)"])}</span></div>}
               {cat === "fornitori" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture ricevute non abbinate <span className="text-xs text-slate-400">(automatico da Agenzia Entrate{d.ade_non_abbinate?.length ? `: ${d.ade_non_abbinate.slice(0, 4).map((x) => x.controparte).join(", ")}${d.ade_non_abbinate.length > 4 ? "…" : ""}` : ""})</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-ricevute-auto">{eur(d.sezioni.fornitori["Fatture ricevute non abbinate (AdE)"])}</span></div>}
