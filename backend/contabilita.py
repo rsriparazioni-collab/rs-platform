@@ -843,14 +843,19 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     import fatture_ade
     ade = await fatture_ade.totali_mese(centro["id"], anno, mese)
     entrate["Fatture emesse (AdE)"] = ade["emesse"]
+    entrate_info = {}
     for v in voci["entrate"]:
-        entrate[v] = _f(valori.get(f"entrate|{v}"))
+        val = _f(valori.get(f"entrate|{v}"))
+        if ade["emesse"] > 0:
+            entrate_info[v] = val  # già comprese nelle fatture emesse: non sommare due volte
+        else:
+            entrate[v] = val
     sezioni = {}
     for cat in ("spese_fisse", "spese_semifisse", "fornitori"):
         sezioni[cat] = {v: _f(valori.get(f"{cat}|{v}")) for v in voci[cat]}
     ade_fornitori, non_abbinate = await _ricevute_per_fornitore(centro["id"], anno, mese, voci["fornitori"])
     for v, imp in ade_fornitori.items():
-        sezioni["fornitori"][v] = round(sezioni["fornitori"].get(v, 0.0) + imp, 2)
+        sezioni["fornitori"][v] = imp if imp else sezioni["fornitori"].get(v, 0.0)
     tot_non_abb = round(sum(x["totale"] for x in non_abbinate), 2)
     sezioni["fornitori"] = {"Fatture ricevute non abbinate (AdE)": tot_non_abb, **sezioni["fornitori"]}
     tot_entrate = round(sum(entrate.values()), 2)
@@ -895,7 +900,7 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
                   "giorni_trascorsi": giorni_trascorsi, "giorni_apertura_stimati": giorni_apertura_stimati, "in_corso": in_corso, "proiezione_fatturato": proiezione,
                   "proiezione_risultato": round(proiezione - costi_variabili * (proiezione / tot_entrate if tot_entrate else 1) - costi_fissi, 2) if in_corso else round(tot_entrate - tot_uscite, 2)}
     return {"centro": {"id": centro["id"], "nome": centro["nome"], "negozi": centro["negozi"]}, "anno": anno, "mese": mese, "voci": voci, "valori": valori,
-            "entrate": entrate, "corrispettivi_per_negozio": per_negozio, "ade": ade, "ade_fornitori": ade_fornitori, "ade_non_abbinate": non_abbinate, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
+            "entrate": entrate, "entrate_info": entrate_info, "corrispettivi_per_negozio": per_negozio, "ade": ade, "ade_fornitori": ade_fornitori, "ade_non_abbinate": non_abbinate, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
             "spese_cassa": spese_cassa, "tot_spese_cassa": tot_spese_cassa,
             "incasso": {"incassato": incassato, "contanti": round(contanti, 2), "pos": round(pos, 2), "non_riscosso": round(non_riscosso, 2), "iva": round(iva, 2), "fatturato": tot_entrate,
                         "da_incassare": round(tot_entrate - incassato, 2)},
@@ -1053,6 +1058,26 @@ async def importa_storico_fogli(request: Request):
                                                                 "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
             esito.append({"negozio": store["nome"], "mesi_importati": len(righe), "anni": sorted({r["anno"] for r in righe})})
     await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "import_storico", "esito": esito, "by": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()})
+    return {"esito": esito}
+
+
+@router.post("/pdp/importa-fogli")
+async def importa_pdp_fogli_endpoint(request: Request):
+    import httpx
+    import pdp_import
+    user = await _user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    db = _d["db"]
+    centri = await _centri(user)
+    stores = await db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).to_list(100)
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        async def fetch(url):
+            r = await client.get(url)
+            r.raise_for_status()
+            return r.text
+        esito = await pdp_import.importa_pdp_fogli(db, fetch, centri, stores, user.get("name", ""))
+    await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "import_pdp", "esito": esito, "by": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()})
     return {"esito": esito}
 
 

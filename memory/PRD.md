@@ -614,3 +614,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-14 — Scadenze energia su 12 mesi
 - compute_dates: data_scadenza = contratto + 12 mesi; data_rinnovo (ricontatto) = scadenza - 2 mesi; giorni_alla_scadenza aggiunto. Prima: scadenza = attivazione(+2m)+12m = +14m.
 - Etichette aggiornate (Clienti, Dashboard, ClientDetail, export, digest email con colonna scadenza). WA rinnovo (60 gg prima della scadenza) ora coincide col ricontatto.
+
+## 2026-10-14 — Import PDP dai fogli Google
+- backend/pdp_import.py: SHEET_PDP + GIDS_PDP (gen-ott 2026). Per tab: riepilogo per negozio -> pdp.valori (entrate Eolo/Energia/Telefonia/Pacchi, fisse, semi-fisse) per centro; fatture attive/passive -> fatture_ade (hash dedupe, fonte foglio_google); corrispettivi RT -> corrispettivi_ade + rt_matricole auto. POST /contabilita/pdp/importa-fogli (admin), tasto "Importa dai fogli Google" nel tab PDP.
+- _pdp_calcolo: se ci sono fatture emesse, le voci entrate manuali NON si sommano (gia comprese); fornitori abbinati AdE sostituiscono il manuale (niente doppio conteggio). entrate_info nel payload.

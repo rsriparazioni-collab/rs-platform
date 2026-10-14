@@ -15,6 +15,7 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
   const [centri, setCentri] = useState([]);
   const [centroId, setCentroId] = useState("");
   const [d, setD] = useState(null);
+  const [importing, setImporting] = useState(false);
   const [valori, setValori] = useState({});
   const [voci, setVoci] = useState(null);
   const [nuova, setNuova] = useState({});
@@ -35,7 +36,8 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
   const AUTO = { entrate: ["Corrispettivi negozi", "Fatture emesse (AdE)"], fornitori: ["Fatture ricevute non abbinate (AdE)"] };
   const adeF = d.ade_fornitori || {};
   const autoVal = (cat) => (AUTO[cat] || []).reduce((a, k) => a + ((cat === "entrate" ? d.entrate[k] : d.sezioni[cat][k]) || 0), 0) + (cat === "fornitori" ? Object.values(adeF).reduce((a, v) => a + v, 0) : 0);
-  const somma = (cat) => voci[cat].reduce((a, v) => a + (parseFloat(valori[`${cat}|${v}`]) || 0), 0);
+  const emesseAde = d.entrate["Fatture emesse (AdE)"] || 0;
+  const somma = (cat) => voci[cat].reduce((a, v) => a + ((cat === "entrate" && emesseAde > 0) || (cat === "fornitori" && adeF[v] > 0) ? 0 : (parseFloat(valori[`${cat}|${v}`]) || 0)), 0);
   const entrate = autoVal("entrate") + somma("entrate");
   const speseCassa = d.tot_spese_cassa || 0;
   const fissi = somma("spese_fisse") + somma("spese_semifisse") + speseCassa;
@@ -51,6 +53,7 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
           {isAdmin && <CentriCostoEditor centri={centri} onSaved={loadCentri} />}
         </div>
         <Button size="sm" onClick={salva} data-testid="pdp-salva">Salva valori</Button>
+        <Button size="sm" variant="outline" disabled={importing} data-testid="pdp-importa-fogli" onClick={async () => { setImporting(true); try { const r = await api.post("/contabilita/pdp/importa-fogli"); const ok = r.data.esito.filter((e) => !e.errore); toast.success(`Fogli importati: ${ok.length} mesi · ${ok.reduce((a, e) => a + e.fatture_emesse_nuove + e.fatture_ricevute_nuove, 0)} fatture nuove`); load(); } catch (e) { toast.error(apiError(e)); } finally { setImporting(false); } }}>{importing ? "Importo…" : "Importa dai fogli Google"}</Button>
       </div>
       <p className="text-xs text-slate-500" data-testid="pdp-centro-negozi">Centro di costo <b>{d.centro.nome}</b>: {d.centro.negozi.join(" + ")} — i corrispettivi dei negozi entrano automaticamente nelle entrate.</p>
       {d.ereditato_da && (
@@ -75,7 +78,9 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
                 </div>
               )}
               {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Corrispettivi negozi <span className="text-xs text-slate-400">(automatico: {d.centro.negozi.join(" + ")})</span></span><span className="tabular-nums font-medium" data-testid="pdp-corrispettivi-auto">{eur(d.entrate["Corrispettivi negozi"])}</span></div>}
-              {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture emesse <span className="text-xs text-slate-400">(automatico da Agenzia Entrate)</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-emesse-auto">{eur(d.entrate["Fatture emesse (AdE)"])}</span></div>}
+              {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture emesse <span className="text-xs text-slate-400">(automatico da Agenzia Entrate / fogli)</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-emesse-auto">{eur(d.entrate["Fatture emesse (AdE)"])}</span></div>}
+              {cat === "entrate" && emesseAde > 0 && <p className="py-1 text-[11px] text-amber-600" data-testid="pdp-entrate-info">Le voci sotto (Eolo, Energia, Telefonia, Pacchi) sono già comprese nelle fatture emesse e non vengono sommate di nuovo.</p>}
+              {cat === "fornitori" && Object.keys(adeF).length > 0 && <p className="py-1 text-[11px] text-amber-600">Per i fornitori con fatture ricevute abbinate vale l'importo delle fatture; il valore manuale è ignorato.</p>}
               {cat === "fornitori" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture ricevute non abbinate <span className="text-xs text-slate-400">(automatico da Agenzia Entrate{d.ade_non_abbinate?.length ? `: ${d.ade_non_abbinate.slice(0, 4).map((x) => x.controparte).join(", ")}${d.ade_non_abbinate.length > 4 ? "…" : ""}` : ""})</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-ricevute-auto">{eur(d.sezioni.fornitori["Fatture ricevute non abbinate (AdE)"])}</span></div>}
               {voci[cat].map((v) => (
                 <div key={v} className="flex items-center gap-2 py-1.5 text-sm">
