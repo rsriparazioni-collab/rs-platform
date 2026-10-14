@@ -100,7 +100,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
     if (magSearch.trim().length < 2 || form.magazzino_item_id || ricambioMag) { setMagResults([]); return undefined; }
     const t = setTimeout(() => api.get("/magazzino/disponibilita", { params: { q: magSearch.trim(), ...(tipo === "sim" ? { categoria: "sim" } : {}) } }).then((r) => setMagResults(r.data.slice(0, 8))).catch(() => {}), 300);
     return () => clearTimeout(t);
-  }, [magSearch, form.magazzino_item_id, ricambioMag]);
+  }, [magSearch, form.magazzino_item_id, ricambioMag, tipo]);
   const pickMag = (g, s) => {
     if (tipo === "sim") { setForm((f) => ({ ...f, magazzino_item_id: s.item_id, quantita: 1 })); setMagLabel(`${g.nome} · ${s.store_name}`); setMagSearch(""); setMagResults([]); return; }
     setForm((f) => ({ ...f, magazzino_item_id: s.item_id, quantita: 1, prodotto: g.nome, importo: s.prezzo_vendita ?? f.importo }));

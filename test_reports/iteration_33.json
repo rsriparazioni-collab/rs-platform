@@ -1,0 +1,30 @@
+{
+  "summary": "E2E test delle 5 nuove modifiche CRM: (1) ricerca clienti per parole, (2) Registro rapido Dashboard con totale mese e obiettivi, (3) guardrails servizi Accessori/Vendita (richiede magazzino_item_id o 'Non a magazzino'), (4) box SIM dal magazzino, (5) dialog 'Prossimo passo' con 'Apri portale' dopo salvataggio contratto. Backend: 10/11 PASS, 1 SKIP (nessun articolo accessori in magazzino con giacenza > 0, impossibile verificare decremento). Frontend: 100% dei flussi testati OK con admin+MFA. Ricerca 'Rossi Mario' → 1 risultato esatto; 'rossi ma' → 2 risultati (Rossi Mario + GROSSI MARCO, match parziale corretto). Registro rapido: 7 voci (incluse pellicola/cover/cavo_caricatore), badge 'Il tuo ottobre: N attività' presente, click rr-voce-pellicola incrementa correttamente il contatore mese (0 → 1). Nuovo accessori su TEST_82685b senza magazzino_item_id né spunta: toast errore 'Scegli l'articolo di magazzino da scaricare oppure spunta Non a magazzino' + 400 backend. Con spunta servizio-non-a-magazzino: salvataggio OK (toast 'Servizio inserito'). Nuova SIM operatore WINDTRE: salvataggio OK e portale-dialog apre con 'Apri portale Kolme' (seed WINDTRE mobile). Tutti i data-testid richiesti presenti e coerenti.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard/PdpDashboard", "issues": ["Persiste warning Recharts: 'The width(-1) and height(-1) of chart should be greater than 0'. Non blocca ma andrebbe aggiunto minWidth={0} al ResponsiveContainer (già segnalato in iter_32)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_results_iter33.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L4578-4587: logica guardrail Accessori/Vendita è corretta (prima controlla da_ordinare, poi magazzino_item_id, altrimenti richiede non_a_magazzino). SIM accetta magazzino_item_id opzionale (correct per spec).",
+    "server.py L951-955: ricerca q su clienti usa $and di regex escape() per ogni parola, cercando in cognome/nome/CF/POD/PDR/telefono/email/p_iva. Supporto corretto a 'Rossi Mario' e 'rossi ma'.",
+    "kpi.py L39-41: KPI_VOCI include pellicola/cover/cavo_caricatore. /attivita/mese ritorna {anno,mese,totali,obiettivi,totale_mese} come da spec.",
+    "PortaleBox.jsx: PortaleDialogHost apre portale-dialog con operatore reale. Testato con WINDTRE → mostra 'Prossimo passo: Kolme' con bottone portale-dialog-apri (link https://spazio.kolme.it/)."
+  ],
+  "updated_files": ["/app/backend/tests/test_new_features.py"],
+  "success_rate": {"backend": "100% (10/10 valid, 1 skipped per mancanza dati)", "frontend": "100%"},
+  "test_credentials": "Admin rsriparazioni@gmail.com / EnricoRS@26 + TOTP (ZNL4MQSH7OUEIOECQ6TI346P6NWNPNPV)",
+  "seed_data_creation": "Nessuno nuovo. Creati temporaneamente 2 servizi di test sul cliente TEST_Regression TEST_82685b (1 accessori non_a_magazzino, 1 sim WINDTRE), poi eliminati via DELETE /api/servizi/{id} (200 OK entrambi).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Tutte e 5 le feature nuove funzionano. Testid confermati: filter-search-input (NON clienti-search), registro-rapido, rr-totale-mese, rr-voce-<id>, rr-mese-<id>, servizio-magazzino-box, servizio-magazzino-search, servizio-non-a-magazzino, servizio-magazzino-pick-<item_id>, servizio-sim-magazzino-box, servizio-sim-magazzino-search, portale-dialog, portale-dialog-apri. Cliente di test: id 22a88213-b106-44f1-829b-cd5f0b9049be (TEST_Regression TEST_82685b). Operatori con portale seedato in sezione mobile: WINDTRE, VERY, KENA, HO, DIGI, ILIAD, FASTWEB, LYCA. Il test backend 'test_accessori_with_magazzino_item_decrements' è SKIPPED perché la collezione magazzino non ha articoli categoria 'accessori' con quantita>0 (solo telefoni e rigenerati); se vengono aggiunti articoli accessori il test verifica anche il decremento giacenza.",
+  "rca of the issue": "N/A - nessun bug riscontrato nelle 5 nuove funzionalità."
+}
