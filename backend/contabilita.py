@@ -1076,7 +1076,7 @@ async def importa_pdp_fogli_endpoint(request: Request):
             r = await client.get(url)
             r.raise_for_status()
             return r.text
-        esito = await pdp_import.importa_pdp_fogli(db, fetch, centri, stores, user.get("name", ""))
+        esito = await pdp_import.importa_pdp_fogli(db, fetch, centri, stores, user.get("name", ""), _mese_dati)
     await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "import_pdp", "esito": esito, "by": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()})
     return {"esito": esito}
 

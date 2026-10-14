@@ -618,3 +618,8 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-14 — Import PDP dai fogli Google
 - backend/pdp_import.py: SHEET_PDP + GIDS_PDP (gen-ott 2026). Per tab: riepilogo per negozio -> pdp.valori (entrate Eolo/Energia/Telefonia/Pacchi, fisse, semi-fisse) per centro; fatture attive/passive -> fatture_ade (hash dedupe, fonte foglio_google); corrispettivi RT -> corrispettivi_ade + rt_matricole auto. POST /contabilita/pdp/importa-fogli (admin), tasto "Importa dai fogli Google" nel tab PDP.
 - _pdp_calcolo: se ci sono fatture emesse, le voci entrate manuali NON si sommano (gia comprese); fornitori abbinati AdE sostituiscono il manuale (niente doppio conteggio). entrate_info nel payload.
+
+## 2026-10-14 — Schede automatiche + report differenze import PDP
+- pdp_import.scopri_schede(): legge htmlview del foglio e riconosce tab tipo nov26/DIC26/gen27 (>=2026-01); unione con GIDS_PDP fissi. esito[].nuova_scheda.
+- _confronto(): per mese righe {voce, foglio, gestionale, diff, ok}: corrispettivi per negozio, voci spese/entrate, totali fatture emesse/ricevute. Endpoint passa _mese_dati.
+- Frontend: PdpImportReport.jsx (dialog, righe rosse se diff) aperto dopo "Importa dai fogli Google".

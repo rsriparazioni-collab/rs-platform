@@ -8,6 +8,7 @@ import { CentriCostoEditor } from "./CentriCostoEditor";
 import { FattureAde } from "./FattureAde";
 import { PdpAnalisi } from "./PdpAnalisi";
 import { PdpDashboard } from "./PdpDashboard";
+import { PdpImportReport } from "./PdpImportReport";
 
 const CAT = [["entrate", "Entrate (fatturato)", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse e contanti", "text-amber-700"], ["fornitori", "Fornitori / acquisti (costi variabili)", "text-slate-700"]];
 
@@ -16,6 +17,7 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
   const [centroId, setCentroId] = useState("");
   const [d, setD] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [report, setReport] = useState(null);
   const [valori, setValori] = useState({});
   const [voci, setVoci] = useState(null);
   const [nuova, setNuova] = useState({});
@@ -53,8 +55,9 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
           {isAdmin && <CentriCostoEditor centri={centri} onSaved={loadCentri} />}
         </div>
         <Button size="sm" onClick={salva} data-testid="pdp-salva">Salva valori</Button>
-        <Button size="sm" variant="outline" disabled={importing} data-testid="pdp-importa-fogli" onClick={async () => { setImporting(true); try { const r = await api.post("/contabilita/pdp/importa-fogli"); const ok = r.data.esito.filter((e) => !e.errore); toast.success(`Fogli importati: ${ok.length} mesi · ${ok.reduce((a, e) => a + e.fatture_emesse_nuove + e.fatture_ricevute_nuove, 0)} fatture nuove`); load(); } catch (e) { toast.error(apiError(e)); } finally { setImporting(false); } }}>{importing ? "Importo…" : "Importa dai fogli Google"}</Button>
+        <Button size="sm" variant="outline" disabled={importing} data-testid="pdp-importa-fogli" onClick={async () => { setImporting(true); try { const r = await api.post("/contabilita/pdp/importa-fogli"); setReport(r.data.esito); load(); } catch (e) { toast.error(apiError(e)); } finally { setImporting(false); } }}>{importing ? "Importo…" : "Importa dai fogli Google"}</Button>
       </div>
+      <PdpImportReport esito={report} onClose={() => setReport(null)} />
       <p className="text-xs text-slate-500" data-testid="pdp-centro-negozi">Centro di costo <b>{d.centro.nome}</b>: {d.centro.negozi.join(" + ")} — i corrispettivi dei negozi entrano automaticamente nelle entrate.</p>
       {d.ereditato_da && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900" data-testid="pdp-ereditato">

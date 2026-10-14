@@ -11,6 +11,20 @@ SHEET_PDP = "1aVjFCxg-Gm3zNQNcEE-Jq-WkTaIluLzlLRXFPCd82hw"
 GIDS_PDP = {"1793768583": (2026, 10), "139743288": (2026, 9), "1128499380": (2026, 8), "1481012556": (2026, 7), "479326625": (2026, 6),
             "211467724": (2026, 5), "1646965472": (2026, 4), "1240257795": (2026, 3), "2136149709": (2026, 2), "500864334": (2026, 1)}
 
+MESI_ABBR = {"gen": 1, "feb": 2, "mar": 3, "apr": 4, "mag": 5, "giu": 6, "lug": 7, "ago": 8, "set": 9, "ott": 10, "nov": 11, "dic": 12}
+
+
+def scopri_schede(html: str) -> dict:
+    """Trova i tab mensili (es. 'ott26', 'NOV26', 'dic 2026') dall'htmlview pubblico del foglio → {gid: (anno, mese)}."""
+    found = {}
+    for name, gid in re.findall(r'items\.push\(\{name: "([^"]*)",[^}]*?gid: "(\d+)"', html):
+        m = re.match(r"^\s*([a-zà]{3})[a-zà]*\s*'?(\d{2}|\d{4})\s*$", name.strip().lower())
+        if m and m.group(1) in MESI_ABBR:
+            anno = int(m.group(2))
+            found[gid] = (anno if anno > 100 else 2000 + anno, MESI_ABBR[m.group(1)])
+    return found
+
+
 MAP_VOCI = {"eolo": "entrate|Eolo", "energia": "entrate|Energia / Enel", "telefonia": "entrate|Telefonia", "pacchi": "entrate|Pacchi",
             "stipendi": "spese_fisse|Stipendi", "contributi": "spese_fisse|Contributi", "tfr": "spese_fisse|TFR", "inail": "spese_fisse|INAIL",
             "condominio": "spese_fisse|Condominio", "affitti": "spese_fisse|Affitti", "utenze": "spese_fisse|Utenze",
@@ -68,12 +82,43 @@ def parse_pdp_sheet(csv_text: str) -> dict:
     return {"negozi": negozi, "emesse": emesse, "ricevute": ricevute, "corrispettivi": corr, "mese_rilevato": mesi.most_common(1)[0][0] if mesi else None}
 
 
-async def importa_pdp_fogli(db, fetch, centri: list, stores: list, user_name: str = "") -> list:
+def _riga(voce, foglio, gest):
+    return {"voce": voce, "foglio": round(foglio, 2), "gestionale": round(gest, 2), "diff": round(gest - foglio, 2), "ok": abs(gest - foglio) < 0.01}
+
+
+async def _confronto(db, p, anno, mese, cid_fatt, per_centro, slug_store, store_centro, mese_dati) -> list:
+    """Voce per voce: valore nel foglio vs valore nel gestionale dopo l'import."""
+    out = []
+    for nome, d in p["negozi"].items():
+        s = slug_store.get(nome)
+        if s and d["corrispettivi_foglio"]:
+            out.append(_riga(f"Corrispettivi {s['nome']}", d["corrispettivi_foglio"], (await mese_dati(s["id"], anno, mese))["totali"]["totale"]))
+    for cid, valori in per_centro.items():
+        doc = await db.pdp.find_one({"centro_id": cid, "anno": anno, "mese": mese}, {"_id": 0, "valori": 1}) or {}
+        salvati = doc.get("valori") or {}
+        for k, v in sorted(valori.items()):
+            out.append(_riga(k.split("|", 1)[1], v, num(salvati.get(k)) if isinstance(salvati.get(k), str) else float(salvati.get(k) or 0)))
+    if cid_fatt:
+        for direzione, lst in (("emesse", p["emesse"]), ("ricevute", p["ricevute"])):
+            tot_db = 0.0
+            async for f in db.fatture_ade.find({"centro_id": cid_fatt, "anno": anno, "mese": mese, "direzione": direzione}, {"_id": 0, "totale": 1}):
+                tot_db += float(f.get("totale") or 0)
+            out.append(_riga(f"Fatture {direzione} (totale)", sum(x["totale"] for x in lst), tot_db))
+    return out
+
+
+async def importa_pdp_fogli(db, fetch, centri: list, stores: list, user_name: str = "", mese_dati=None) -> list:
     slug_store = {(s["nome"] or "").strip().lower(): s for s in stores}
     store_centro = {sid: c["id"] for c in centri for sid in c["store_ids"]}
     esito = []
     now = datetime.now(timezone.utc).isoformat()
-    for gid, (anno, mese) in GIDS_PDP.items():
+    gids = dict(GIDS_PDP)
+    try:
+        scoperte = scopri_schede(await fetch(f"https://docs.google.com/spreadsheets/d/{SHEET_PDP}/htmlview"))
+        gids.update({g: am for g, am in scoperte.items() if am >= (2026, 1)})
+    except Exception:  # noqa: BLE001
+        pass
+    for gid, (anno, mese) in sorted(gids.items(), key=lambda kv: kv[1]):
         try:
             txt = await fetch(f"https://docs.google.com/spreadsheets/d/{SHEET_PDP}/export?format=csv&gid={gid}")
             p = parse_pdp_sheet(txt)
@@ -125,7 +170,9 @@ async def importa_pdp_fogli(db, fetch, centri: list, stores: list, user_name: st
                         n_em += 1
                     else:
                         n_ric += 1
-        esito.append({"anno": anno, "mese": mese, "centri": list(per_centro.keys()), "voci": sum(len(v) for v in per_centro.values()), "corrispettivi_ade_nuovi": n_corr,
+        confronto = await _confronto(db, p, anno, mese, cid_fatt, per_centro, slug_store, store_centro, mese_dati) if mese_dati else []
+        esito.append({"anno": anno, "mese": mese, "nuova_scheda": gid not in GIDS_PDP, "centri": list(per_centro.keys()), "voci": sum(len(v) for v in per_centro.values()), "corrispettivi_ade_nuovi": n_corr,
+                      "confronto": confronto,
                       "fatture_emesse_nuove": n_em, "fatture_ricevute_nuove": n_ric, "tot_emesse_foglio": round(sum(x["totale"] for x in p["emesse"]), 2),
                       "tot_ricevute_foglio": round(sum(x["totale"] for x in p["ricevute"]), 2), "corrispettivi_foglio": round(sum(x["totale"] for x in p["corrispettivi"]), 2),
                       "mese_rilevato": p["mese_rilevato"]})
