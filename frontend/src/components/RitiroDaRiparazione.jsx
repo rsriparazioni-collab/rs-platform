@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Checkbox } from "./ui/checkbox";
+import { Checkbox } from "./ui/checkbox"; // eslint-disable-line no-unused-vars
 
 export const uploadRitiroDocumenti = async (ritiroId, files, sostituisci = false) => {
   const fd = new FormData();
@@ -140,13 +140,12 @@ export default function RitiroDaRiparazione({ open, onClose, servizio, onCreated
             )}
           </div>
 
-          <label className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 text-sm">
-            <Checkbox checked={form.crea_rigenerato} onCheckedChange={(v) => set("crea_rigenerato", !!v)} data-testid="ritiro-rip-rigenerato" />
+          <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 text-sm" data-testid="ritiro-rip-rigenerato">
             <span>
-              <span className="font-medium text-slate-900">Carica in Magazzino come rigenerato</span>
+              <span className="font-medium text-slate-900">Viene caricato in Magazzino come rigenerato (automatico)</span>
               <span className="block text-xs text-slate-500">Costo dispositivo: € {costoTot.toFixed(2)} (ritiro + ricambi). Il margine si calcola alla vendita.</span>
             </span>
-          </label>
+          </div>
 
           <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
             <Button type="button" variant="outline" onClick={onClose} data-testid="ritiro-rip-cancel">Annulla</Button>

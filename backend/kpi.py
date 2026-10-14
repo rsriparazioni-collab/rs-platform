@@ -36,7 +36,9 @@ KPI_VOCI = [
     ("ricondizionato_venduto", "Ricondizionati venduti", "telefonia", "mista"),
     ("nuovo_venduto", "Telefoni nuovi venduti", "telefonia", "mista"),
     ("accessorio", "Accessori venduti", "telefonia", "mista"),
-    ("pellicola", "Pellicole", "telefonia", "manuale"),
+    ("pellicola", "Pellicole vendute", "telefonia", "mista"),
+    ("cover", "Cover vendute", "telefonia", "mista"),
+    ("cavo_caricatore", "Cavi / caricatori venduti", "telefonia", "mista"),
     ("eolo_proposto", "Eolo proposto", "internet", "manuale"),
     ("chiamata_eolo", "Chiamate Eolo", "internet", "manuale"),
     ("chiamata_positiva", "Chiamate chiuse positive", "chiamate", "mista"),
@@ -82,6 +84,17 @@ def _oggi() -> str:
     return datetime.now(timezone.utc).date().isoformat()
 
 
+def _voce_accessorio(prodotto: str, categoria: str = "") -> str:
+    t = f"{prodotto} {categoria}".lower()
+    if any(k in t for k in ("pellicol", "vetro", "glass", "protezione schermo")):
+        return "pellicola"
+    if any(k in t for k in ("cover", "custodia", "case", "flip")):
+        return "cover"
+    if any(k in t for k in ("cavo", "caricator", "alimentator", "charger", "cable", "usb", "lightning", "type-c", "powerbank")):
+        return "cavo_caricatore"
+    return "accessorio"
+
+
 class AttivitaInput(BaseModel):
     voce: str
     quantita: int = 1
@@ -119,6 +132,16 @@ async def lista_attivita(user: dict = Depends(_current_user), data: str = "", us
     q = {"data": data or _oggi()}
     q["user_id"] = user_id if (user_id and _vede_tutti(user)) else user["id"]
     return await db.attivita.find(q, {"_id": 0}).sort("at", -1).to_list(500)
+
+
+@router.get("/attivita/mese")
+async def riepilogo_mese_operatore(user: dict = Depends(_current_user)):
+    """Per il registro rapido: totale mese per voce (automatici + manuali) e obiettivi del mese dell'operatore."""
+    oggi = datetime.now(timezone.utc).date()
+    res = await calcola_kpi(user["id"], oggi.year, oggi.month)
+    totali = {r["id"]: r.get("totale", 0) for r in res.get("voci", [])}
+    obiettivi = await _obiettivi_utente(user["id"], oggi.year, oggi.month)
+    return {"anno": oggi.year, "mese": oggi.month, "totali": totali, "obiettivi": obiettivi, "totale_mese": res.get("totale_mese", 0)}
 
 
 @router.delete("/attivita/{attivita_id}")
@@ -244,6 +267,9 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
             if esito not in ("non_riparabile", "preventivo_rifiutato"):
                 add("rip_fatte", fine)
     vend_map = {"accessori": "accessorio", "telefono_rigenerato": "ricondizionato_venduto", "telefono_usato": "ricondizionato_venduto", "telefono_nuovo": "nuovo_venduto"}
+    async for s in db.servizi.find({"created_by": user_id, "created_at": rng, "tipo": {"$in": ["accessori", "vendita"]}, "magazzino_item_id": {"$nin": [None, ""]}},
+                                   {"_id": 0, "client_id": 1, "created_at": 1, "prodotto": 1, "quantita": 1, "categoria_prodotto": 1}):
+        add(_voce_accessorio(s.get("prodotto") or "", s.get("categoria_prodotto") or ""), s["created_at"], int(s.get("quantita") or 1), client_id=s.get("client_id"))
     async for v in db.vendite.find({"created_by": user_id, "data_vendita": rng}, {"_id": 0, "client_id": 1, "data_vendita": 1, "categoria": 1, "quantita": 1}):
         voce = vend_map.get(v.get("categoria") or "")
         if voce:

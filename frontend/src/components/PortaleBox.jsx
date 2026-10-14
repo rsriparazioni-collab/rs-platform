@@ -3,6 +3,7 @@ import { ExternalLink, CheckCircle2, Info } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { fmtDate } from "../lib/constants";
 import CopiaDatiButton from "./CopiaDatiButton";
 import ProposteButton from "./ProposteButton";
@@ -19,10 +20,29 @@ export function apriPortaleDopoSalvataggio(portali, sezione, operatore) {
   const list = matchPortali(portali, sezione, operatore);
   const p = list.find((x) => x.operatore !== "*") || list[0];
   if (!p) return;
-  toast.success(`Prossimo passo: ${p.url ? `inserisci su ${p.nome || p.operatore}` : p.note || p.nome}`, {
-    duration: 15000,
-    action: p.url ? { label: "Apri portale", onClick: () => window.open(p.url, "_blank", "noopener") } : undefined,
-  });
+  window.dispatchEvent(new CustomEvent("portale:apri", { detail: p }));
+}
+
+export function PortaleDialogHost() {
+  const [p, setP] = useState(null);
+  useEffect(() => {
+    const h = (e) => setP(e.detail);
+    window.addEventListener("portale:apri", h);
+    return () => window.removeEventListener("portale:apri", h);
+  }, []);
+  if (!p) return null;
+  return (
+    <Dialog open onOpenChange={(o) => !o && setP(null)}>
+      <DialogContent className="max-w-md" data-testid="portale-dialog">
+        <DialogHeader><DialogTitle>Prossimo passo: {p.nome || p.operatore}</DialogTitle></DialogHeader>
+        <p className="text-sm text-slate-600">{p.note || `Inserisci ora il contratto sul portale ${p.nome || p.operatore}.`}</p>
+        <div className="flex flex-col gap-2">
+          {p.url && <Button size="lg" className="w-full gap-2" onClick={() => { window.open(p.url, "_blank", "noopener"); setP(null); }} data-testid="portale-dialog-apri"><ExternalLink className="h-4 w-4" /> Apri portale {p.nome || p.operatore}</Button>}
+          <Button variant="ghost" size="sm" onClick={() => setP(null)} data-testid="portale-dialog-chiudi">Più tardi</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export default function PortaleBox({ kind, id, tipo, sezione: sezioneProp, operatore, insertedAt, insertedBy, extraAt, extraBy, onChanged, cliente }) {

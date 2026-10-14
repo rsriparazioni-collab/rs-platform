@@ -28,6 +28,7 @@ import FirmaRitiro from "./pages/FirmaRitiro";
 import ResetPassword from "./pages/ResetPassword";
 import Presentazione from "./pages/Presentazione";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { PortaleDialogHost } from "./components/PortaleBox";
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -96,6 +97,7 @@ function App() {
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" richColors />
+      <PortaleDialogHost />
     </AuthProvider>
     </ErrorBoundary>
   );

@@ -949,9 +949,10 @@ async def list_clients(user: dict = Depends(get_current_user),
     if venditore_id and (user["role"] == "admin" or user.get("can_view_all")):
         scope["venditore_id"] = venditore_id
     if q:
-        rx = {"$regex": re.escape(q), "$options": "i"}
-        scope["$or"] = [{"nome": rx}, {"cognome": rx}, {"codice_fiscale": rx},
-                        {"pod": rx}, {"pdr": rx}, {"telefono": rx}, {"email": rx}, {"telefoni_extra": rx}, {"email_extra": rx}]
+        words = [w for w in q.split() if w]
+        scope["$and"] = [{"$or": [{"nome": rx}, {"cognome": rx}, {"codice_fiscale": rx}, {"pod": rx}, {"pdr": rx}, {"telefono": rx}, {"email": rx},
+                                  {"telefoni_extra": rx}, {"email_extra": rx}, {"p_iva": rx}]}
+                         for rx in ({"$regex": re.escape(w), "$options": "i"} for w in words)]
     proj = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "tipo_cliente": 1, "p_iva": 1,
             "telefono": 1, "email": 1, "codice_fiscale": 1, "pod": 1, "pdr": 1,
             "tipo_bolletta": 1, "fornitore_provenienza": 1, "lavorazione": 1,
@@ -3290,7 +3291,8 @@ async def create_ritiro(input: RitiroInput, user: dict = Depends(get_current_use
     data["firma_negozio"] = user.get("name", "")
     firma_ritiro_module.prepara_firma(data)
     data["numero"] = await next_numero("ritiro", data["store_id"])
-    data["stato"] = "in_vendita" if data.get("crea_rigenerato", True) else "ritirato"
+    data["stato"] = "in_vendita"
+    data["crea_rigenerato"] = True
     data["numero_fattura"] = ""
     if not data.get("data_ritiro"):
         data["data_ritiro"] = date.today().isoformat()
@@ -4452,7 +4454,8 @@ class ServizioInput(BaseModel):
     convergente: bool = False
     tied: bool = False
     esito_attivazione: str = "riconosciuta"  # riconosciuta | in_attesa | annullata | respinta | non_riconosciuta | stornata
-    magazzino_item_id: str = ""  # accessori/vendita: articolo di magazzino da scaricare
+    magazzino_item_id: str = ""  # accessori/vendita/sim: articolo di magazzino da scaricare
+    non_a_magazzino: bool = False
     quantita: int = 1
     da_ordinare: bool = False  # vendita su ordinazione (prodotto non in magazzino)
     acconto: Optional[float] = None
@@ -4575,6 +4578,10 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
     if data["tipo"] in ("accessori", "vendita") and data.get("da_ordinare"):
         await vendite_ordine_module.apri_ordine(data, user)
     elif data["tipo"] in ("accessori", "vendita") and data.get("magazzino_item_id"):
+        await scarica_articolo_servizio(data, user)
+    elif data["tipo"] in ("accessori", "vendita") and not data.get("non_a_magazzino"):
+        raise HTTPException(status_code=400, detail="Scegli l'articolo di magazzino da scaricare oppure spunta 'Non a magazzino'")
+    elif data["tipo"] == "sim" and data.get("magazzino_item_id"):
         await scarica_articolo_servizio(data, user)
     else:
         data["magazzino_item_id"] = ""

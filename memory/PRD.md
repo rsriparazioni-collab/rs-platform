@@ -599,3 +599,10 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-14 — Verifica corrispettivi telematici AdE
 - backend/corrispettivi_ade.py: import CSV/XLSX/ZIP/XML (POST /contabilita/corrispettivi-ade/importa), abbinamento matricola RT -> negozio (GET/PUT /matricole, collection rt_matricole), collection corrispettivi_ade (chiave matricola+data). confronto_mese iniettato in GET /contabilita/corrispettivi (confronto_ade + ade_totale/ade_diff per riga): confronta scontrini (rip+merce+art74) con AdE.
 - CorrispettiviAde.jsx nel tab Corrispettivi + colonna "AdE" in tabella.
+
+## 2026-10-14 — Ricerca/KPI/Magazzino/Portali
+- Ricerca clienti per parole (ogni parola in nome|cognome|cf|tel|email|piva).
+- GET /attivita/mese: totali mese per voce + obiettivi -> RegistroRapido mostra oggi + mese/target con barra e badge "Il tuo <mese>".
+- Servizi accessori/vendita: obbligo magazzino_item_id o non_a_magazzino (400 altrimenti). SIM: picker "SIM dal magazzino" (categoria sim) con scarico. Ritiri: rigenerato sempre creato (checkbox rimossa).
+- KPI: voci pellicola/cover/cavo_caricatore automatiche da servizi accessori scaricati (_voce_accessorio per parole chiave).
+- Portali: apriPortaleDopoSalvataggio -> evento portale:apri -> PortaleDialogHost (App.js) con tasto grande "Apri portale".

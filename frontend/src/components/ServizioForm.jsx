@@ -98,10 +98,11 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
   const [ricambioMag, setRicambioMag] = useState(null);
   useEffect(() => {
     if (magSearch.trim().length < 2 || form.magazzino_item_id || ricambioMag) { setMagResults([]); return undefined; }
-    const t = setTimeout(() => api.get("/magazzino/disponibilita", { params: { q: magSearch.trim() } }).then((r) => setMagResults(r.data.slice(0, 8))).catch(() => {}), 300);
+    const t = setTimeout(() => api.get("/magazzino/disponibilita", { params: { q: magSearch.trim(), ...(tipo === "sim" ? { categoria: "sim" } : {}) } }).then((r) => setMagResults(r.data.slice(0, 8))).catch(() => {}), 300);
     return () => clearTimeout(t);
   }, [magSearch, form.magazzino_item_id, ricambioMag]);
   const pickMag = (g, s) => {
+    if (tipo === "sim") { setForm((f) => ({ ...f, magazzino_item_id: s.item_id, quantita: 1 })); setMagLabel(`${g.nome} · ${s.store_name}`); setMagSearch(""); setMagResults([]); return; }
     setForm((f) => ({ ...f, magazzino_item_id: s.item_id, quantita: 1, prodotto: g.nome, importo: s.prezzo_vendita ?? f.importo }));
     setMagLabel(`${g.nome} · ${s.store_name}`); setMagSearch(""); setMagResults([]);
   };
@@ -500,6 +501,32 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                   <Input type="number" step="0.01" value={form.ricarica_iniziale ?? ""} onChange={(e) => set("ricarica_iniziale", e.target.value)} placeholder="es. 10 o 15" data-testid="servizio-ricarica" />
                 </div>
               )}
+              {tipo === "sim" && !isEdit && (
+                <div className="space-y-1.5 sm:col-span-2" data-testid="servizio-sim-magazzino-box">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">SIM dal magazzino (scarico automatico)</Label>
+                  {form.magazzino_item_id ? (
+                    <div className="flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm" data-testid="servizio-sim-magazzino-selezionata">
+                      <span className="flex-1">{magLabel}</span>
+                      <button type="button" className="text-xs text-rose-700 hover:underline" onClick={() => { set("magazzino_item_id", ""); setMagLabel(""); }} data-testid="servizio-sim-magazzino-rimuovi">Rimuovi</button>
+                    </div>
+                  ) : (
+                    <>
+                      <Input placeholder={`Cerca SIM in magazzino (es. ${form.operatore_tel || "operatore"}, ICCID, barcode)…`} value={magSearch} onChange={(e) => setMagSearch(e.target.value)} data-testid="servizio-sim-magazzino-search" />
+                      {magResults.length > 0 && (
+                        <div className="space-y-1 rounded-md border border-slate-200 p-2">
+                          {magResults.map((g) => g.stores.filter((s) => s.quantita > 0).map((s) => (
+                            <button key={s.item_id} type="button" onClick={() => pickMag(g, s)} className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm hover:bg-slate-100" data-testid={`servizio-sim-magazzino-pick-${s.item_id}`}>
+                              <span>{g.nome}</span><span className="text-xs text-slate-500">{s.store_name} · {s.quantita} pz</span>
+                            </button>
+                          )))}
+                        </div>
+                      )}
+                      <p className="text-[11px] text-slate-500">Se la SIM non è a magazzino lascia vuoto: non verrà scaricato nulla.</p>
+                    </>
+                  )}
+                </div>
+              )}
+
               {tipo === "sim" && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Costo SIM €</Label>
@@ -568,7 +595,10 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
               {!isEdit && <VenditaOrdineBox form={form} set={set} />}
               {!isEdit && !form.da_ordinare && (
                 <div className="space-y-1.5" data-testid="servizio-magazzino-box">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Articolo di magazzino (scarico automatico)</Label>
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Articolo di magazzino (scarico automatico) *</Label>
+                  {!form.magazzino_item_id && (
+                    <label className="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={!!form.non_a_magazzino} onChange={(e) => set("non_a_magazzino", e.target.checked)} data-testid="servizio-non-a-magazzino" /> Articolo non a magazzino (nessuno scarico)</label>
+                  )}
                   {form.magazzino_item_id ? (
                     <div className="flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm" data-testid="servizio-magazzino-selezionato">
                       <span className="flex-1 text-emerald-900">{magLabel}</span>

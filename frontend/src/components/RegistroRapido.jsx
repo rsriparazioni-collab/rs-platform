@@ -12,11 +12,12 @@ export default function RegistroRapido() {
   const [voci, setVoci] = useState([]);
   const [area, setArea] = useState(localStorage.getItem("rr_area") || "telefonia");
   const [oggi, setOggi] = useState([]);
+  const [mese, setMese] = useState(null);
   const [cliQ, setCliQ] = useState("");
   const [cliRes, setCliRes] = useState([]);
   const [cliente, setCliente] = useState(null);
 
-  const load = useCallback(() => api.get("/attivita").then((r) => setOggi(r.data)).catch(() => {}), []);
+  const load = useCallback(() => { api.get("/attivita").then((r) => setOggi(r.data)).catch(() => {}); api.get("/attivita/mese").then((r) => setMese(r.data)).catch(() => {}); }, []);
   useEffect(() => { api.get("/kpi/voci").then((r) => setVoci(r.data.voci)).catch(() => {}); load(); }, [load]);
   useEffect(() => { localStorage.setItem("rr_area", area); }, [area]);
   useEffect(() => {
@@ -36,6 +37,8 @@ export default function RegistroRapido() {
 
   const manuali = voci.filter((v) => v.area === area && v.fonte !== "auto");
   const conteggi = oggi.reduce((m, a) => ({ ...m, [a.voce]: (m[a.voce] || 0) + a.quantita }), {});
+  const obiettivo = (id) => (mese?.obiettivi || []).find((o) => o.voce === id);
+  const MESI_IT = ["", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
   if (user?.role === "tecnico") return null;
 
   return (
@@ -43,7 +46,8 @@ export default function RegistroRapido() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <p className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Zap className="h-4 w-4 text-amber-500" /> Registro rapido di oggi</p>
         <span className="text-xs text-slate-500">Solo ciò che non passa dal gestionale (SIM, fissi, riparazioni e vendite si contano da soli): un tap = +1</span>
-        <div className="ml-auto flex flex-wrap gap-1">
+        {mese && <span className="ml-auto rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white" data-testid="rr-totale-mese">Il tuo {MESI_IT[mese.mese]}: {mese.totale_mese} attività{mese.obiettivi?.length ? ` · ${mese.obiettivi.filter((o) => o.pct >= 100).length}/${mese.obiettivi.length} obiettivi raggiunti` : ""}</span>}
+        <div className={`${mese ? "" : "ml-auto"} flex flex-wrap gap-1`}>
           {AREE.map(([id, l]) => <button key={id} type="button" onClick={() => setArea(id)} className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${area === id ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-100"}`} data-testid={`rr-area-${id}`}>{l}</button>)}
         </div>
       </div>
@@ -63,14 +67,24 @@ export default function RegistroRapido() {
         )}
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" data-testid="rr-voci">
-        {manuali.map((v) => (
+        {manuali.map((v) => {
+          const ob = obiettivo(v.id);
+          const totM = mese?.totali?.[v.id] || 0;
+          return (
           <div key={v.id} className="relative">
-            <button type="button" onClick={() => registra(v)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-slate-800 shadow-sm transition-transform hover:-translate-y-0.5 hover:border-amber-400 active:scale-95" data-testid={`rr-voce-${v.id}`}>
-              <span>{v.label}</span>
-              <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-bold ${conteggi[v.id] ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-400"}`} data-testid={`rr-count-${v.id}`}>{conteggi[v.id] || 0}</span>
+            <button type="button" onClick={() => registra(v)} className="flex w-full flex-col rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-medium text-slate-800 shadow-sm transition-transform hover:-translate-y-0.5 hover:border-amber-400 active:scale-95" data-testid={`rr-voce-${v.id}`}>
+              <span className="flex w-full items-center justify-between">
+                <span>{v.label}</span>
+                <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-bold ${conteggi[v.id] ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-400"}`} data-testid={`rr-count-${v.id}`}>{conteggi[v.id] || 0}</span>
+              </span>
+              <span className="mt-1 flex w-full items-center gap-2 text-[11px] font-normal text-slate-500" data-testid={`rr-mese-${v.id}`}>
+                <span>mese: <b className="text-slate-700">{totM}</b>{ob ? ` / ${ob.target}` : ""}</span>
+                {ob && <span className="h-1.5 flex-1 rounded-full bg-slate-100"><span className={`block h-1.5 rounded-full ${ob.pct >= 100 ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${Math.min(100, ob.pct)}%` }} /></span>}
+              </span>
             </button>
           </div>
-        ))}
+          );
+        })}
       </div>
       {oggi.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5" data-testid="rr-oggi">
