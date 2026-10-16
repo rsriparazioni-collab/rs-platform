@@ -52,6 +52,11 @@ class OrdinaInput(BaseModel):
     quantita: int = 1
     note: str = ""
     da_store_id: str = ""  # ordina dal magazzino di un altro negozio (cedente)
+    barcode: str = ""
+    fornitore: str = ""
+    prezzo_acquisto: Optional[float] = None
+    prezzo_vendita: Optional[float] = None
+    soglia_minima: Optional[int] = None
 
 
 class ArrivoInput(BaseModel):
@@ -96,19 +101,29 @@ async def ordina_ricambio(servizio_id: str, input: OrdinaInput, user: dict = Dep
             item = same or {**item, "id": None}
     if not item:
         rx = lambda v: {"$regex": f"^{re.escape((v or '').strip())}$", "$options": "i"}
-        if input.modello:
+        if input.barcode.strip():
+            item = await db.magazzino.find_one({"store_id": store_id, "barcode": input.barcode.strip()}, {"_id": 0})
+        if not item and input.modello:
             item = await db.magazzino.find_one({"store_id": store_id, "tipologia": input.tipologia, "marca": rx(input.marca), "modello": rx(input.modello)}, {"_id": 0})
     if not item or not item.get("id"):
         base = item or {}
-        item = {"id": str(uuid.uuid4()), "nome": base.get("nome") or componi_nome(input.model_dump()), "barcode": "", "condizione": "nuovo",
+        item = {"id": str(uuid.uuid4()), "nome": base.get("nome") or componi_nome(input.model_dump()), "barcode": input.barcode.strip() or base.get("barcode", ""), "condizione": "nuovo",
                 "regime_iva": "", "categoria": base.get("categoria") or TIPOLOGIA_CATEGORIA.get(input.tipologia, "ricambi"), "store_id": store_id,
                 "marca": base.get("marca") or input.marca.strip(), "modello": base.get("modello") or input.modello.strip(),
-                "tipologia": base.get("tipologia") or input.tipologia, "quantita": 0, "prezzo_acquisto": base.get("prezzo_acquisto"),
-                "prezzo_vendita": base.get("prezzo_vendita"), "note": input.note, "created_by": user["id"], "created_at": now, "updated_at": now}
+                "tipologia": base.get("tipologia") or input.tipologia, "quantita": 0, "prezzo_acquisto": input.prezzo_acquisto if input.prezzo_acquisto is not None else base.get("prezzo_acquisto"),
+                "prezzo_vendita": input.prezzo_vendita if input.prezzo_vendita is not None else base.get("prezzo_vendita"), "fornitore": input.fornitore.strip() or base.get("fornitore", ""),
+                "soglia_minima": input.soglia_minima if input.soglia_minima is not None else base.get("soglia_minima"),
+                "note": input.note, "created_by": user["id"], "created_at": now, "updated_at": now}
         if not item["nome"]:
             raise HTTPException(status_code=400, detail="Indica marca/modello o seleziona un articolo")
         await db.magazzino.insert_one(dict(item))
         item.pop("_id", None)
+    else:
+        completa = {k: v for k, v in (("barcode", input.barcode.strip()), ("fornitore", input.fornitore.strip()), ("prezzo_acquisto", input.prezzo_acquisto),
+                                       ("prezzo_vendita", input.prezzo_vendita), ("soglia_minima", input.soglia_minima)) if v not in ("", None) and not item.get(k)}
+        if completa and not cedente:
+            await db.magazzino.update_one({"id": item["id"]}, {"$set": completa})
+            item.update(completa)
     nuova = (item.get("quantita") or 0) - input.quantita
     await db.magazzino.update_one({"id": item["id"]}, {"$set": {"quantita": nuova, "in_ordine": True, "ordine_at": now, "ordine_servizio_id": servizio_id,
                                                               "ordine_servizio_numero": svc.get("numero_riparazione") or svc.get("numero", ""), "updated_at": now}})

@@ -2781,6 +2781,7 @@ class MagazzinoInput(BaseModel):
     tipologia: str = ""
 
 def magazzino_scope(user: dict) -> dict:
+    """Scrittura: negozio limitato ai propri store. La lettura (lista/export) è aperta a tutti."""
     if user["role"] in ("admin", "tecnico") or user.get("can_view_all"):
         return {}
     return {"store_id": {"$in": user.get("store_ids", [])}}
@@ -2789,7 +2790,7 @@ def magazzino_scope(user: dict) -> dict:
 async def list_magazzino(user: dict = Depends(get_current_user), categoria: str = "",
                          venditore_id: str = "", q: str = "", regime_iva: str = "", condizione: str = "",
                          marca: str = "", modello: str = "", tipologia: str = "", in_ordine: bool = False):
-    scope = magazzino_scope(user)
+    scope = {}
     if regime_iva:
         scope["regime_iva"] = regime_iva
     if condizione:
@@ -2856,7 +2857,7 @@ async def disponibilita_magazzino(user: dict = Depends(get_current_user), q: str
             or i.get("store_id") in user.get("store_ids", [])
         g["stores"].append({"item_id": i["id"], "store_id": i.get("store_id", ""),
                             "store_name": smap.get(i.get("store_id", ""), "-"),
-                            "quantita": i.get("quantita", 0), "in_ordine": bool(i.get("in_ordine")),
+                            "quantita": i.get("quantita", 0), "in_ordine": bool(i.get("in_ordine")), "barcode": i.get("barcode", ""),
                             "prezzo_vendita": i.get("prezzo_vendita") if can_price else None,
                             "prezzo_acquisto": i.get("prezzo_acquisto") if can_price else None})
     return sorted(grouped.values(), key=lambda x: x["nome"])
@@ -2988,7 +2989,7 @@ def _xlsx_response(ws_title: str, headers: list, rows: list, fname: str):
 
 @api_router.get("/magazzino/export")
 async def export_magazzino(user: dict = Depends(get_current_user)):
-    items = await db.magazzino.find(magazzino_scope(user), {"_id": 0}).sort("nome", 1).to_list(5000)
+    items = await db.magazzino.find({}, {"_id": 0}).sort("nome", 1).to_list(5000)
     store_ids = list({i.get("store_id", "") for i in items if i.get("store_id")})
     stores = await db.stores.find({"id": {"$in": store_ids}}, {"_id": 0, "id": 1, "nome": 1}).to_list(200)
     smap = {s["id"]: s["nome"] for s in stores}

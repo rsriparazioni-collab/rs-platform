@@ -631,3 +631,8 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-14 — Correzione rapida giorno + allineamento dal foglio
 - POST /contabilita/pdp/allinea-giorni {store_id, giorni:[{data,foglio}]}: crea SOLO i giorni vuoti (merce=contanti=totale RT, nota "Compilato dal foglio Google", fonte foglio_google), salta esistenti.
 - PdpImportReport: matita per giorno -> GiornoDialogLoader carica la riga e apre GiornoDialog; tasto "Usa il valore del foglio (N giorni mancanti)"; onChanged ricarica PDP e rilancia import per aggiornare il report.
+
+## 2026-10-16 — Ordine ricambio completo + visibilita magazzino
+- GET /magazzino e /magazzino/export: lettura aperta a tutti i ruoli (scrittura resta limitata al proprio negozio via magazzino_scope). /magazzino/disponibilita restituisce barcode.
+- OrdinaInput: barcode, fornitore, prezzo_acquisto, prezzo_vendita, soglia_minima; ricerca articolo prima per barcode poi marca/modello; completa i campi vuoti di un articolo esistente.
+- OrdinaRicambio.jsx: campo barcode (autocompila da disponibilita), fornitore/prezzi/soglia; al submit cerca altri negozi con giacenza>0 e propone "Si, prendi da X" / "No, ordina comunque".
