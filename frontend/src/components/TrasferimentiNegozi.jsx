@@ -5,6 +5,7 @@ import api, { apiError, downloadBlob } from "../lib/api";
 import { MESI } from "../lib/constants";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { TrasferimentoConsegna } from "./TrasferimentoConsegna";
 
 const eur = (v) => new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v || 0);
 
@@ -57,13 +58,15 @@ export const TrasferimentiNegozi = () => {
               <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-sm">
                 <span className="font-semibold text-slate-900">{c.da_store}</span><ArrowLeftRight className="h-3.5 w-3.5 text-slate-400" /><span className="font-semibold text-slate-900">{c.a_store}</span>
                 <span className="text-xs text-slate-500">{c.pezzi} pz</span>
-                <span className="ml-auto text-xs text-slate-600">Imponibile {eur(c.imponibile)} · IVA {eur(c.iva)} · <b>Totale {eur(c.totale)}</b>{c.da_fatturare > 0 && <span className="ml-2 text-amber-700">da fatturare {eur(c.da_fatturare)}</span>}</span>
+                <span className="ml-auto text-xs text-slate-600">Imponibile {eur(c.imponibile)} · IVA {eur(c.iva)} · <b>Totale {eur(c.totale)}</b>{c.da_fatturare > 0 && <span className="ml-2 text-amber-700">da fatturare {eur(c.da_fatturare)}</span>}{c.non_pagato > 0 && <span className="ml-2 text-rose-700" data-testid="trasferimenti-non-pagato">non pagato {eur(c.non_pagato)}</span>}{c.da_consegnare > 0 && <span className="ml-2 text-sky-700" data-testid="trasferimenti-da-consegnare">{c.da_consegnare} pz da consegnare</span>}</span>
               </div>
               <table className="w-full text-sm"><tbody className="divide-y divide-slate-100">
                 {c.righe.map((r) => (
                   <tr key={r.id} className={r.fatturato ? "opacity-60" : ""}>
                     <td className="px-4 py-1.5 text-slate-500">{r.at.slice(0, 10)}</td>
-                    <td className="px-2 py-1.5 text-slate-800">{r.nome}<span className="ml-1 text-xs text-slate-400">{r.riferimento}</span>{r.in_ordine && <span className="status-badge ml-1 bg-rose-500/15 text-rose-700 border-rose-300">in ordine</span>}</td>
+                    <td className="px-2 py-1.5 text-slate-800">{r.nome}<span className="ml-1 text-xs text-slate-400">{r.riferimento}</span>{r.in_ordine && <span className="status-badge ml-1 bg-rose-500/15 text-rose-700 border-rose-300">in ordine</span>}
+                      <div className="mt-1"><TrasferimentoConsegna r={r} onChanged={load} /></div>
+                    </td>
                     <td className="px-2 py-1.5">{r.quantita} × <button type="button" className="underline decoration-dotted" onClick={() => !r.fatturato && prezzo(r)} data-testid={`trasferimento-prezzo-${r.id}`}>{eur(r.prezzo_unitario)}</button> <span className="text-xs text-slate-400">{r.regime_iva}</span></td>
                     <td className="px-2 py-1.5 font-semibold">{eur(r.totale)}</td>
                     <td className="px-4 py-1.5 text-right">

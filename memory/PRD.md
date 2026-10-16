@@ -636,3 +636,7 @@ Vedi /app/memory/test_credentials.md
 - GET /magazzino e /magazzino/export: lettura aperta a tutti i ruoli (scrittura resta limitata al proprio negozio via magazzino_scope). /magazzino/disponibilita restituisce barcode.
 - OrdinaInput: barcode, fornitore, prezzo_acquisto, prezzo_vendita, soglia_minima; ricerca articolo prima per barcode poi marca/modello; completa i campi vuoti di un articolo esistente.
 - OrdinaRicambio.jsx: campo barcode (autocompila da disponibilita), fornitore/prezzi/soglia; al submit cerca altri negozi con giacenza>0 e propone "Si, prendi da X" / "No, ordina comunque".
+
+## 2026-10-16 — Tracciamento consegna trasferimenti
+- trasferimenti.registra: stato_consegna=da_consegnare, portato_da, pagato=false. PATCH /magazzino/trasferimenti/{id}/consegna {portato_da, stato_consegna(da_consegnare|in_viaggio|arrivato), pagato, note_consegna} -> partito_at/consegnato_at/pagato_at/pagato_da. Coppie: non_pagato, da_consegnare. Export con colonne Portato da/Consegna/Arrivato il/Pagato.
+- TrasferimentoConsegna.jsx dentro TrasferimentiNegozi: badge stato, "Parte con…" (chi lo porta) -> In viaggio -> Arrivato; toggle Pagato/Non pagato indipendente dalla fattura.
