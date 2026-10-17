@@ -640,3 +640,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-16 — Tracciamento consegna trasferimenti
 - trasferimenti.registra: stato_consegna=da_consegnare, portato_da, pagato=false. PATCH /magazzino/trasferimenti/{id}/consegna {portato_da, stato_consegna(da_consegnare|in_viaggio|arrivato), pagato, note_consegna} -> partito_at/consegnato_at/pagato_at/pagato_da. Coppie: non_pagato, da_consegnare. Export con colonne Portato da/Consegna/Arrivato il/Pagato.
 - TrasferimentoConsegna.jsx dentro TrasferimentiNegozi: badge stato, "Parte con…" (chi lo porta) -> In viaggio -> Arrivato; toggle Pagato/Non pagato indipendente dalla fattura.
+
+## 2026-10-17 — Ricambi multipli e articolo nuovo alla creazione riparazione
+- Verifica: prima solo 1 ricambio esistente collegabile dal form. Ora RicambiForm.jsx: lista ricambi multipla (RicambiScelti), riga "Ricambio non in magazzino: crealo" (barcode, tipologia, marca, descrizione, fornitore, prezzi, qta) -> al salvataggio collegaRicambi: esistente disponibile -> /ricambi; esaurito o nuovo -> /ricambi/ordina (giacenza negativa, in ordine).

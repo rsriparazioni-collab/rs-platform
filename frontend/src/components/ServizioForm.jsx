@@ -12,6 +12,7 @@ import { DocumentiPicker, uploadDocumenti } from "./DocumentiPicker";
 import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
+import { RicambiScelti, RicambioNuovoRow, collegaRicambi } from "./RicambiForm";
 
 const EMPTY_NEW_CLIENT = { nome: "", cognome: "", telefono: "", email: "", codice_fiscale: "" };
 
@@ -69,7 +70,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
       setTipo(t);
       setForm(servizio ? { ...servizio } : { stato: "ingresso", con_ricambio: false, pagato: false, data_ingresso: new Date().toISOString().slice(0, 10), data_attivazione: new Date().toISOString().slice(0, 10) });
       setNuoviDoc([]);
-      setRicambioMag(null); setMagLabel(""); setMagSearch("");
+      setRicambi([]); setMagLabel(""); setMagSearch("");
       setClientId(servizio?.client_id || presetClient?.id || "");
       setClientLabel(servizio?.client_name || presetClient?.label || "");
       setSearch("");
@@ -95,12 +96,12 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
   const [magSearch, setMagSearch] = useState("");
   const [magResults, setMagResults] = useState([]);
   const [magLabel, setMagLabel] = useState("");
-  const [ricambioMag, setRicambioMag] = useState(null);
+  const [ricambi, setRicambi] = useState([]);
   useEffect(() => {
-    if (magSearch.trim().length < 2 || form.magazzino_item_id || ricambioMag) { setMagResults([]); return undefined; }
+    if (magSearch.trim().length < 2 || form.magazzino_item_id) { setMagResults([]); return undefined; }
     const t = setTimeout(() => api.get("/magazzino/disponibilita", { params: { q: magSearch.trim(), ...(tipo === "sim" ? { categoria: "sim" } : {}) } }).then((r) => setMagResults(r.data.slice(0, 8))).catch(() => {}), 300);
     return () => clearTimeout(t);
-  }, [magSearch, form.magazzino_item_id, ricambioMag, tipo]);
+  }, [magSearch, form.magazzino_item_id, tipo]);
   useEffect(() => {
     const code = magSearch.trim();
     if (!isShop || form.magazzino_item_id || !/^\d{8,14}$/.test(code)) return undefined;
@@ -116,19 +117,14 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
     setMagLabel(`${g.nome} · ${s.store_name}`); setMagSearch(""); setMagResults([]);
   };
   const pickRicambio = (g, s) => {
-    setRicambioMag({ item_id: s.item_id, store_id: s.store_id, store_name: s.store_name, nome: g.nome, tipologia: g.tipologia || "altro", quantita: 1, disponibile: s.quantita > 0 });
+    setRicambi((lst) => [...lst, { item_id: s.item_id, store_id: s.store_id, store_name: s.store_name, nome: g.nome, tipologia: g.tipologia || "altro", quantita: 1, disponibile: s.quantita > 0 }]);
     setForm((f) => ({ ...f, con_ricambio: true, tipo_ricambio: g.tipologia && g.tipologia !== "altro" ? g.tipologia : f.tipo_ricambio,
-      costo_componente: s.prezzo_acquisto ?? f.costo_componente }));
+      costo_componente: f.costo_componente || (s.prezzo_acquisto ?? "") }));
     setMagSearch(""); setMagResults([]);
   };
-  const collegaRicambio = async (servizioId) => {
-    if (!ricambioMag) return;
-    const r = ricambioMag;
-    if (r.disponibile) {
-      await api.post(`/servizi/${servizioId}/ricambi`, { magazzino_id: r.item_id, quantita: r.quantita });
-    } else {
-      await api.post(`/servizi/${servizioId}/ricambi/ordina`, { magazzino_id: r.item_id, quantita: r.quantita, tipologia: r.tipologia, da_store_id: r.store_id !== form.venditore_id ? r.store_id : "" });
-    }
+  const addRicambioNuovo = (r) => {
+    setRicambi((lst) => [...lst, { ...r, nuovo: true }]);
+    setForm((f) => ({ ...f, con_ricambio: true, tipo_ricambio: r.tipologia !== "altro" ? r.tipologia : f.tipo_ricambio, costo_componente: f.costo_componente || r.prezzo_acquisto }));
   };
   const isRip = tipo === "riparazione";
   const isTel = ["sim", "internet", "fisso"].includes(tipo);
@@ -187,9 +183,10 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
         const created = await api.post("/servizi", payload);
         servizioId = created.data.id;
         toast.success("Servizio inserito");
-        if (tipo === "riparazione" && ricambioMag) {
-          try { await collegaRicambio(created.data.id); toast.success(ricambioMag.disponibile ? "Ricambio scalato dal magazzino" : "Ricambio messo in ordine"); }
-          catch (e) { toast.error(apiError(e, "Ricambio non collegato: aggiungilo dal dettaglio riparazione")); }
+        if (tipo === "riparazione" && ricambi.length) {
+          const errori = await collegaRicambi(api, created.data.id, ricambi, form.venditore_id);
+          if (errori) toast.error(`${errori} ricambi non collegati: aggiungili dal dettaglio riparazione`);
+          else toast.success(`${ricambi.length} ricambi collegati: ${ricambi.filter((r) => !r.nuovo && r.disponibile).length} scalati, ${ricambi.filter((r) => r.nuovo || !r.disponibile).length} in ordine`);
         }
         const sez = { sim: "mobile", internet: "fisso", fisso: "fisso", riparazione: "riparazioni" }[tipo];
         api.get("/portali").then((r) => apriPortaleDopoSalvataggio(r.data, sez, payload.operatore_tel || payload.fornitore_ricambio)).catch(() => {});
@@ -364,30 +361,24 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
               )}
               {!isEdit ? (
                 <div className="space-y-1.5" data-testid="servizio-ricambio-mag-box">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ricambio dal magazzino</Label>
-                  {ricambioMag ? (
-                    <div className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${ricambioMag.disponibile ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"}`} data-testid="servizio-ricambio-mag-selezionato">
-                      <span className="flex-1">{ricambioMag.nome} · {ricambioMag.store_name}{!ricambioMag.disponibile && " · esaurito: verrà messo in ordine"}</span>
-                      <input type="number" min="1" value={ricambioMag.quantita} onChange={(e) => setRicambioMag({ ...ricambioMag, quantita: Math.max(parseInt(e.target.value) || 1, 1) })} className="w-14 rounded border border-slate-300 px-1.5 py-0.5 text-xs" data-testid="servizio-ricambio-mag-qta" />
-                      <button type="button" className="text-xs text-rose-700 hover:underline" onClick={() => setRicambioMag(null)} data-testid="servizio-ricambio-mag-rimuovi">Rimuovi</button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <Input placeholder="Cerca ricambio in magazzino (es. display iphone 12)" value={magSearch} onChange={(e) => setMagSearch(e.target.value)} className="h-9 text-sm" data-testid="servizio-ricambio-mag-search" />
-                      {magResults.length > 0 && (
-                        <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg" data-testid="servizio-ricambio-mag-risultati">
-                          {magResults.map((g) => g.stores.map((s) => (
-                            <li key={s.item_id}>
-                              <button type="button" onClick={() => pickRicambio(g, s)} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-slate-50" data-testid={`servizio-ricambio-mag-pick-${s.item_id}`}>
-                                <span>{g.nome}</span>
-                                <span className={`text-xs ${s.quantita > 0 ? "text-emerald-700" : "text-rose-600"}`}>{s.store_name} · {s.quantita > 0 ? `${s.quantita} pz` : "esaurito"}{s.prezzo_acquisto != null ? ` · ${s.prezzo_acquisto} €` : ""}</span>
-                              </button>
-                            </li>
-                          )))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ricambi ({ricambi.length})</Label>
+                  {ricambi.length > 0 && <RicambiScelti righe={ricambi} onChange={setRicambi} />}
+                  <div className="relative">
+                    <Input placeholder="Cerca ricambio in magazzino (nome, modello o codice a barre)" value={magSearch} onChange={(e) => setMagSearch(e.target.value)} className="h-9 text-sm" data-testid="servizio-ricambio-mag-search" />
+                    {magResults.length > 0 && (
+                      <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg" data-testid="servizio-ricambio-mag-risultati">
+                        {magResults.map((g) => g.stores.map((s) => (
+                          <li key={s.item_id}>
+                            <button type="button" onClick={() => pickRicambio(g, s)} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-slate-50" data-testid={`servizio-ricambio-mag-pick-${s.item_id}`}>
+                              <span>{g.nome}</span>
+                              <span className={`text-xs ${s.quantita > 0 ? "text-emerald-700" : "text-rose-600"}`}>{s.store_name} · {s.quantita > 0 ? `${s.quantita} pz` : "esaurito"}{s.prezzo_acquisto != null ? ` · ${s.prezzo_acquisto} €` : ""}</span>
+                            </button>
+                          </li>
+                        )))}
+                      </ul>
+                    )}
+                  </div>
+                  <RicambioNuovoRow onAdd={addRicambioNuovo} />
                 </div>
               ) : <div />}
               {form.con_ricambio ? (
