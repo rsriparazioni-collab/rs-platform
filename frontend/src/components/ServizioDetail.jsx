@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, Recycle, FileDown, Ban, Lock } from "lucide-react";
+import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, PackageCheck, Recycle, FileDown, Ban, Lock } from "lucide-react";
 import RitiroDaRiparazione from "./RitiroDaRiparazione";
 import { uploadDocumenti } from "./DocumentiPicker";
 import { ClienteLink } from "./ClienteLink";
@@ -172,6 +172,15 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
     }
   };
 
+  const [arrivoBusy, setArrivoBusy] = useState(false);
+  const arrivoTutti = async () => {
+    setArrivoBusy(true);
+    try {
+      const r = await api.post(`/servizi/${detail.id}/ricambi/arrivo-tutti`);
+      toast.success(`${r.data.caricati.length} ricambi caricati${r.data.avviso_cliente ? " · cliente avvisato su WhatsApp" : ""}`);
+      refresh();
+    } catch (e) { toast.error(apiError(e)); } finally { setArrivoBusy(false); }
+  };
   const removeRicambio = async (idx) => {
     try {
       await api.delete(`/servizi/${detail.id}/ricambi/${idx}`);
@@ -454,11 +463,20 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                     <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">
                       <Package className="mr-1 inline h-3.5 w-3.5" /> Ricambi dal magazzino
                     </p>
+                    {(detail.ricambi_usati || []).some((u) => u.in_ordine) && (
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2" data-testid="servizio-ricambi-arrivo-tutti-box">
+                        <span className="text-xs text-rose-800">{(detail.ricambi_usati || []).filter((u) => u.in_ordine).length} ricambi ancora in ordine: il cliente viene avvisato solo quando sono arrivati tutti.</span>
+                        <Button size="sm" disabled={arrivoBusy} onClick={arrivoTutti} className="h-7 gap-1 bg-emerald-600 text-xs hover:bg-emerald-700" data-testid="servizio-ricambi-arrivo-tutti">
+                          <PackageCheck className="h-3.5 w-3.5" /> {arrivoBusy ? "Carico…" : "Arrivati tutti: carica e avvisa il cliente"}
+                        </Button>
+                      </div>
+                    )}
                     <div className="space-y-1.5" data-testid="servizio-ricambi-list">
                       {(detail.ricambi_usati || []).map((u, idx) => (
                         <div key={`${u.item_id}-${u.at || idx}`} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
                           <span>{u.nome} <span className="text-xs text-slate-500">x{u.quantita}</span>
                             {u.in_ordine && <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700" data-testid={`servizio-ricambio-in-ordine-${idx}`}>In ordine</span>}
+                            {!u.in_ordine && u.arrivato_at && <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700" data-testid={`servizio-ricambio-arrivato-${idx}`}>Arrivato {fmtDate(u.arrivato_at)}</span>}
                             {u.da_store_id && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">da altro negozio</span>}
                           </span>
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeRicambio(idx)} data-testid={`servizio-ricambio-del-${idx}`}>

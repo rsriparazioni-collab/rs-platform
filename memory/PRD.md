@@ -643,3 +643,7 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-17 — Ricambi multipli e articolo nuovo alla creazione riparazione
 - Verifica: prima solo 1 ricambio esistente collegabile dal form. Ora RicambiForm.jsx: lista ricambi multipla (RicambiScelti), riga "Ricambio non in magazzino: crealo" (barcode, tipologia, marca, descrizione, fornitore, prezzi, qta) -> al salvataggio collegaRicambi: esistente disponibile -> /ricambi; esaurito o nuovo -> /ricambi/ordina (giacenza negativa, in ordine).
+
+## 2026-10-17 — Arrivo di tutti i ricambi
+- magazzino_ricambi: _aggiorna_servizio_arrivo -> stato ricambio_arrivato + avviso WA cliente SOLO quando nessun ricambio resta in ordine (prima scattava al primo pezzo). /magazzino/{id}/arrivo ritorna riparazioni_in_attesa_altri_pezzi. Nuovo POST /servizi/{id}/ricambi/arrivo-tutti: carica tutti i pezzi in ordine, trasferimenti.arrivato, stato+avviso.
+- ServizioDetail: box "Arrivati tutti: carica e avvisa il cliente" quando ci sono ricambi in ordine; badge "Arrivato gg/mm".

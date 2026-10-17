@@ -143,6 +143,31 @@ async def ordina_ricambio(servizio_id: str, input: OrdinaInput, user: dict = Dep
     return {"status": "ok", "item_id": item["id"], "nome": item["nome"], "giacenza": nuova, "in_ordine": True}
 
 
+async def _carica_arrivo(db, item: dict, quantita: int, now: str) -> int:
+    nuova = (item.get("quantita") or 0) + quantita
+    upd = {"$set": {"quantita": nuova, "updated_at": now, "ultimo_arrivo_at": now}}
+    if nuova >= 0:
+        upd["$unset"] = {"in_ordine": "", "ordine_at": "", "ordine_servizio_id": "", "ordine_servizio_numero": ""}
+    await db.magazzino.update_one({"id": item["id"]}, upd)
+    return nuova
+
+
+async def _aggiorna_servizio_arrivo(db, s: dict, item_ids: set, now: str) -> bool:
+    """Segna arrivati i ricambi indicati; stato + avviso cliente SOLO quando non resta nulla in ordine."""
+    usati = [{**u, "in_ordine": False, "arrivato_at": now} if u.get("item_id") in item_ids and u.get("in_ordine") else u for u in s.get("ricambi_usati") or []]
+    set_ = {"ricambi_usati": usati, "updated_at": now}
+    completo = not any(u.get("in_ordine") for u in usati)
+    cambia_stato = completo and s.get("stato") in ("attesa_ricambio_carico", "attesa_ricambio_cliente")
+    if cambia_stato:
+        set_["stato"] = "ricambio_arrivato"
+        await db.servizi.update_one({"id": s["id"]}, {"$set": set_, "$push": {"stato_log": {"stato": "ricambio_arrivato", "at": now, "user_name": "magazzino"}}})
+        if _d.get("avviso_ricambio_arrivato"):
+            asyncio.create_task(_d["avviso_ricambio_arrivato"]({**s, **set_}))
+    else:
+        await db.servizi.update_one({"id": s["id"]}, {"$set": set_})
+    return completo
+
+
 @router.post("/magazzino/{item_id}/arrivo")
 async def arrivo_ricambio(item_id: str, input: ArrivoInput, user: dict = Depends(_current_user)):
     """Carico dell'arrivo del pezzo ordinato: giacenza risale (verso 0) e le riparazioni in attesa passano in lavorazione."""
@@ -155,12 +180,9 @@ async def arrivo_ricambio(item_id: str, input: ArrivoInput, user: dict = Depends
     if input.quantita < 1:
         raise HTTPException(status_code=400, detail="Quantità non valida")
     now = _now()
-    nuova = (item.get("quantita") or 0) + input.quantita
-    upd = {"$set": {"quantita": nuova, "updated_at": now, "ultimo_arrivo_at": now}}
-    if nuova >= 0:
-        upd["$unset"] = {"in_ordine": "", "ordine_at": "", "ordine_servizio_id": "", "ordine_servizio_numero": ""}
-    await db.magazzino.update_one({"id": item_id}, upd)
+    nuova = await _carica_arrivo(db, item, input.quantita, now)
     sbloccate = []
+    in_attesa_altri = []
     vendite_pronte = []
     if nuova >= 0:
         await _d["trasferimenti"].arrivato(item_id)
@@ -168,15 +190,33 @@ async def arrivo_ricambio(item_id: str, input: ArrivoInput, user: dict = Depends
         if _d.get("vendite_registro_arrivato"):
             vendite_pronte += await _d["vendite_registro_arrivato"](item_id)
         async for s in db.servizi.find({"ricambi_usati": {"$elemMatch": {"item_id": item_id, "in_ordine": True}}}, {"_id": 0}):
-            usati = [{**u, "in_ordine": False, "arrivato_at": now} if u.get("item_id") == item_id else u for u in s.get("ricambi_usati") or []]
-            set_ = {"ricambi_usati": usati, "updated_at": now}
-            if s.get("stato") in ("attesa_ricambio_carico", "attesa_ricambio_cliente"):
-                set_["stato"] = "ricambio_arrivato"
-            await db.servizi.update_one({"id": s["id"]}, {"$set": set_, "$push": {"stato_log": {"stato": "ricambio_arrivato", "at": now, "user_name": "magazzino"}}} if "stato" in set_ else {"$set": set_})
-            if "stato" in set_ and _d.get("avviso_ricambio_arrivato"):
-                asyncio.create_task(_d["avviso_ricambio_arrivato"]({**s, **set_}))
-            sbloccate.append(s.get("numero_riparazione") or s["id"])
-    return {"status": "ok", "quantita": nuova, "in_ordine": nuova < 0, "riparazioni_sbloccate": sbloccate, "vendite_pronte": vendite_pronte}
+            completo = await _aggiorna_servizio_arrivo(db, s, {item_id}, now)
+            (sbloccate if completo else in_attesa_altri).append(s.get("numero_riparazione") or s["id"])
+    return {"status": "ok", "quantita": nuova, "in_ordine": nuova < 0, "riparazioni_sbloccate": sbloccate, "riparazioni_in_attesa_altri_pezzi": in_attesa_altri, "vendite_pronte": vendite_pronte}
+
+
+@router.post("/servizi/{servizio_id}/ricambi/arrivo-tutti")
+async def arrivo_tutti_ricambi(servizio_id: str, user: dict = Depends(_current_user)):
+    """Un solo tasto: carica l'arrivo di tutti i ricambi in ordine della riparazione e avvisa il cliente."""
+    db = _d["db"]
+    svc = await db.servizi.find_one({"id": servizio_id}, {"_id": 0})
+    if not svc:
+        raise HTTPException(status_code=404, detail="Riparazione non trovata")
+    in_ordine = [u for u in svc.get("ricambi_usati") or [] if u.get("in_ordine")]
+    if not in_ordine:
+        raise HTTPException(status_code=400, detail="Nessun ricambio in ordine per questa riparazione")
+    now = _now()
+    caricati = []
+    for u in in_ordine:
+        item = await db.magazzino.find_one({"id": u.get("item_id")}, {"_id": 0})
+        if not item:
+            continue
+        nuova = await _carica_arrivo(db, item, int(u.get("quantita") or 1), now)
+        if nuova >= 0:
+            await _d["trasferimenti"].arrivato(item["id"])
+        caricati.append({"nome": item["nome"], "quantita": u.get("quantita") or 1, "giacenza": nuova})
+    completo = await _aggiorna_servizio_arrivo(db, svc, {u.get("item_id") for u in in_ordine}, now)
+    return {"status": "ok", "caricati": caricati, "completo": completo, "avviso_cliente": completo and svc.get("stato") in ("attesa_ricambio_carico", "attesa_ricambio_cliente")}
 
 
 @router.get("/magazzino/da-ordinare")
