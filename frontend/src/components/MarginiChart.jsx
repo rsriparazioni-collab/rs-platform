@@ -22,7 +22,7 @@ export default function MarginiChart() {
         <span className="ml-auto text-xs text-slate-500">€ netti IVA, dopo costi</span>
       </div>
       <div className="h-72 p-4" data-testid="margini-chart">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <BarChart data={data.dati} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#64748b" }} />

@@ -654,3 +654,12 @@ Vedi /app/memory/test_credentials.md
 - pdp_import legge cella "IVA" del foglio -> iva_periodi.iva_foglio, confrontata col saldo.
 - Frontend: tab IVA (IvaDashboard.jsx) con badge certo/stima/mancante, aliquote, dati mancanti, documenti da controllare.
 - FASI 2-6 (import Excel AdE con anteprima, collegamento chiusure, PDP netto IVA per negozio/azienda + obiettivi/previsioni, pianificazione fiscale) IN ATTESA conferma utente.
+
+## 2026-10-18 — IVA completa (punti 1-6 utente) — TESTATA (pytest 11/11 backend/tests/test_iter33_iva.py + UI)
+- _norm: iva=None (nessuna stima); totali includono "scontrini". PDF/email corrispettivi senza colonna IVA.
+- fatture_ade: totali_mese con imponibile/imposta/note_credito per direzione; natura_iva (N1-N7 -> esclusa/non_soggetta/non_imponibile/esente/regime_margine/reverse_charge/iva_altro_stato; forfettario; da_verificare se IVA 0 senza natura); riconcilia_manuali (numero, poi importo); /anteprima (colonne, duplicati per hash, fuori mese, note) + /conferma (solo non duplicate) + PATCH /{id}/natura.
+- iva.py: corrispettivi SOLO RT AdE, giorni senza RT = non_determinabile_lordo (mai stimati/azzerati), copertura per negozio, aliquote RT (da XML Riepilogo se presenti), reverse charge segnalato, note di credito, rettifiche manuali, periodicita non assunta (scadenza None finche non impostata). certezza certo/incompleto/mancante.
+- _pdp_calcolo: entrate = scontrini + fatture AdE + fatture chiusure NON riconciliate; payload iva{determinabile, ricavi_netti...}, fatture_manuali, ade_dettaglio.
+- Frontend: IvaDashboard (anche compatto dentro PDP), AdeAnteprima dialog, PuntoPareggio chiavi entrate dinamiche.
+- Residui settembre 2026: 7 gg RT mancanti per negozio (Morbegno 2.250, Gravedona 249 lordi), 5 gg discordanti, 2 fatture chiusure senza AdE (1.977), 7 doc natura da verificare, foglio IVA 2.589,27 vs calcolo 2.449,25.
+- Fasi 5-6 (PDP netto IVA per negozio/azienda, obiettivi, previsioni; pianificazione fiscale imposte/liquidita) ANCORA DA FARE; parametri fiscali da chiedere all utente.
