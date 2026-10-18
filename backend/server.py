@@ -6226,6 +6226,10 @@ api_router.include_router(fatture_ade_module.router)
 import iva as iva_module
 iva_module.setup(db=db, user=contabilita_module._user, centro=contabilita_module._centro, mese_dati=contabilita_module._mese_dati, f=contabilita_module._f)
 api_router.include_router(iva_module.router)
+import fiscale as fiscale_module
+fiscale_module.setup(db=db, user=contabilita_module._user, centro=contabilita_module._centro, centri=contabilita_module._centri, pdp_calcolo=contabilita_module._pdp_calcolo,
+                     calcolo_iva=iva_module.calcolo_iva, mese_dati=contabilita_module._mese_dati)
+api_router.include_router(fiscale_module.router)
 import corrispettivi_ade as corrispettivi_ade_module
 corrispettivi_ade_module.setup(db=db, get_current_user=get_current_user)
 api_router.include_router(corrispettivi_ade_module.router)

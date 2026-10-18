@@ -177,7 +177,8 @@ async def importa(request: Request, file: UploadFile = File(...), store_id: Opti
         else:
             await db.corrispettivi_ade.insert_one({**r, "id": str(uuid.uuid4()), "store_id": sid or "", "created_at": now, "created_by": user.get("name", "")})
             importate += 1
-    return {"importate": importate, "aggiornate": aggiornate, "matricole_da_assegnare": sorted(senza_negozio), "giorni": len({r["data"] for r in righe})}
+    return {"importate": importate, "aggiornate": aggiornate, "matricole_da_assegnare": sorted(senza_negozio), "giorni": len({r["data"] for r in righe}),
+            "giorni_caricati": sorted({r["data"] for r in righe}), "negozi": sorted({mappa.get(r["matricola"], "") for r in righe} - {""})}
 
 
 async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: list) -> dict:

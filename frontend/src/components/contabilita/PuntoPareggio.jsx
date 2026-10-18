@@ -10,6 +10,7 @@ import { PdpAnalisi } from "./PdpAnalisi";
 import { PdpDashboard } from "./PdpDashboard";
 import { PdpImportReport } from "./PdpImportReport";
 import { IvaDashboard } from "./IvaDashboard";
+import { PdpNegozi } from "./PdpNegozi";
 
 const CAT = [["entrate", "Entrate (fatturato)", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse e contanti", "text-amber-700"], ["fornitori", "Fornitori / acquisti (costi variabili)", "text-slate-700"]];
 
@@ -68,6 +69,7 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
       )}
       <PdpDashboard centroId={centroId} anno={anno} mese={mese} fatturato={entrate} fissi={fissi} variabili={variabili} incasso={d.incasso} be={d.break_even} iva={d.iva} />
       <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4" data-testid="pdp-sezione-iva"><IvaDashboard centroId={centroId} anno={anno} mese={mese} isAdmin={isAdmin} compatto /></div>
+      <PdpNegozi anno={anno} mese={mese} isAdmin={isAdmin} />
       <FattureAde centroId={centroId} anno={anno} mese={mese} onChanged={load} />
       <PdpAnalisi centroId={centroId} anno={anno} mese={mese} />
       <div className="grid gap-4 lg:grid-cols-2">

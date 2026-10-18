@@ -663,3 +663,8 @@ Vedi /app/memory/test_credentials.md
 - Frontend: IvaDashboard (anche compatto dentro PDP), AdeAnteprima dialog, PuntoPareggio chiavi entrate dinamiche.
 - Residui settembre 2026: 7 gg RT mancanti per negozio (Morbegno 2.250, Gravedona 249 lordi), 5 gg discordanti, 2 fatture chiusure senza AdE (1.977), 7 doc natura da verificare, foglio IVA 2.589,27 vs calcolo 2.449,25.
 - Fasi 5-6 (PDP netto IVA per negozio/azienda, obiettivi, previsioni; pianificazione fiscale imposte/liquidita) ANCORA DA FARE; parametri fiscali da chiedere all utente.
+
+## 2026-10-18 — Fasi 5-6 + RT mancanti
+- backend/fiscale.py: GET /contabilita/fiscale (piano: reddito YTD/previsione, imposte per regime ditta_individuale[IRPEF scaglioni+addizionali+INPS commercianti] / srls[IRES+IRAP], acconti 40/60 metodo storico se imposte_anno_prec, scadenze 30/06 30/11 INPS 16/02-05-08-11 IVA 16 mese succ, liquidita mensile, simulazione ricavi_pct/costi_pct), PUT /fiscale/config (fiscale_config), GET /fiscale/negozi (PDP per negozio+azienda: lordi, netti IVA solo se RT certo, fissi/variabili ripartiti pro quota, MDC, BEP, obiettivo, YTD, previsione), PUT /fiscale/obiettivi (pdp_obiettivi). Default regime: morbegno+gravedona=ditta individuale (Enrico Mangani), altri (Sondrio)=srls; parametri da_verificare finche non confermati.
+- corrispettivi_ade /importa ritorna giorni_caricati; IvaDashboard: upload XML/ZIP RT per negozio sui giorni mancanti.
+- Frontend: tab Pianificazione fiscale (PianoFiscale.jsx), PdpNegozi.jsx dentro PDP.
