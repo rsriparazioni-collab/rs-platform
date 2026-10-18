@@ -163,7 +163,8 @@ def _norm(c: dict) -> dict:
     c["incassato"] = round(c["contanti"] + c["pos"], 2)
     c["quadratura_diff"] = round(c["scontrini"] - c["contanti_scontrini"] - c["pos_scontrini"] - c["non_riscosso"], 2)
     c["totale"] = round(c["scontrini"] + c["fatture"], 2)
-    c["iva"] = round((c["riparazioni"] + c["merce"] + c["fatture"]) * 22 / 122, 2)
+    # Nessuna stima IVA sui corrispettivi manuali: l'IVA si calcola solo da RT AdE / fatture AdE (modulo iva.py)
+    c["iva"] = None
     return c
 
 
@@ -249,7 +250,7 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     for g in range(1, n + 1):
         d = f"{pref}-{g:02d}"
         righe.append(giorni.get(d) or {"data": d, "vuoto": True})
-    keys = ("riparazioni", "merce", "art74", "fatture", "totale", "contanti", "pos", "incassato", "versati", "iva", "non_riscosso", "fatture_pos", "fatture_contanti")
+    keys = ("riparazioni", "merce", "art74", "fatture", "scontrini", "totale", "contanti", "pos", "incassato", "versati", "non_riscosso", "fatture_pos", "fatture_contanti")
     tot = {k: round(sum(_f(c.get(k)) for c in giorni.values()), 2) for k in keys}
     tot["spese_contanti"] = round(sum(_f(s.get("importo")) for s in spese), 2)
     tot["cassa_netta"] = round(tot["contanti"] - tot["spese_contanti"], 2)
@@ -514,7 +515,7 @@ def _pdf_mese(store: dict, dati: dict) -> bytes:
     pdf.set_font("Helvetica", "", 9)
     pdf.cell(0, 6, _pdf_txt(f"Generato il {date.today().strftime('%d/%m/%Y')} - RS Riparazioni / CambiaOra"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
-    cols = [("Giorno", 16), ("Riparazioni", 26), ("Merce", 24), ("Art. 74", 24), ("Fatture", 24), ("N. fattura / pag.", 48), ("Contanti", 24), ("POS", 24), ("TOTALE", 26), ("Versati", 24), ("IVA 22%", 22)]
+    cols = [("Giorno", 16), ("Riparazioni", 26), ("Merce", 24), ("Art. 74", 24), ("Fatture", 24), ("N. fattura / pag.", 48), ("Contanti", 24), ("POS", 24), ("TOTALE", 26), ("Versati", 24)]
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_fill_color(226, 232, 240)
     for t, w in cols:
@@ -527,12 +528,12 @@ def _pdf_mese(store: dict, dati: dict) -> bytes:
             vals = [g, "", "", "", "", "", "-", "", "", "", ""]
         else:
             fd = ", ".join(f"{x['numero']} {x['pagamento']}".strip() for x in r["fatture_dettaglio"])[:34]
-            vals = [g, _eur(r["riparazioni"]), _eur(r["merce"]), _eur(r["art74"]), _eur(r["fatture"]), fd, _eur(r["contanti"]), _eur(r["pos"]), _eur(r["totale"]), _eur(r["versati"]) if r["versati"] else "", _eur(r["iva"])]
+            vals = [g, _eur(r["riparazioni"]), _eur(r["merce"]), _eur(r["art74"]), _eur(r["fatture"]), fd, _eur(r["contanti"]), _eur(r["pos"]), _eur(r["totale"]), _eur(r["versati"]) if r["versati"] else ""]
         for (t, w), v in zip(cols, vals):
             pdf.cell(w, 6, _pdf_txt(v), border=1, align="R" if t not in ("Giorno", "N. fattura / pag.") else "L")
         pdf.ln()
     pdf.set_font("Helvetica", "B", 8)
-    vals = ["TOT", _eur(tot["riparazioni"]), _eur(tot["merce"]), _eur(tot["art74"]), _eur(tot["fatture"]), "", _eur(tot["contanti"]), _eur(tot["pos"]), _eur(tot["totale"]), _eur(tot["versati"]), _eur(tot["iva"])]
+    vals = ["TOT", _eur(tot["riparazioni"]), _eur(tot["merce"]), _eur(tot["art74"]), _eur(tot["fatture"]), "", _eur(tot["contanti"]), _eur(tot["pos"]), _eur(tot["totale"]), _eur(tot["versati"])]
     for (t, w), v in zip(cols, vals):
         pdf.cell(w, 7, _pdf_txt(v), border=1, fill=True, align="R" if t != "Giorno" else "L")
     pdf.ln(10)
@@ -663,7 +664,7 @@ async def invia_email_mensile(store_id: str, anno: int, mese: int, extra_to: Opt
             f"<table style='border-collapse:collapse;font-size:13px'>"
             + "".join(f"<tr><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0'>{k}</td><td style='padding:4px 10px;border-bottom:1px solid #e2e8f0;text-align:right'><b>{escape(_eur(v))}</b></td></tr>"
                       for k, v in [("Riparazioni", t["riparazioni"]), ("Merce", t["merce"]), ("Art. 74", t["art74"]), ("Fatture", t["fatture"]), ("TOTALE SCONTRINATO (scontrini + fatture)", t["totale"]),
-                                   ("Contanti", t["contanti"]), ("POS", t["pos"]), ("Non riscosso", t["non_riscosso"]), ("Riporto mese precedente", t["riporto"]), ("Versati (nel mese + dopo)", t["versati_totale"]), ("Spese contanti (prima nota)", t["spese_contanti"]), ("Da versare / ammanco", t["da_versare"]), ("IVA 22% scorporata", t["iva"])])
+                                   ("Contanti", t["contanti"]), ("POS", t["pos"]), ("Non riscosso", t["non_riscosso"]), ("Riporto mese precedente", t["riporto"]), ("Versati (nel mese + dopo)", t["versati_totale"]), ("Spese contanti (prima nota)", t["spese_contanti"]), ("Da versare / ammanco", t["da_versare"])])
             + f"</table><p style='font-size:12px;color:#64748b'>Giorni inseriti: {t['giorni_inseriti']}. Inviato da {escape(cfg['email_from'] or 'gestionale')} - RS Riparazioni / CambiaOra.</p></div>")
     email_id = await _d["send_email"](to=to, subject=f"Corrispettivi {store['nome']} - {MESI_IT[mese]} {anno}", html=html,
                                       reply_to=cfg["email_from"] or None, from_name=cfg["email_from"] or None)
@@ -861,14 +862,24 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
             voci[cat].append(nome)
     corr = 0.0
     per_negozio = {}
+    fatture_manuali = []
     for sid in centro["store_ids"]:
-        t = (await _mese_dati(sid, anno, mese))["totali"]["totale"]
-        per_negozio[sid] = t
-        corr += t
-    entrate = {"Corrispettivi negozi": round(corr, 2)}
+        md = await _mese_dati(sid, anno, mese)
+        t = md["totali"]
+        per_negozio[sid] = t["totale"]
+        corr += t["scontrini"] if "scontrini" in t else (t["totale"] - t.get("fatture", 0))
+        for r in md["righe"]:
+            for x in r.get("fatture_dettaglio") or []:
+                fatture_manuali.append({"store_id": sid, "data": r["data"], **x})
     import fatture_ade
     ade = await fatture_ade.totali_mese(centro["id"], anno, mese)
-    entrate["Fatture emesse (AdE)"] = ade["emesse"]
+    # Riconciliazione fatture manuali (chiusure) ↔ fatture emesse AdE: stesso numero o stesso importo → NON sommare due volte
+    emesse_ade = await db.fatture_ade.find({"centro_id": centro["id"], "anno": anno, "mese": mese, "direzione": "emesse"}, {"_id": 0, "numero": 1, "totale": 1, "data": 1}).to_list(2000)
+    riconciliate, non_riconciliate = fatture_ade.riconcilia_manuali(fatture_manuali, emesse_ade)
+    tot_manuali_sole = round(sum(x["importo"] for x in non_riconciliate), 2)
+    entrate = {"Corrispettivi negozi (scontrini)": round(corr, 2), "Fatture emesse (AdE)": ade["emesse"]}
+    if tot_manuali_sole:
+        entrate["Fatture da chiusure senza documento AdE"] = tot_manuali_sole
     entrate_info = {}
     for v in voci["entrate"]:
         val = _f(valori.get(f"entrate|{v}"))
@@ -896,13 +907,16 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     tot_spese["spese_cassa"] = tot_spese_cassa
     tot_uscite = round(sum(tot_spese.values()), 2)
     # Incassato reale e giorni lavorati
-    incassato = contanti = pos = non_riscosso = iva = 0.0
+    incassato = contanti = pos = non_riscosso = 0.0
     giorni_inseriti = 0
     for sid in centro["store_ids"]:
         t = (await _mese_dati(sid, anno, mese))["totali"]
-        contanti += t["contanti"]; pos += t["pos"]; non_riscosso += t["non_riscosso"]; iva += t["iva"]
+        contanti += t["contanti"]; pos += t["pos"]; non_riscosso += t["non_riscosso"]
         giorni_inseriti = max(giorni_inseriti, t.get("giorni_inseriti") or 0)
     incassato = round(contanti + pos, 2)
+    import iva as iva_module
+    iva_mese = await iva_module.calcolo_iva(centro, anno, mese)
+    ricavi_netti = iva_mese["vendite"]["imponibile_totale"] if iva_mese["vendite"]["determinabile"] else None
     # Break-even: costi fissi / margine di contribuzione %
     costi_fissi = round(tot_spese["spese_fisse"] + tot_spese["spese_semifisse"] + tot_spese_cassa, 2)
     costi_variabili = tot_spese["fornitori"]
@@ -928,8 +942,13 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     return {"centro": {"id": centro["id"], "nome": centro["nome"], "negozi": centro["negozi"]}, "anno": anno, "mese": mese, "voci": voci, "valori": valori,
             "entrate": entrate, "entrate_info": entrate_info, "corrispettivi_per_negozio": per_negozio, "ade": ade, "ade_fornitori": ade_fornitori, "ade_non_abbinate": non_abbinate, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
             "spese_cassa": spese_cassa, "tot_spese_cassa": tot_spese_cassa,
-            "incasso": {"incassato": incassato, "contanti": round(contanti, 2), "pos": round(pos, 2), "non_riscosso": round(non_riscosso, 2), "iva": round(iva, 2), "fatturato": tot_entrate,
+            "incasso": {"incassato": incassato, "contanti": round(contanti, 2), "pos": round(pos, 2), "non_riscosso": round(non_riscosso, 2), "fatturato": tot_entrate,
                         "da_incassare": round(tot_entrate - incassato, 2)},
+            "iva": {"determinabile": iva_mese["vendite"]["determinabile"], "ricavi_netti": ricavi_netti, "iva_debito": iva_mese["vendite"]["iva_debito"],
+                    "imponibile_acquisti": iva_mese["acquisti"]["imponibile_totale"], "iva_detraibile": iva_mese["acquisti"]["iva_detraibile"], "saldo": iva_mese["saldo"],
+                    "certezza": iva_mese["certezza"], "n_mancanti": len(iva_mese["mancanti"]), "n_anomalie": len(iva_mese["anomalie"])},
+            "fatture_manuali": {"riconciliate": riconciliate, "non_riconciliate": non_riconciliate, "tot_non_riconciliate": tot_manuali_sole},
+            "ade_dettaglio": {k: ade[k] for k in ("emesse_imponibile", "emesse_imposta", "ricevute_imponibile", "ricevute_imposta", "note_credito_emesse", "note_credito_ricevute")},
             "break_even": break_even,
             "punto_pareggio": bep if bep is not None else tot_uscite, "risultato": round(tot_entrate - tot_uscite, 2),
             "copertura_pct": round(tot_entrate / tot_uscite * 100, 1) if tot_uscite else None, "note": doc.get("note", ""), "ereditato_da": ereditato_da,

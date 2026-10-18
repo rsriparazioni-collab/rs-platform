@@ -81,14 +81,20 @@ def _parse_xml(content: bytes) -> list:
     if not data:
         return []
     imp = iva = 0.0
+    aliquote = []
     for el in root.iter():
         t = _tag(el)
         if t in ("Imponibile", "Ammontare") and _tag_parent_ok(el):
             imp += _num(el.text)
         elif t == "Imposta":
             iva += _num(el.text)
+        elif t in ("Riepilogo", "RiepilogoIVA", "DatiRiepilogo"):
+            sub = {_tag(c): (c.text or "").strip() for c in el}
+            if any(k in sub for k in ("AliquotaIVA", "Natura", "Ammontare", "Imponibile")):
+                aliquote.append({"aliquota": _num(sub["AliquotaIVA"]) if sub.get("AliquotaIVA") else None, "natura": sub.get("Natura") or "",
+                                 "imponibile": round(_num(sub.get("Ammontare") or sub.get("Imponibile")), 2), "imposta": round(_num(sub.get("Imposta")), 2)})
     tot = round(imp + iva, 2)
-    return [{"matricola": matricola[:40], "data": data, "imponibile": round(imp, 2), "imposta": round(iva, 2), "totale": tot}]
+    return [{"matricola": matricola[:40], "data": data, "imponibile": round(imp, 2), "imposta": round(iva, 2), "totale": tot, "aliquote": aliquote}]
 
 
 def _tag_parent_ok(el) -> bool:

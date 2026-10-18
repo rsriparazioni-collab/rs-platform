@@ -13,7 +13,7 @@ const Kpi = ({ label, value, sub, tone = "text-slate-900", testid }) => (
   </div>
 );
 
-export const PdpDashboard = ({ centroId, anno, mese, fatturato, fissi, variabili, incasso, be }) => {
+export const PdpDashboard = ({ centroId, anno, mese, fatturato, fissi, variabili, incasso, be, iva }) => {
   const [trend, setTrend] = useState([]);
   useEffect(() => {
     if (!centroId) return;
@@ -34,7 +34,7 @@ export const PdpDashboard = ({ centroId, anno, mese, fatturato, fissi, variabili
   return (
     <div className="space-y-4" data-testid="pdp-dashboard">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Fatturato (scontrini + fatture)" value={eur(fatturato)} sub={`IVA scorporata stimata ${eur(incasso?.iva)}`} tone="text-emerald-700" testid="pdp-kpi-fatturato" />
+        <Kpi label="Fatturato lordo (scontrini + fatture)" value={eur(fatturato)} sub={iva?.determinabile ? `Ricavi netti IVA ${eur(iva.ricavi_netti)} · IVA a debito ${eur(iva.iva_debito)}` : `Ricavi netti IVA non determinabili (${iva?.n_mancanti || 0} dati mancanti)`} tone="text-emerald-700" testid="pdp-kpi-fatturato" />
         <Kpi label="Incassato reale" value={eur(incasso?.incassato)} sub={`contanti ${eur(incasso?.contanti)} · POS ${eur(incasso?.pos)}${incasso?.non_riscosso ? ` · non riscosso ${eur(incasso.non_riscosso)}` : ""}`} tone="text-sky-700" testid="pdp-kpi-incassato" />
         <Kpi label="Spese totali" value={eur(uscite)} sub={`fisse ${eur(fissi)} · variabili ${eur(variabili)}`} tone="text-rose-700" testid="pdp-kpi-spese" />
         <Kpi label={risultato >= 0 ? "Utile del mese" : "Perdita del mese"} value={eur(risultato)} sub={be?.in_corso ? `proiezione fine mese ${eur(be.proiezione_risultato)}` : "mese chiuso"} tone={risultato >= 0 ? "text-emerald-700" : "text-rose-700"} testid="pdp-kpi-risultato" />

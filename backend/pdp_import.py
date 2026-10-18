@@ -79,7 +79,16 @@ def parse_pdp_sheet(csv_text: str) -> dict:
                 ricevute.append({"tipo": r[15] or "Fattura", "numero": r[16].strip("'")[:40], "data": "", "controparte": r[19].strip("'"),
                                  "imponibile": num(r[20]), "imposta": num(r[21]), "totale": num(r[22])})
     mesi = Counter((d[:7] for d in (c["data"] for c in corr) if d))
-    return {"negozi": negozi, "emesse": emesse, "ricevute": ricevute, "corrispettivi": corr, "mese_rilevato": mesi.most_common(1)[0][0] if mesi else None}
+    # 3) cella "IVA" del riepilogo (valore nella riga successiva, stessa colonna)
+    iva_foglio = None
+    for i, r in enumerate(rows[:det_i or 60]):
+        for j, cell in enumerate(r):
+            if cell.strip().lower() == "iva" and i + 1 < len(rows):
+                for jj in (j, j + 1, j - 1):
+                    if 0 <= jj < len(rows[i + 1]) and num(rows[i + 1][jj]):
+                        iva_foglio = num(rows[i + 1][jj])
+                        break
+    return {"negozi": negozi, "emesse": emesse, "ricevute": ricevute, "corrispettivi": corr, "mese_rilevato": mesi.most_common(1)[0][0] if mesi else None, "iva_foglio": iva_foglio}
 
 
 def _riga(voce, foglio, gest, **extra):
@@ -157,6 +166,8 @@ async def importa_pdp_fogli(db, fetch, centri: list, stores: list, user_name: st
         negozi_det = {c["negozio"].replace("2", "").strip() for c in p["corrispettivi"]}
         cids = {store_centro.get(slug_store[n]["id"]) for n in negozi_det if n in slug_store} - {None}
         cid_fatt = next(iter(cids)) if len(cids) == 1 else (per_centro and max(per_centro, key=lambda k: len(per_centro[k])))
+        if cid_fatt and p.get("iva_foglio") is not None:
+            await db.iva_periodi.update_one({"centro_id": cid_fatt, "anno": anno, "mese": mese}, {"$set": {"iva_foglio": p["iva_foglio"]}, "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
         n_em = n_ric = 0
         n_corr = 0
         for c in p["corrispettivi"]:

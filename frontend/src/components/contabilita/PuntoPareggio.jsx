@@ -9,6 +9,7 @@ import { FattureAde } from "./FattureAde";
 import { PdpAnalisi } from "./PdpAnalisi";
 import { PdpDashboard } from "./PdpDashboard";
 import { PdpImportReport } from "./PdpImportReport";
+import { IvaDashboard } from "./IvaDashboard";
 
 const CAT = [["entrate", "Entrate (fatturato)", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse e contanti", "text-amber-700"], ["fornitori", "Fornitori / acquisti (costi variabili)", "text-slate-700"]];
 
@@ -35,7 +36,7 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
   const salvaVoci = async (v) => { try { await api.put(`/contabilita/pdp/voci/${centroId}`, v); setVoci(v); } catch (e) { toast.error(apiError(e)); } };
   if (!centroId) return <p className="text-sm text-slate-500" data-testid="pdp-nessun-centro">Nessun centro di costo disponibile.</p>;
   if (!d || !voci) return null;
-  const AUTO = { entrate: ["Corrispettivi negozi", "Fatture emesse (AdE)"], fornitori: ["Fatture ricevute non abbinate (AdE)"] };
+  const AUTO = { entrate: Object.keys(d.entrate), fornitori: ["Fatture ricevute non abbinate (AdE)"] };
   const adeF = d.ade_fornitori || {};
   const autoVal = (cat) => (AUTO[cat] || []).reduce((a, k) => a + ((cat === "entrate" ? d.entrate[k] : d.sezioni[cat][k]) || 0), 0) + (cat === "fornitori" ? Object.values(adeF).reduce((a, v) => a + v, 0) : 0);
   const emesseAde = d.entrate["Fatture emesse (AdE)"] || 0;
@@ -65,7 +66,8 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
           <Button size="sm" variant="outline" onClick={salva} data-testid="pdp-conferma-ereditato">Conferma per {MESI[mese]}</Button>
         </div>
       )}
-      <PdpDashboard centroId={centroId} anno={anno} mese={mese} fatturato={entrate} fissi={fissi} variabili={variabili} incasso={d.incasso} be={d.break_even} />
+      <PdpDashboard centroId={centroId} anno={anno} mese={mese} fatturato={entrate} fissi={fissi} variabili={variabili} incasso={d.incasso} be={d.break_even} iva={d.iva} />
+      <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4" data-testid="pdp-sezione-iva"><IvaDashboard centroId={centroId} anno={anno} mese={mese} isAdmin={isAdmin} compatto /></div>
       <FattureAde centroId={centroId} anno={anno} mese={mese} onChanged={load} />
       <PdpAnalisi centroId={centroId} anno={anno} mese={mese} />
       <div className="grid gap-4 lg:grid-cols-2">
@@ -80,7 +82,8 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
                   {speseCassa > 0 && <p className="mt-0.5 text-[11px] text-amber-600">Non reinserire a mano sotto le stesse spese (es. Ritiri) per evitare il doppio conteggio.</p>}
                 </div>
               )}
-              {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Corrispettivi negozi <span className="text-xs text-slate-400">(automatico: {d.centro.negozi.join(" + ")})</span></span><span className="tabular-nums font-medium" data-testid="pdp-corrispettivi-auto">{eur(d.entrate["Corrispettivi negozi"])}</span></div>}
+              {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Corrispettivi negozi (scontrini) <span className="text-xs text-slate-400">(automatico: {d.centro.negozi.join(" + ")})</span></span><span className="tabular-nums font-medium" data-testid="pdp-corrispettivi-auto">{eur(d.entrate["Corrispettivi negozi (scontrini)"])}</span></div>}
+              {cat === "entrate" && d.entrate["Fatture da chiusure senza documento AdE"] > 0 && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-rose-700">Fatture da chiusure senza documento AdE <span className="text-xs text-slate-400">(manuali, non riconciliate)</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-manuali-sole">{eur(d.entrate["Fatture da chiusure senza documento AdE"])}</span></div>}
               {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Fatture emesse <span className="text-xs text-slate-400">(automatico da Agenzia Entrate / fogli)</span></span><span className="tabular-nums font-medium" data-testid="pdp-fatture-emesse-auto">{eur(d.entrate["Fatture emesse (AdE)"])}</span></div>}
               {cat === "entrate" && emesseAde > 0 && <p className="py-1 text-[11px] text-amber-600" data-testid="pdp-entrate-info">Le voci sotto (Eolo, Energia, Telefonia, Pacchi) sono già comprese nelle fatture emesse e non vengono sommate di nuovo.</p>}
               {cat === "fornitori" && Object.keys(adeF).length > 0 && <p className="py-1 text-[11px] text-amber-600">Per i fornitori con fatture ricevute abbinate vale l'importo delle fatture; il valore manuale è ignorato.</p>}

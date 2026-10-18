@@ -647,3 +647,10 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-17 — Arrivo di tutti i ricambi
 - magazzino_ricambi: _aggiorna_servizio_arrivo -> stato ricambio_arrivato + avviso WA cliente SOLO quando nessun ricambio resta in ordine (prima scattava al primo pezzo). /magazzino/{id}/arrivo ritorna riparazioni_in_attesa_altri_pezzi. Nuovo POST /servizi/{id}/ricambi/arrivo-tutti: carica tutti i pezzi in ordine, trasferimenti.arrivato, stato+avviso.
 - ServizioDetail: box "Arrivati tutti: carica e avvisa il cliente" quando ci sono ricambi in ordine; badge "Arrivato gg/mm".
+
+## 2026-10-18 — FASE 1 IVA (audit + modulo)
+- Causa radice IVA assente: (a) unica IVA = stima 22% in _norm su scontrini+fatture manuali, mostrata solo come sottotitolo PDP; (b) fatture_ade e corrispettivi_ade salvano imposta ma totali_mese proietta solo totale -> IVA reale mai aggregata; (c) nessuna sezione/UI IVA; (d) fatture manuali nei corrispettivi contate a 22% anche se esenti (doppio conteggio con fatture_ade).
+- Fix: _norm iva = solo (riparazioni+merce)*22/122. Nuovo backend/iva.py: GET/PUT /contabilita/iva, PUT /iva/config (periodicita), GET /iva/anno. Collezioni nuove: iva_periodi {centro_id,anno,mese,credito_precedente,iva_foglio,saldo_calcolato,note}, iva_config {centro_id,periodicita}. Vendite: RT AdE (certo) / RT parziale+stima / scontrini 22% (stima); art74 fuori campo; fatture per aliquota implicita (22/10/5/4/0/mista); detraibilita art.19-bis1 via REGOLE_DETRAIBILITA (telefonia 50%, carburanti 40%) segnalate; credito precedente manuale o riporto automatico da saldo negativo; scadenza F24 mensile/trimestrale(+1%).
+- pdp_import legge cella "IVA" del foglio -> iva_periodi.iva_foglio, confrontata col saldo.
+- Frontend: tab IVA (IvaDashboard.jsx) con badge certo/stima/mancante, aliquote, dati mancanti, documenti da controllare.
+- FASI 2-6 (import Excel AdE con anteprima, collegamento chiusure, PDP netto IVA per negozio/azienda + obiettivi/previsioni, pianificazione fiscale) IN ATTESA conferma utente.

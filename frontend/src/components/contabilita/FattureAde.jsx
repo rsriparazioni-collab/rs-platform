@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, FileUp, Trash2 } from "lucide-react";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
 import { eur } from "./shared";
+import { AdeAnteprima } from "./AdeAnteprima";
 
 const UploadBtn = ({ label, onFile, testid }) => {
   const ref = useRef();
@@ -18,11 +19,12 @@ export const FattureAde = ({ centroId, anno, mese, onChanged }) => {
   const [aperto, setAperto] = useState(false);
   const load = useCallback(() => api.get("/contabilita/pdp/fatture", { params: { centro_id: centroId, anno, mese } }).then((r) => setD(r.data)).catch(() => {}), [centroId, anno, mese]);
   useEffect(() => { load(); }, [load]);
+  const [anteprima, setAnteprima] = useState(null);
   const upload = async (direzione, file) => {
     const fd = new FormData(); fd.append("file", file);
     try {
-      const r = await api.post("/contabilita/pdp/fatture/importa", fd, { params: { centro_id: centroId, anno, mese, direzione }, headers: { "Content-Type": "multipart/form-data" } });
-      toast.success(`${r.data.importate} fatture ${direzione} importate${r.data.duplicate ? `, ${r.data.duplicate} già presenti` : ""}`); load(); onChanged();
+      const r = await api.post("/contabilita/pdp/fatture/anteprima", fd, { params: { centro_id: centroId, anno, mese, direzione }, headers: { "Content-Type": "multipart/form-data" } });
+      setAnteprima({ ...r.data, direzione });
     } catch (e) { toast.error(apiError(e)); }
   };
   const svuota = async (direzione) => { try { await api.delete("/contabilita/pdp/fatture", { params: { centro_id: centroId, anno, mese, direzione } }); load(); onChanged(); } catch (e) { toast.error(apiError(e)); } };
@@ -30,10 +32,11 @@ export const FattureAde = ({ centroId, anno, mese, onChanged }) => {
   const t = d.totali;
   return (
     <div className="rounded-xl border border-slate-200 bg-white" data-testid="fatture-ade">
+      {anteprima && <AdeAnteprima anteprima={anteprima} centroId={centroId} anno={anno} mese={mese} direzione={anteprima.direzione} onClose={() => setAnteprima(null)} onDone={() => { setAnteprima(null); load(); onChanged(); }} />}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">Fatture Agenzia Entrate — {String(mese).padStart(2, "0")}/{anno}</h3>
-          <p className="text-xs text-slate-500">Carica l'esportazione (CSV/XLSX, "Esporta tabella" da Fatture e Corrispettivi). Le note di credito vengono sottratte. Entrano nel punto di pareggio come "Fatture emesse" (entrate) e "Fatture ricevute" (fornitori).</p>
+          <p className="text-xs text-slate-500">Carica l'esportazione (CSV/XLSX da Fatture e Corrispettivi): vedrai un'anteprima con colonne riconosciute, duplicati e natura IVA prima di importare. Le note di credito vengono sottratte.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <UploadBtn label="Importa fatture emesse" onFile={(f) => upload("emesse", f)} testid="ade-upload-emesse" />
