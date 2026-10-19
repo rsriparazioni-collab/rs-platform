@@ -1,11 +1,14 @@
 """Pianificazione fiscale per centro di costo: regime (ditta individuale IRPEF / SRLS IRES+IRAP), imposte stimate, acconti, scadenze, liquidità, simulazioni.
 Tutti i parametri sono modificabili; finché non salvati dall'utente restano 'da_verificare'. Il reddito deriva dal PDP (netto IVA quando determinabile)."""
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+
+logger = logging.getLogger("fiscale")
 
 router = APIRouter(prefix="/contabilita/fiscale", tags=["fiscale"])
 _d: dict = {}
@@ -199,6 +202,106 @@ class ObiettivoInput(BaseModel):
     store_id: str
     obiettivo_mese: float = 0.0
     obiettivo_anno: float = 0.0
+
+
+async def alert_scadenze() -> dict:
+    """Cron giornaliero: WhatsApp all'amministrazione per le scadenze fiscali a 7 giorni (una sola volta per scadenza)."""
+    from datetime import timedelta
+    db = _d["db"]
+    oggi = datetime.now(timezone.utc).date()
+    target = (oggi + timedelta(days=7)).isoformat()
+    admin = await db.users.find_one({"role": "admin"}, {"_id": 0}) or {"role": "admin"}
+    righe, inviati = [], 0
+    for c in await _d["centri"](admin):
+        p = await piano(c, oggi.year)
+        for s in p["scadenze"]:
+            if s["data"] != target or s["importo"] <= 0:
+                continue
+            key = f"{c['id']}|{s['data']}|{s['voce']}"
+            if await db.fiscale_alert_log.find_one({"key": key}):
+                continue
+            righe.append(f"• {s['data'][8:]}/{s['data'][5:7]} — {c['nome']}: {s['voce']} ≈ € {s['importo']:,.2f} ({s['certezza']})".replace(",", "X").replace(".", ",").replace("X", "."))
+            await db.fiscale_alert_log.insert_one({"id": str(uuid.uuid4()), "key": key, "centro_id": c["id"], "data": s["data"], "voce": s["voce"], "importo": s["importo"], "sent_at": datetime.now(timezone.utc).isoformat()})
+    if righe:
+        testo = "📅 *Scadenze fiscali tra 7 giorni*\n" + "\n".join(righe) + "\nImporti stimati dal gestionale: verifica con il commercialista."
+        try:
+            await _d["wa_send"](_d["numero_amministrazione"], testo, session="default", tipo="fiscale_scadenza")
+            inviati = len(righe)
+        except HTTPException as e:
+            logger.warning(f"WA scadenze fiscali non inviato: {e.detail}")
+    return {"data_target": target, "scadenze": len(righe), "wa_inviato": inviati > 0}
+
+
+@router.get("/export-commercialista")
+async def export_commercialista(centro_id: str, anno: int, mese: int, request: Request):
+    """Excel mensile per il commercialista: IVA, fatture emesse/ricevute, corrispettivi RT vs chiusure, differenze da riconciliare."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from fastapi.responses import StreamingResponse
+    import io
+    user = await _d["user"](request)
+    centro = await _d["centro"](user, centro_id)
+    db = _d["db"]
+    iva = await _d["calcolo_iva"](centro, anno, mese)
+    pdp = await _d["pdp_calcolo"](centro, anno, mese)
+    wb = Workbook()
+    bold = Font(bold=True)
+
+    def sheet(title, headers, rows, first=False):
+        ws = wb.active if first else wb.create_sheet()
+        ws.title = title[:31]
+        ws.append(headers)
+        for c in ws[1]:
+            c.font = bold
+        for r in rows:
+            ws.append(r)
+        for col in ws.columns:
+            ws.column_dimensions[col[0].column_letter].width = min(max(len(str(c.value or "")) for c in col) + 3, 50)
+
+    v, a = iva["vendite"], iva["acquisti"]
+    sheet("Riepilogo IVA", ["Voce", "Importo €", "Certezza / nota"], [
+        ["Centro", centro["nome"], f"{mese:02d}/{anno}"],
+        ["Imponibile corrispettivi (RT AdE)", v["corrispettivi"]["imponibile"], "certo"], ["IVA corrispettivi (RT AdE)", v["corrispettivi"]["imposta"], "certo"],
+        ["Scontrini senza RT (lordo, IVA non determinabile)", v["corrispettivi"]["non_determinabile_lordo"], "mancante"],
+        ["Imponibile fatture emesse", v["fatture_emesse"]["imponibile"], f"{v['fatture_emesse']['n']} documenti"], ["IVA fatture emesse", v["fatture_emesse"]["imposta"], ""],
+        ["di cui note di credito emesse (totale)", v["fatture_emesse"]["note_credito"]["totale"], f"{v['fatture_emesse']['note_credito']['n']} doc."],
+        ["IVA A DEBITO", v["iva_debito"], "parziale" if not v["determinabile"] else "certo"],
+        ["Imponibile acquisti", a["imponibile_totale"], f"{a['fatture_ricevute']['n']} documenti"], ["IVA acquisti", a["iva_totale"], ""],
+        ["IVA indetraibile (art. 19-bis1)", a["iva_indetraibile"], "da verificare"], ["IVA DETRAIBILE", a["iva_detraibile"], ""],
+        ["Credito precedente", iva["credito_precedente"], iva["credito_fonte"]], ["Rettifiche", iva["rettifiche"], ""],
+        ["SALDO IVA STIMATO", iva["saldo"], iva["saldo_tipo"]], ["Scadenza", iva["scadenza"] or "periodicità non impostata", iva["scadenza_nota"]],
+        ["Certezza complessiva", iva["certezza"], ""]] + [["Per aliquota vendite", f"{x['label']}", f"imp. {x['imponibile']} / IVA {x['imposta']}"] for x in v["per_aliquota"]]
+        + [["Per aliquota acquisti", f"{x['label']}", f"imp. {x['imponibile']} / IVA {x['imposta']}"] for x in a["fatture_ricevute"]["per_aliquota"]], first=True)
+    for direzione in ("emesse", "ricevute"):
+        rows = []
+        async for f in db.fatture_ade.find({"centro_id": centro_id, "anno": anno, "mese": mese, "direzione": direzione}, {"_id": 0}).sort("data", 1):
+            rows.append([f.get("data"), f.get("tipo"), f.get("numero"), f.get("controparte"), f.get("imponibile"), f.get("imposta"), f.get("totale"), f.get("natura_iva", ""), f.get("fonte", ""), f.get("natura_nota", "")])
+        sheet(f"Fatture {direzione}", ["Data", "Tipo", "Numero", "Controparte", "Imponibile", "IVA", "Totale", "Natura IVA", "Fonte", "Nota"], rows)
+    rows = []
+    for n in v["corrispettivi"]["negozi"]:
+        md = await _d["mese_dati"](n["store_id"], anno, mese)
+        rt = {}
+        async for c in db.corrispettivi_ade.find({"store_id": n["store_id"], "data": {"$regex": f"^{anno:04d}-{mese:02d}"}}, {"_id": 0}):
+            rt.setdefault(c["data"], {"imp": 0.0, "iva": 0.0, "tot": 0.0, "m": c.get("matricola", "")})
+            for k, kk in (("imp", "imponibile"), ("iva", "imposta"), ("tot", "totale")):
+                rt[c["data"]][k] = round(rt[c["data"]][k] + float(c.get(kk) or 0), 2)
+        for r in md["righe"]:
+            if r.get("vuoto") and r["data"] not in rt:
+                continue
+            sc = round(float(r.get("riparazioni") or 0) + float(r.get("merce") or 0) + float(r.get("art74") or 0), 2)
+            x = rt.get(r["data"])
+            rows.append([n["store_nome"], r["data"], r.get("riparazioni"), r.get("merce"), r.get("art74"), sc, x["imp"] if x else None, x["iva"] if x else None, x["tot"] if x else None,
+                         round(sc - x["tot"], 2) if x else None, "ok" if x and abs(sc - x["tot"]) < 0.01 else ("RT mancante" if not x else ("solo RT" if r.get("vuoto") else "DIFFERENZA")), x["m"] if x else ""])
+    sheet("Corrispettivi RT vs chiusure", ["Negozio", "Data", "Riparazioni", "Merce", "Art.74", "Scontrini chiusura", "RT imponibile", "RT IVA", "RT totale", "Differenza", "Stato", "Matricola"], rows)
+    sheet("Differenze da riconciliare", ["Tipo", "Dettaglio", "Imponibile", "IVA", "Nota"],
+          [["Dato mancante", m, None, None, ""] for m in iva["mancanti"]] + [[x["tipo"], x["doc"], x["imponibile"], x["imposta"], x["msg"]] for x in iva["anomalie"]]
+          + [["Fattura chiusura senza AdE", f"{x.get('store_nome', '')} {x['data']} n.{x.get('numero', '')}", None, None, f"importo {x['importo']}"] for x in v["fatture_manuali"]["non_riconciliate"]])
+    sheet("Punto di pareggio", ["Voce", "Importo €"], [[k, val] for k, val in pdp["entrate"].items()] + [["TOTALE ENTRATE", pdp["tot_entrate"]], ["Costi fissi", pdp["break_even"]["costi_fissi"]], ["Costi variabili", pdp["break_even"]["costi_variabili"]],
+                                                        ["TOTALE USCITE", pdp["tot_uscite"]], ["Risultato", round(pdp["tot_entrate"] - pdp["tot_uscite"], 2)], ["Fatturato di pareggio", pdp["break_even"].get("fatturato_pareggio")],
+                                                        ["Ricavi netti IVA", pdp["iva"]["ricavi_netti"] if pdp["iva"]["determinabile"] else "non determinabili"]])
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f'attachment; filename="commercialista_{centro_id.replace("+", "_").replace(":", "_")}_{anno}-{mese:02d}.xlsx"'})
 
 
 @router.put("/obiettivi")

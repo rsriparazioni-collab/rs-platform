@@ -75,3 +75,11 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/pdp-fogli-notte"
     method: POST
     enabled: true
+  - name: scadenze-fiscali
+    description: "Alle 08:00 avvisa su WhatsApp l'amministrazione delle scadenze fiscali (IVA, acconti, INPS) in arrivo tra 7 giorni con l'importo stimato"
+    cron: "0 8 * * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/scadenze-fiscali"
+    method: POST
+    enabled: true

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, HelpCircle, Landmark } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileDown, HelpCircle, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
@@ -52,7 +52,9 @@ export const IvaDashboard = ({ anno, mese, setAnno, setMese, isAdmin, centroId: 
         {!centroFisso && <select value={centroId} onChange={(e) => setCentroId(e.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm" data-testid="iva-centro-select">{centri.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>}
         {!compatto && <PeriodoPicker anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} />}
         {compatto && <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900"><Landmark className="h-4 w-4" /> IVA {MESI[mese]} {anno} <Badge certezza={d.certezza} /></h3>}
-        <span className="ml-auto flex items-center gap-2 text-xs text-slate-500">Periodicità:
+        <span className="ml-auto flex items-center gap-2 text-xs text-slate-500">
+          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/contabilita/fiscale/export-commercialista?centro_id=${encodeURIComponent(centroId)}&anno=${anno}&mese=${mese}`, "_blank")} data-testid="iva-export-commercialista"><FileDown className="h-3.5 w-3.5" /> Excel commercialista</Button>
+          Periodicità:
           {["mensile", "trimestrale"].map((p) => <button key={p} type="button" onClick={() => setPeriodicita(p)} className={`rounded-full border px-2.5 py-0.5 ${d.periodicita === p ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200"}`} data-testid={`iva-periodicita-${p}`}>{p}</button>)}
           {!d.periodicita && <span className="text-rose-600">non impostata</span>}
         </span>

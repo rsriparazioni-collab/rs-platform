@@ -6228,7 +6228,7 @@ iva_module.setup(db=db, user=contabilita_module._user, centro=contabilita_module
 api_router.include_router(iva_module.router)
 import fiscale as fiscale_module
 fiscale_module.setup(db=db, user=contabilita_module._user, centro=contabilita_module._centro, centri=contabilita_module._centri, pdp_calcolo=contabilita_module._pdp_calcolo,
-                     calcolo_iva=iva_module.calcolo_iva, mese_dati=contabilita_module._mese_dati)
+                     calcolo_iva=iva_module.calcolo_iva, mese_dati=contabilita_module._mese_dati, wa_send=wa_send, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE)
 api_router.include_router(fiscale_module.router)
 import corrispettivi_ade as corrispettivi_ade_module
 corrispettivi_ade_module.setup(db=db, get_current_user=get_current_user)
@@ -6255,6 +6255,17 @@ async def cron_corrispettivi_mensile(request: Request, background_tasks: Backgro
     if not token or not secret or not hmac.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(contabilita_module.invia_email_mensile_tutti)
+    return {"status": "accepted"}
+
+@api_router.post("/cron/scadenze-fiscali")
+async def cron_scadenze_fiscali(request: Request, background_tasks: BackgroundTasks):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(fiscale_module.alert_scadenze)
     return {"status": "accepted"}
 
 @api_router.post("/cron/pdp-fogli-notte")

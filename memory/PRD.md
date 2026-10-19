@@ -670,3 +670,7 @@ Vedi /app/memory/test_credentials.md
 - Frontend: tab Pianificazione fiscale (PianoFiscale.jsx), PdpNegozi.jsx dentro PDP.
 
 ## 2026-10-19 — Tasto grande "Crea ricambio a magazzino (−1, in ordine)" in creazione, MODIFICA (ServizioForm isEdit -> collegaRicambi su PATCH) e dettaglio riparazione; piu ricambi per riparazione.
+
+## 2026-10-19 — Alert scadenze fiscali + Export commercialista
+- fiscale.alert_scadenze(): cron scadenze-fiscali 08:00 -> POST /api/cron/scadenze-fiscali; WA a NUMERO_AMMINISTRAZIONE per scadenze a +7 gg, dedupe in fiscale_alert_log (key centro|data|voce).
+- GET /contabilita/fiscale/export-commercialista?centro_id&anno&mese -> xlsx 6 fogli (Riepilogo IVA, Fatture emesse, Fatture ricevute, Corrispettivi RT vs chiusure, Differenze da riconciliare, Punto di pareggio). Tasto "Excel commercialista" nel tab IVA.
