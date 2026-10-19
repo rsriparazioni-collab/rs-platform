@@ -668,3 +668,5 @@ Vedi /app/memory/test_credentials.md
 - backend/fiscale.py: GET /contabilita/fiscale (piano: reddito YTD/previsione, imposte per regime ditta_individuale[IRPEF scaglioni+addizionali+INPS commercianti] / srls[IRES+IRAP], acconti 40/60 metodo storico se imposte_anno_prec, scadenze 30/06 30/11 INPS 16/02-05-08-11 IVA 16 mese succ, liquidita mensile, simulazione ricavi_pct/costi_pct), PUT /fiscale/config (fiscale_config), GET /fiscale/negozi (PDP per negozio+azienda: lordi, netti IVA solo se RT certo, fissi/variabili ripartiti pro quota, MDC, BEP, obiettivo, YTD, previsione), PUT /fiscale/obiettivi (pdp_obiettivi). Default regime: morbegno+gravedona=ditta individuale (Enrico Mangani), altri (Sondrio)=srls; parametri da_verificare finche non confermati.
 - corrispettivi_ade /importa ritorna giorni_caricati; IvaDashboard: upload XML/ZIP RT per negozio sui giorni mancanti.
 - Frontend: tab Pianificazione fiscale (PianoFiscale.jsx), PdpNegozi.jsx dentro PDP.
+
+## 2026-10-19 — Tasto grande "Crea ricambio a magazzino (−1, in ordine)" in creazione, MODIFICA (ServizioForm isEdit -> collegaRicambi su PATCH) e dettaglio riparazione; piu ricambi per riparazione.

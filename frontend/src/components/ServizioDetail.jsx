@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, PackageCheck, Recycle, FileDown, Ban, Lock } from "lucide-react";
+import { MessageCircle, Paperclip, Pencil, Trash2, Upload, Wallet, ShieldCheck, Camera, Printer, Package, PackageCheck, PackagePlus, Recycle, FileDown, Ban, Lock } from "lucide-react";
 import RitiroDaRiparazione from "./RitiroDaRiparazione";
 import { uploadDocumenti } from "./DocumentiPicker";
 import { ClienteLink } from "./ClienteLink";
@@ -567,7 +567,7 @@ export default function ServizioDetail({ servizio, onClose, onEdit, onChanged, i
                       <OrdinaRicambio key={ordinaPreset?.item_id || "new"} servizio={detail} preset={ordinaPreset} onDone={() => { setOrdinaPreset(null); setRicercaRic(""); setRisultatiRic([]); refresh(); }} />
                     )}
                     {!ordinaPreset && !(ricercaRic.trim().length >= 2 && risultatiRic.length === 0) && (
-                      <button type="button" onClick={() => setOrdinaPreset({})} className="mt-2 text-xs font-medium text-rose-700 hover:underline" data-testid="servizio-ricambio-ordina-nuovo">+ Ricambio non in magazzino: metti in ordine</button>
+                      <button type="button" onClick={() => setOrdinaPreset({})} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-rose-400 bg-rose-50 px-4 py-3 text-sm font-bold uppercase tracking-wide text-rose-800 hover:bg-rose-100" data-testid="servizio-ricambio-ordina-nuovo"><PackagePlus className="h-5 w-5" /> Crea ricambio a magazzino (−1, in ordine)</button>
                     )}
                   </div>
                 </>

@@ -13,7 +13,11 @@ export const RicambioNuovoRow = ({ onAdd }) => {
   const [r, setR] = useState(vuoto());
   const set = (k) => (e) => setR((x) => ({ ...x, [k]: e.target.value }));
   const ok = r.modello.trim() || r.barcode.trim();
-  if (!open) return <button type="button" onClick={() => setOpen(true)} className="flex items-center gap-1 text-xs font-medium text-rose-700 hover:underline" data-testid="servizio-ricambio-nuovo-apri"><PackagePlus className="h-3.5 w-3.5" /> Ricambio non in magazzino: crealo e mettilo in ordine</button>;
+  if (!open) return (
+    <button type="button" onClick={() => setOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-rose-400 bg-rose-50 px-4 py-3 text-sm font-bold uppercase tracking-wide text-rose-800 shadow-sm transition-colors hover:bg-rose-100" data-testid="servizio-ricambio-nuovo-apri">
+      <PackagePlus className="h-5 w-5" /> Crea ricambio a magazzino (−1, in ordine)
+    </button>
+  );
   return (
     <div className="space-y-2 rounded-lg border border-rose-200 bg-rose-50/60 p-2.5" data-testid="servizio-ricambio-nuovo-box">
       <p className="text-[11px] text-rose-700">Verrà creato nel magazzino del negozio a giacenza −{r.quantita || 1} (in ordine); all'arrivo torna a 0.</p>

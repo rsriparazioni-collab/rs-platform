@@ -179,6 +179,11 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
       if (isEdit) {
         await api.patch(`/servizi/${servizio.id}`, payload);
         toast.success("Servizio aggiornato");
+        if (tipo === "riparazione" && ricambi.length) {
+          const errori = await collegaRicambi(api, servizio.id, ricambi, form.venditore_id);
+          if (errori) toast.error(`${errori} ricambi non collegati`);
+          else toast.success(`${ricambi.length} ricambi collegati: ${ricambi.filter((r) => !r.nuovo && r.disponibile).length} scalati, ${ricambi.filter((r) => r.nuovo || !r.disponibile).length} in ordine`);
+        }
       } else {
         const created = await api.post("/servizi", payload);
         servizioId = created.data.id;
@@ -359,9 +364,10 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                   </Select>
                 </div>
               )}
-              {!isEdit ? (
-                <div className="space-y-1.5" data-testid="servizio-ricambio-mag-box">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ricambi ({ricambi.length})</Label>
+              {tipo === "riparazione" && (
+                <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="servizio-ricambio-mag-box">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ricambi ({ricambi.length}){isEdit && <span className="ml-1 normal-case text-slate-400">· collegati subito alla riparazione</span>}</Label>
+                  <p className="text-[11px] text-slate-500">Puoi aggiungere più pezzi: cerca in magazzino oppure crea l'articolo nuovo (va a −1 finché non arriva, poi 0 perché usato).</p>
                   {ricambi.length > 0 && <RicambiScelti righe={ricambi} onChange={setRicambi} />}
                   <div className="relative">
                     <Input placeholder="Cerca ricambio in magazzino (nome, modello o codice a barre)" value={magSearch} onChange={(e) => setMagSearch(e.target.value)} className="h-9 text-sm" data-testid="servizio-ricambio-mag-search" />
@@ -380,7 +386,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
                   </div>
                   <RicambioNuovoRow onAdd={addRicambioNuovo} />
                 </div>
-              ) : <div />}
+              )}
               {form.con_ricambio ? (
                 <>
                 <div className="space-y-1.5">
