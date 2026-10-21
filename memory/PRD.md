@@ -674,3 +674,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-19 — Alert scadenze fiscali + Export commercialista
 - fiscale.alert_scadenze(): cron scadenze-fiscali 08:00 -> POST /api/cron/scadenze-fiscali; WA a NUMERO_AMMINISTRAZIONE per scadenze a +7 gg, dedupe in fiscale_alert_log (key centro|data|voce).
 - GET /contabilita/fiscale/export-commercialista?centro_id&anno&mese -> xlsx 6 fogli (Riepilogo IVA, Fatture emesse, Fatture ricevute, Corrispettivi RT vs chiusure, Differenze da riconciliare, Punto di pareggio). Tasto "Excel commercialista" nel tab IVA.
+
+## 2026-10-19 — Report inserimenti mensili
+- backend/report_inserimenti.py: GET /report/inserimenti?mesi&store_id&user_id (servizi per tipo, vendite, ritiri, utenze luce/gas, nuovi clienti -> per lavorazione/negozio/persona × mese + dettaglio negozio×persona; scope negozio per ruoli non admin) + /export xlsx 4 fogli. UI: ReportInserimenti.jsx in fondo alla pagina KPI Team (solo chi vede tutti).

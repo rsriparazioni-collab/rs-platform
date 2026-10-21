@@ -6176,6 +6176,9 @@ import google_drive as google_drive_module
 import kpi as kpi_module
 kpi_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send)
 api_router.include_router(kpi_module.router)
+import report_inserimenti as report_inserimenti_module
+report_inserimenti_module.setup(db=db, current_user=kpi_module._current_user)
+api_router.include_router(report_inserimenti_module.router)
 import backup as backup_module
 backup_module.setup(db=db, get_current_user=get_current_user)
 api_router.include_router(backup_module.router)

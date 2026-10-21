@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { BarChart3, FileDown, ArrowUpRight, ArrowDownRight, Minus, BellRing, Target } from "lucide-react";
 import ObiettiviDialog, { BarraObiettivo } from "../components/ObiettiviDialog";
+import { ReportInserimenti } from "../components/ReportInserimenti";
 import { toast } from "sonner";
 import api, { apiError, downloadBlob } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -139,6 +140,7 @@ export default function Kpi() {
       )}
       {!data && vedeTutti && <p className="text-sm text-slate-500" data-testid="kpi-scegli">Scegli un operatore dalle card o dal menu per vedere la griglia giornaliera.</p>}
       <ObiettiviDialog open={obOpen} onOpenChange={setObOpen} utenti={utenti} voci={voci} anno={anno} mese={mese} userId={userId} onChanged={load} />
+      {vedeTutti && <div className="border-t border-slate-200 pt-6"><ReportInserimenti /></div>}
     </div>
   );
 }
