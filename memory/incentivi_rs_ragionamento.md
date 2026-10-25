@@ -24,5 +24,11 @@
 - Buste attuali: Kevin 2000; Deborah 1650+100 fuori; Silvio 1700+300; Bruno 1700+200. Garanzie fuori dalla gara. Gross-up netto→lordo ≈1,47 (ordinario) / ≈1,16 (detassato 5%), costo datore ≈1,37 — da verificare con consulente.
 - Schema fondo (direzione approvata): base = media mobile 6 mesi provvigioni confermate (≈3.000 €); fondo = 40% dell'eccedenza; mese senza eccedenza = zero premi; tetto mensile; fondo dimezzato se negozio sotto pareggio PDP.
 
+## Flussi fornitori / intercompany (aggiornato)
+- Energia (CambiaOra/ENEL): 50 € = 25 acquisizione + 25 lavorazione; nessuna trattenuta dentro il gruppo (ditta individuale + SRLS). Trattenuta 15% solo verso negozi terzi (Tirano, Grosio, Sondalo, Somaggia).
+- EOLO: fatturato alla ditta individuale (codice padre). La ditta paga i negozi terzi E la SRLS Sondrio trattenendo il 15% su entrambi.
+- Acquisizione Gravedona da SRLS: tasto "cambia entità" con data → da quella data la gara/fondo si calcola sul PDP di Sondrio (SRLS), con riparto premi per società.
+- Report "Fatture da pagare/ricevere" per negozio e società, con sezione COMPENSAZIONE: righe compilabili (riparazioni, ricariche SIM, SIM, altro) dovute dal negozio terzo alla ditta o alla SRLS → saldo netto per direzione.
+
 ## Stima
 ~5× report inserimenti in 4 fasi (config+carica gara+import foglio 1,5× / motore+simulazione 1,5× / dashboard+Excel+chiusura 1× / area dipendente+test 1×). Stop dopo Fase 2 per valutare la simulazione.
