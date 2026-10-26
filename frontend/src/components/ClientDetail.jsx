@@ -506,6 +506,12 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                     <Wallet className="h-4 w-4" /> Segna pagato
                   </Button>
                 )}
+                {detail.pagato_effettivo && (
+                  <Button size="sm" variant="outline" data-testid="detail-mark-unpaid-button" className="gap-2 border-amber-300 text-amber-800 hover:bg-amber-50"
+                          onClick={async () => { if (!window.confirm("Rimettere il cliente come NON pagato? Usalo solo se 'pagato' è stato premuto per errore.")) return; try { await api.post(`/clients/${detail.id}/mark-unpaid`); toast.success("Cliente rimesso come non pagato"); refresh(); onChanged(); } catch (e) { toast.error(apiError(e)); } }}>
+                    <Wallet className="h-4 w-4" /> Rimetti non pagato
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" data-testid="detail-edit-button" onClick={() => onEdit(detail)}>
                   <Pencil className="mr-2 h-4 w-4" /> Modifica
                 </Button>

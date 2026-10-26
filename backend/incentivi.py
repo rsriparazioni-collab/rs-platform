@@ -994,17 +994,20 @@ async def intercompany_righe(mese: str, cfg: dict) -> list:
     stores_ditta = {e["store_id"] for e in cfg.get("entita", []) if e["entita"] == "ditta"}
     users = {u["id"]: u async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1, "store_ids": 1, "role": 1})}
     out = []
-    async for c in db.clients.find({"venditore_id": {"$in": list(stores_srls)}, "lavorazione": {"$in": ["cambio_effettuato", "rinnovato"]}, "anonimizzato_at": {"$in": [None]}}, {"_id": 0}):
+    async for c in db.clients.find({"venditore_id": {"$in": list(stores_srls | stores_ditta)}, "lavorazione": {"$in": ["cambio_effettuato", "rinnovato"]}, "anonimizzato_at": {"$in": [None]}}, {"_id": 0}):
         if _ym(c.get("data_contratto") or c.get("updated_at")) != mese:
             continue
         uid = c.get("operatore_id") or c.get("created_by") or ""
         u = users.get(uid)
+        base = {"data": (c.get("data_contratto") or "")[:10], "cliente": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "tipo": c.get("tipo_bolletta") or "", "gestione": (c.get("gestione") or "cambiaora").upper(), "lavorato_da": u["name"] if u else "—"}
+        if c.get("venditore_id") in stores_ditta:
+            out.append({**base, "motivo": "contratto negozio ditta", "quota": float(cfg["energia_importo"])})
+            continue
         if not u:
             continue
         u_stores = set(u.get("store_ids") or [])
         if u["role"] == "operatore" or (u_stores & stores_ditta and not (u_stores & stores_srls)):
-            out.append({"data": (c.get("data_contratto") or "")[:10], "cliente": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "tipo": c.get("tipo_bolletta") or "", "gestione": (c.get("gestione") or "cambiaora").upper(),
-                        "lavorato_da": u["name"], "quota": float(cfg["energia_lavorazione"])})
+            out.append({**base, "motivo": "pratica lavorata per la SRLS", "quota": float(cfg["energia_lavorazione"])})
     return out
 
 
@@ -1030,20 +1033,20 @@ async def intercompany_pdf(mese: str, request: Request):
     pdf = FPDF(format="A4", unit="mm"); pdf.set_auto_page_break(auto=True, margin=12); pdf.add_page()
     pdf.set_font("helvetica", "B", 14); pdf.cell(0, 8, t(f"Riepilogo quote lavorazione CambiaOra - {mese}"), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("helvetica", "", 9)
-    pdf.multi_cell(0, 5, t("Da: RS Riparazioni SRLS (negozio Sondrio, incassa la provvigione CambiaOra)\nA: Enrico Mangani ditta individuale (negozi Morbegno / Gravedona, che hanno lavorato la pratica)\n"
-                           f"Quota lavorazione concordata: {cfg['energia_lavorazione']:.2f} EUR per contratto. Documento di supporto alla fattura intercompany: verificare con il commercialista."), new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, 5, t("Da: RS Riparazioni SRLS (negozio Sondrio, incassa la provvigione CambiaOra/ENEL: 50 EUR a contratto)\nA: Enrico Mangani ditta individuale (negozi Morbegno / Gravedona)\n"
+                           f"Quote: {cfg['energia_importo']:.2f} EUR per ogni contratto dei negozi della ditta; {cfg['energia_lavorazione']:.2f} EUR per ogni pratica di Sondrio lavorata da personale della ditta. Documento di supporto alla fattura intercompany: verificare con il commercialista."), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3); pdf.set_font("helvetica", "B", 9)
-    for w, h in ((22, "Data"), (60, "Cliente"), (18, "Tipo"), (24, "Gestione"), (36, "Lavorato da"), (26, "Quota EUR")):
+    for w, h in ((20, "Data"), (50, "Cliente"), (14, "Tipo"), (20, "Gestione"), (28, "Lavorato da"), (36, "Motivo"), (18, "Quota")):
         pdf.cell(w, 6, t(h), border=1)
-    pdf.ln(); pdf.set_font("helvetica", "", 9)
+    pdf.ln(); pdf.set_font("helvetica", "", 8)
     for r in righe:
-        for w, v in ((22, r["data"]), (60, r["cliente"][:34]), (18, r["tipo"]), (24, r["gestione"]), (36, r["lavorato_da"]), (26, f"{r['quota']:.2f}")):
+        for w, v in ((20, r["data"]), (50, r["cliente"][:30]), (14, r["tipo"]), (20, r["gestione"]), (28, r["lavorato_da"][:16]), (36, r["motivo"]), (18, f"{r['quota']:.2f}")):
             pdf.cell(w, 6, t(v), border=1)
         pdf.ln()
     if not righe:
-        pdf.cell(0, 6, t("Nessun contratto lavorato per la SRLS nel mese."), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, t("Nessun contratto nel mese."), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("helvetica", "B", 10); pdf.ln(2)
-    pdf.cell(0, 7, t(f"Totale: {len(righe)} contratti x {cfg['energia_lavorazione']:.2f} EUR = {sum(r['quota'] for r in righe):.2f} EUR"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, t(f"Totale: {len(righe)} contratti = {sum(r['quota'] for r in righe):.2f} EUR"), new_x="LMARGIN", new_y="NEXT")
     return Response(content=bytes(pdf.output()), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="intercompany_{mese}.pdf"'})
 
 

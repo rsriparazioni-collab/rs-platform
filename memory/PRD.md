@@ -713,3 +713,9 @@ Vedi /app/memory/test_credentials.md
 - GET /incentivi/soglie/storico + POST /incentivi/soglie/copia?da&a; SoglieInput.copiata_da. Tabella storico in tab Gara EOLO (originale/copiata/nessuna, EOLO n/€, gare €).
 - Premio squadra: config `bonus_squadra_pct` (default 20): se fondo mese > miglior fondo dei 6 mesi precedenti → bonus = pct × min(eccedenza, quota azienda sull'eccedenza) diviso in parti uguali tra partecipanti con valore>0 (autofinanziato dalla quota azienda, mai dal fondo). In calcolo `bonus_squadra`, classifica `bonus_squadra`, costi `bonus_squadra_lordi`, regolamento §5. Test agosto override 50%: fondo 1.706 vs best 646 → bonus 530 a Kevin.
 - Firme reali: inviare solo dopo publish e Vai online (richiesta utente).
+
+## 2026-10-26 (septies) — Correzioni da verifica utente
+- Energia: provvigione alla ditta = 25 € (SRLS incassa 50 da CambiaOra/ENEL): config energia_importo 25. ATTENZIONE aperta: gettone 25 lordi (costo ~36) > 25 provvigione → ogni contratto energia in perdita per la ditta; proposto gettone energia separato/ridotto (decisione utente).
+- Intercompany SRLS→ditta: ora include anche i contratti dei negozi della ditta (25 €) oltre alle pratiche di Sondrio lavorate (25 €), con colonna motivo.
+- Deborah assegnata al negozio Morbegno (store_ids) → classifica mostra Morbegno per Silvio/Bruno/Deborah. Silvio presente in classifica (4 partecipanti).
+- Clienti: POST /clients/{id}/mark-unpaid + tasto "Rimetti non pagato" (ClientDetail) per annullare un pagato errato.

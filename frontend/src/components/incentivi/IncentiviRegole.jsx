@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
 const NUM = [["gettone_lordo", "Gettone lordo per contratto €", "Uguale per EOLO ed energia, in busta lordo"], ["eolo_fondo_pct", "% EOLO al fondo", "Dopo il gettone: resto all'azienda"], ["costo_datore_fattore", "Fattore costo datore", "≈1,45: contributi, TFR, ratei — da verificare col consulente"],
-  ["energia_importo", "Provvigione energia €", "CambiaOra / ENEL"], ["energia_acquisizione", "Energia: quota acquisizione €", "al negozio del cliente"], ["energia_lavorazione", "Energia: quota lavorazione €", "a chi fa la pratica"], ["trattenuta_terzi_pct", "Trattenuta negozi terzi / SRLS su EOLO %", ""],
+  ["energia_importo", "Provvigione energia alla ditta €", "quanto arriva a Enrico Mangani per contratto (25: la SRLS incassa 50 da CambiaOra)"], ["energia_acquisizione", "Energia: quota acquisizione €", "al negozio del cliente"], ["energia_lavorazione", "Energia: quota lavorazione €", "a chi fa la pratica"], ["trattenuta_terzi_pct", "Trattenuta negozi terzi / SRLS su EOLO %", ""],
   ["coef_eolo", "Coeff. classifica EOLO %", ""], ["coef_energia", "Coeff. classifica energia %", ""], ["coef_riparazione", "Coeff. classifica riparazioni % (sul margine)", "prezzo − ricambio, solo consegnate"], ["valore_sim_nuova", "Valore SIM nuova €", "figurativo, solo classifica"], ["valore_sim_mnp", "Valore SIM MNP €", ""], ["valore_fisso", "Valore fisso/internet non EOLO €", ""], ["bonus_squadra_pct", "Premio squadra: % dell'eccedenza sul miglior fondo 6 mesi (0 = spento)", "pagato dalla quota azienda EOLO, diviso in parti uguali a chi ha valore > 0"], ["tetto_fondo", "Tetto fondo mensile € (0 = nessuno)", ""]];
 
 export const IncentiviRegole = ({ cfg, meta, reload }) => {

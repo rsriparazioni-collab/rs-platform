@@ -1128,6 +1128,16 @@ async def mark_client_paid(client_id: str, user: dict = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Cliente non trovato")
     return {"status": "ok", "last_payment_date": date.today().isoformat()}
 
+@api_router.post("/clients/{client_id}/mark-unpaid")
+async def mark_client_unpaid(client_id: str, user: dict = Depends(get_current_user)):
+    """Annulla un 'pagato' messo per errore (torna non pagato)."""
+    scope = client_scope_filter(user)
+    scope["id"] = client_id
+    res = await db.clients.update_one(scope, {"$set": {"pagato": False}, "$unset": {"last_payment_date": ""}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    return {"status": "ok"}
+
 async def log_lavorazione(client_doc: dict, user: dict, status: str, note: str):
     await db.lavorazioni_log.insert_one({
         "id": str(uuid.uuid4()), "client_id": client_doc["id"],
