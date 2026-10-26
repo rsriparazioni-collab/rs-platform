@@ -33,6 +33,8 @@ MAP_VOCI = {"eolo": "entrate|Eolo", "energia": "entrate|Energia / Enel", "telefo
 
 
 def num(v) -> float:
+    if isinstance(v, (int, float)):
+        return round(float(v), 2)
     s = str(v or "").replace("€", "").replace(" ", "").replace(".", "").replace(",", ".").strip()
     if s in ("", "-"):
         return 0.0
@@ -199,8 +201,10 @@ async def importa_pdp_fogli(db, fetch, centri: list, stores: list, user_name: st
             spese_f = round(sum(v for n in negozi_cid for v in p["negozi"][n]["valori"].values()), 2)
             em_f = round(sum(x["totale"] for x in p["emesse"]), 2) if cid == cid_fatt else 0.0
             ric_f = round(sum(x["totale"] for x in p["ricevute"]), 2) if cid == cid_fatt else 0.0
+            giorni_diff = [{"negozio": r["voce"].replace("Corrispettivi ", ""), **g} for r in confronto if r.get("store_id") and store_centro.get(r["store_id"]) == cid for g in (r.get("giorni") or []) if g.get("diff") is None or abs(g["diff"]) >= 0.5]
             await db.pdp_foglio_totali.update_one({"centro_id": cid, "anno": anno, "mese": mese},
-                                                  {"$set": {"corrispettivi": corr_f, "emesse": em_f, "ricevute": ric_f, "spese": spese_f, "entrate": round(corr_f + em_f, 2), "uscite": round(spese_f + ric_f, 2), "at": now, "gid": gid}}, upsert=True)
+                                                  {"$set": {"corrispettivi": corr_f, "emesse": em_f, "ricevute": ric_f, "spese": spese_f, "entrate": round(corr_f + em_f, 2), "uscite": round(spese_f + ric_f, 2), "at": now, "gid": gid,
+                                                            "giorni_diff": giorni_diff}}, upsert=True)
         esito.append({"anno": anno, "mese": mese, "nuova_scheda": gid not in GIDS_PDP, "centri": list(per_centro.keys()), "voci": sum(len(v) for v in per_centro.values()), "corrispettivi_ade_nuovi": n_corr,
                       "confronto": confronto,
                       "fatture_emesse_nuove": n_em, "fatture_ricevute_nuove": n_ric, "tot_emesse_foglio": round(sum(x["totale"] for x in p["emesse"]), 2),

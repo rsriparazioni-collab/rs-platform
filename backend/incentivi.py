@@ -1024,14 +1024,77 @@ async def invia_classifica_whatsapp() -> dict:
 
 @router.post("/cron/classifica")
 async def cron_classifica(request: Request):
+    _check_cron(request)
+    import asyncio
+    asyncio.create_task(invia_classifica_whatsapp())
+    return {"status": "accepted"}
+
+
+def _check_cron(request: Request):
     import hmac
     auth = request.headers.get("Authorization", "")
     token = auth[7:] if auth.startswith("Bearer ") else ""
     secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
     if not token or not secret or not hmac.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+async def riepilogo_fine_mese() -> dict:
+    """Il 1º del mese: all'amministrazione fondo, classifica finale e premi da confermare del mese appena chiuso."""
+    oggi = datetime.now(timezone.utc)
+    anno, mese_n = (oggi.year, oggi.month - 1) if oggi.month > 1 else (oggi.year - 1, 12)
+    mese = f"{anno:04d}-{mese_n:02d}"
+    cfg = await get_config()
+    c = await calcola(mese, cfg)
+    f, k = c["fondo"], c["costi"]
+    righe = "\n".join(f"{x['posizione']}. {x['nome']} – valore {x['valore']:.0f} · gettoni {x['gettoni_n']} ({x['gettoni_lordo']:.2f} €) · premio {x['premio_lordo']:.2f} € → tot {x['totale_lordo']:.2f} € lordi" for x in c["classifica"])
+    testo = (f"📊 *Incentivi RS – riepilogo {mese}*\n"
+             f"EOLO gruppo {f['eolo_gruppo_lordo']:.2f} € · energia {f['energia_gruppo_lordo']:.2f} €\n"
+             f"Fondo {f['fondo_disponibile']:.2f} € · premi {f['premi_assegnati']:.2f} € · gettoni {k['gettoni_n']} ({k['gettoni_lordi']:.2f} €)\n"
+             f"Costo datore stimato {k['costo_datore_totale']:.2f} € · risultato azienda {k['risultato_azienda']:.2f} €\n\n{righe}\n\n"
+             + ("✅ Mese già chiuso." if c["chiuso"] else "⚠️ Da confermare: Incentivi RS → Fondo & classifica → *Chiudi mese*.")
+             + (f"\n⚠️ {len(c['anomalie'])} anomalie da verificare." if c["anomalie"] else "")
+             + f"\nℹ️ Provvigioni caricate: {c['n_provvigioni']}. Ricorda: le gare EOLO si liquidano a 90 giorni (quelle di {mese} arrivano fra 3 mesi).")
+    await _d["wa_send"](_d["numero_amministrazione"], testo, session="default", tipo="incentivi_riepilogo")
+    return {"mese": mese, "inviato": True}
+
+
+@router.post("/cron/riepilogo-mese")
+async def cron_riepilogo(request: Request):
+    _check_cron(request)
     import asyncio
-    asyncio.create_task(invia_classifica_whatsapp())
+    asyncio.create_task(riepilogo_fine_mese())
+    return {"status": "accepted"}
+
+
+@router.post("/invia-riepilogo")
+async def invia_riepilogo_manuale(request: Request):
+    await _admin(request)
+    return await riepilogo_fine_mese()
+
+
+async def sollecita_firme() -> dict:
+    """Rimanda il link di firma a chi non ha firmato dopo 3 giorni (max 3 solleciti, uno ogni 3 giorni)."""
+    db = _d["db"]
+    cfg = await get_config()
+    base = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    limite = (datetime.now(timezone.utc) - __import__("datetime").timedelta(days=3)).isoformat()
+    n = 0
+    async for f in db.incentivi_firme.find({"stato": "inviata", "versione": cfg.get("updated_at", ""), "inviata_at": {"$lte": limite}, "solleciti": {"$not": {"$gte": 3}}}, {"_id": 0}):
+        u = await db.users.find_one({"id": f["user_id"]}, {"_id": 0, "name": 1, "telefono": 1})
+        if not u or not (u.get("telefono") or "").strip():
+            continue
+        await _d["wa_send"](u["telefono"], f"Ciao {u['name']}, promemoria: il regolamento Incentivi RS è ancora da firmare. Bastano 2 minuti dal telefono:\n{base}/firma-regolamento/{f['token']}", session="default", tipo="incentivi_firma_sollecito")
+        await db.incentivi_firme.update_one({"id": f["id"]}, {"$set": {"inviata_at": _now()}, "$inc": {"solleciti": 1}})
+        n += 1
+    return {"solleciti": n}
+
+
+@router.post("/cron/sollecito-firme")
+async def cron_sollecito(request: Request):
+    _check_cron(request)
+    import asyncio
+    asyncio.create_task(sollecita_firme())
     return {"status": "accepted"}
 
 

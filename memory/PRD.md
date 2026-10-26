@@ -701,3 +701,9 @@ Vedi /app/memory/test_credentials.md
 - Confronto foglio: `pdp_foglio_totali` salvato all'import fogli (entrate = corrispettivi+emesse, uscite = spese+ricevute); PDP risponde `foglio` con diff (banner in PuntoPareggio) e report/confronto riga "Entrate: foglio vs PDP" per ogni mese (ConfrontoNegozi). Settembre: PDP 26.466,52 vs foglio 23.904,52 (+2.562 = corrispettivi 10.717 vs 8.155).
 - Intercompany: GET /incentivi/intercompany(.pdf)?mese= → contratti energia di negozi SRLS lavorati da personale ditta (operatore/created_by con store ditta o ruolo operatore) × energia_lavorazione. Tasto in tab Estratti conto.
 - Soglie novembre: richiede la foto del volantino dall'utente (tab Gara EOLO).
+
+## 2026-10-26 (quinquies) — Giorni corrispettivi nel banner, riepilogo fine mese, sollecito firme, soglie nov — TESTATO (curl, cron con secret, wa_log dry-run)
+- BUG FIX `pdp_import.num()`: i float del gestionale venivano letti come formato italiano (160.0 → 1600): corretto; ora i giorni discordanti sono reali (settembre M+G: 23 giorni = esattamente +2.562 € diff).
+- `pdp_foglio_totali.giorni_diff` salvato all'import; banner PuntoPareggio con dettaglio espandibile (giorno/negozio/diff; rosso = manca nel gestionale, grigio = solo gestionale).
+- Cron `incentivi-riepilogo-mese` (1º del mese 8:00) → WA a 3792773557 con fondo/classifica/premi del mese chiuso + tasto manuale "Riepilogo mese ad amministrazione". Cron `incentivi-sollecito-firme` (10:00, dopo 3 gg, max 3). `_check_cron` condiviso.
+- Soglie EOLO salvate 2026-10 (dal volantino) e copiate su 2026-11 (nota "copiata da ottobre"): checklist verde tranne firme. Gare pagate a 90 gg: le soglie di ottobre servono per i contratti di ottobre, liquidati a gennaio.

@@ -61,9 +61,13 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
       </div>
       <PdpImportReport esito={report} onClose={() => setReport(null)} onChanged={async () => { load(); try { const r = await api.post("/contabilita/pdp/importa-fogli"); setReport(r.data.esito); } catch (e) { toast.error(apiError(e)); } }} />
       <p className="text-xs text-slate-500" data-testid="pdp-centro-negozi">Centro di costo <b>{d.centro.nome}</b>: {d.centro.negozi.join(" + ")} — i corrispettivi dei negozi entrano automaticamente nelle entrate.</p>
-      {d.foglio && <div className={`flex flex-wrap items-center gap-3 rounded-lg border px-4 py-2 text-sm ${Math.abs(d.foglio.diff_entrate) < 1 && Math.abs(d.foglio.diff_uscite) < 1 ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`} data-testid="pdp-foglio-confronto">
-        <b>Foglio Google:</b> entrate {eur(d.foglio.entrate)} <span className="text-xs">(corrispettivi {eur(d.foglio.corrispettivi)} + fatture {eur(d.foglio.emesse)})</span> → PDP {eur(d.tot_entrate)} <b>{d.foglio.diff_entrate > 0 ? "+" : ""}{eur(d.foglio.diff_entrate)}</b>
-        <span className="text-slate-400">|</span> uscite {eur(d.foglio.uscite)} → PDP {eur(d.tot_uscite)} <b>{d.foglio.diff_uscite > 0 ? "+" : ""}{eur(d.foglio.diff_uscite)}</b>
+      {d.foglio && <div className={`space-y-1 rounded-lg border px-4 py-2 text-sm ${Math.abs(d.foglio.diff_entrate) < 1 && Math.abs(d.foglio.diff_uscite) < 1 ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`} data-testid="pdp-foglio-confronto">
+        <div className="flex flex-wrap items-center gap-3">
+          <b>Foglio Google:</b> entrate {eur(d.foglio.entrate)} <span className="text-xs">(corrispettivi {eur(d.foglio.corrispettivi)} + fatture {eur(d.foglio.emesse)})</span> → PDP {eur(d.tot_entrate)} <b>{d.foglio.diff_entrate > 0 ? "+" : ""}{eur(d.foglio.diff_entrate)}</b>
+          <span className="text-slate-400">|</span> uscite {eur(d.foglio.uscite)} → PDP {eur(d.tot_uscite)} <b>{d.foglio.diff_uscite > 0 ? "+" : ""}{eur(d.foglio.diff_uscite)}</b>
+        </div>
+        {d.foglio.giorni_diff?.length > 0 && <details className="text-xs" data-testid="pdp-foglio-giorni"><summary className="cursor-pointer">Giorni di scontrini che spiegano la differenza: {d.foglio.giorni_diff.length} giorni, {eur(d.foglio.giorni_diff.reduce((s, g) => s + (g.diff ?? g.scontrini ?? 0), 0))} (gestionale − foglio)</summary>
+          <div className="mt-1 flex flex-wrap gap-1">{d.foglio.giorni_diff.map((g, i) => <span key={i} className={`rounded border px-1.5 py-0.5 ${g.foglio == null ? "border-slate-300 bg-white" : g.scontrini === 0 ? "border-rose-300 bg-rose-50" : "border-amber-300 bg-white"}`} title={`Gestionale ${eur(g.scontrini)} · foglio ${g.foglio == null ? "assente" : eur(g.foglio)}`}>{g.data.slice(8)}/{g.data.slice(5, 7)} {g.negozio}: {g.foglio == null ? `solo gestionale ${eur(g.scontrini)}` : g.scontrini === 0 ? `manca nel gestionale (${eur(g.foglio)})` : `${g.diff > 0 ? "+" : ""}${eur(g.diff)}`}</span>)}</div></details>}
       </div>}
       {d.ereditato_da && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900" data-testid="pdp-ereditato">

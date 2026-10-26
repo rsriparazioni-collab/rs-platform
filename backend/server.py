@@ -6180,7 +6180,7 @@ import report_inserimenti as report_inserimenti_module
 report_inserimenti_module.setup(db=db, current_user=kpi_module._current_user)
 api_router.include_router(report_inserimenti_module.router)
 import incentivi as incentivi_module
-incentivi_module.setup(db=db, current_user=kpi_module._current_user, wa_send=wa_send)
+incentivi_module.setup(db=db, current_user=kpi_module._current_user, wa_send=wa_send, numero_amministrazione="3792773557")
 api_router.include_router(incentivi_module.router)
 import backup as backup_module
 backup_module.setup(db=db, get_current_user=get_current_user)

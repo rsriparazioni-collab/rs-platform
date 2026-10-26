@@ -91,3 +91,19 @@ crons:
     endpoint: "{{BASE_URL}}/api/incentivi/cron/classifica"
     method: POST
     enabled: true
+  - name: incentivi-riepilogo-mese
+    description: "Il 1º di ogni mese alle 8:00 manda all'amministrazione il riepilogo Incentivi RS del mese chiuso: fondo, classifica finale e premi da confermare"
+    cron: "0 8 1 * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/incentivi/cron/riepilogo-mese"
+    method: POST
+    enabled: true
+  - name: incentivi-sollecito-firme
+    description: "Ogni giorno alle 10:00 rimanda su WhatsApp il link di firma del regolamento a chi non ha firmato dopo 3 giorni (max 3 solleciti)"
+    cron: "0 10 * * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/incentivi/cron/sollecito-firme"
+    method: POST
+    enabled: true
