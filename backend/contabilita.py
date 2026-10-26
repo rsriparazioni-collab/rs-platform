@@ -878,7 +878,8 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     riconciliate, non_riconciliate = fatture_ade.riconcilia_manuali(fatture_manuali, emesse_ade)
     tot_manuali_sole = round(sum(x["importo"] for x in non_riconciliate), 2)
     entrate = {"Corrispettivi negozi (scontrini)": round(corr, 2), "Fatture emesse (AdE)": ade["emesse"]}
-    if tot_manuali_sole:
+    # Le fatture scritte nelle chiusure sono le stesse che arrivano dall'AdE: se per il mese ci sono fatture AdE NON si sommano mai (solo segnalate da verificare)
+    if tot_manuali_sole and not emesse_ade:
         entrate["Fatture da chiusure senza documento AdE"] = tot_manuali_sole
     entrate_info = {}
     for v in voci["entrate"]:
@@ -950,7 +951,9 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
             "iva": {"determinabile": iva_mese["vendite"]["determinabile"], "ricavi_netti": ricavi_netti, "iva_debito": iva_mese["vendite"]["iva_debito"],
                     "imponibile_acquisti": iva_mese["acquisti"]["imponibile_totale"], "iva_detraibile": iva_mese["acquisti"]["iva_detraibile"], "saldo": iva_mese["saldo"],
                     "certezza": iva_mese["certezza"], "n_mancanti": len(iva_mese["mancanti"]), "n_anomalie": len(iva_mese["anomalie"])},
-            "fatture_manuali": {"riconciliate": riconciliate, "non_riconciliate": non_riconciliate, "tot_non_riconciliate": tot_manuali_sole},
+            "fatture_manuali": {"riconciliate": riconciliate, "non_riconciliate": non_riconciliate, "tot_non_riconciliate": tot_manuali_sole,
+                                "sommate": bool(tot_manuali_sole and not emesse_ade),
+                                "nota": ("Fatture in chiusura senza corrispondenza AdE: NON sommate (le fatture dei corrispettivi sono quelle AdE). Verificare numero/importo." if tot_manuali_sole and emesse_ade else "")},
             "ade_dettaglio": {k: ade[k] for k in ("emesse_imponibile", "emesse_imposta", "ricevute_imponibile", "ricevute_imposta", "note_credito_emesse", "note_credito_ricevute")},
             "break_even": break_even,
             "punto_pareggio": bep if bep is not None else tot_uscite, "risultato": round(tot_entrate - tot_uscite, 2),

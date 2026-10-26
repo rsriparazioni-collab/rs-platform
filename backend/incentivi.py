@@ -120,14 +120,46 @@ async def config_log(request: Request):
 
 class OnlineInput(BaseModel):
     online: bool
+    mese_partenza: str = ""
+    forza: bool = False
+
+
+async def checklist_online() -> dict:
+    db = _d["db"]
+    cfg = await get_config()
+    users = {u["id"]: u async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1, "telefono": 1})}
+    senza_tel = [users[u]["name"] for u in cfg.get("partecipanti", []) if u in users and not (users[u].get("telefono") or "").strip()]
+    voci = [
+        {"id": "partecipanti", "label": "Almeno 2 partecipanti configurati", "ok": len(cfg.get("partecipanti", [])) >= 2, "dettaglio": f"{len(cfg.get('partecipanti', []))} partecipanti"},
+        {"id": "regolamento", "label": "Regolamento PDF generato con le regole attuali", "ok": bool(cfg.get("regolamento_generato_at")) and cfg.get("regolamento_generato_at", "") >= cfg.get("updated_at", ""),
+         "dettaglio": f"generato il {cfg.get('regolamento_generato_at', '')[:10]}" if cfg.get("regolamento_generato_at") else "non ancora generato"},
+        {"id": "telefoni", "label": "Numero WhatsApp per tutti i partecipanti", "ok": not senza_tel, "dettaglio": ("mancano: " + ", ".join(senza_tel)) if senza_tel else "tutti presenti"},
+        {"id": "mese", "label": "Mese di partenza impostato", "ok": bool(cfg.get("mese_partenza")), "dettaglio": cfg.get("mese_partenza") or "da scegliere"},
+        {"id": "soglie", "label": "Tabella soglie EOLO caricata per il mese di partenza", "ok": bool(cfg.get("mese_partenza")) and bool(await db.incentivi_soglie.find_one({"mese": cfg.get("mese_partenza")})), "dettaglio": ""},
+    ]
+    return {"voci": voci, "pronto": all(v["ok"] for v in voci), "online": cfg.get("online", False), "mese_partenza": cfg.get("mese_partenza", "")}
+
+
+@router.get("/checklist")
+async def get_checklist(request: Request):
+    await _admin(request)
+    return await checklist_online()
 
 
 @router.post("/online")
 async def set_online(input: OnlineInput, request: Request):
     user = await _admin(request)
     db = _d["db"]
+    if input.mese_partenza:
+        if not re.fullmatch(r"\d{4}-\d{2}", input.mese_partenza):
+            raise HTTPException(status_code=400, detail="Mese di partenza non valido")
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"mese_partenza": input.mese_partenza}})
+    if input.online:
+        ck = await checklist_online()
+        if not ck["pronto"] and not input.forza:
+            raise HTTPException(status_code=400, detail="Checklist incompleta: " + "; ".join(v["label"] for v in ck["voci"] if not v["ok"]))
     await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"online": input.online, "online_at": _now(), "online_da": user["name"]}})
-    await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": user["id"], "user_name": user["name"], "modifiche": {"online": {"dopo": input.online}}})
+    await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": user["id"], "user_name": user["name"], "modifiche": {"online": {"dopo": input.online}, **({"mese_partenza": {"dopo": input.mese_partenza}} if input.mese_partenza else {})}})
     return {"online": input.online}
 
 
@@ -484,21 +516,26 @@ def _r(x) -> float:
 
 
 async def _attivita_mese(mese: str, partecipanti: set, cfg: dict) -> dict:
-    """Valore classifica da riparazioni, SIM e fisso non-EOLO (dal gestionale), per persona."""
+    """Valore classifica da riparazioni (stati reali lavorate: pronto/pronto_ritiro/consegnato, attribuite a chi le ha lavorate), SIM e fisso non-EOLO."""
     db = _d["db"]
     val = {u: {"riparazioni_n": 0, "riparazioni_margine": 0.0, "sim_nuova": 0, "sim_mnp": 0, "fisso": 0} for u in partecipanti}
-    async for s in db.servizi.find({"tipo": {"$in": ["riparazione", "sim", "internet", "fisso"]}}, {"_id": 0, "tipo": 1, "stato": 1, "prezzo_finale": 1, "costo_componente": 1,
-                                                                                                    "operatore_id": 1, "created_by": 1, "data_uscita": 1, "data_attivazione": 1, "created_at": 1,
+    async for s in db.servizi.find({"tipo": {"$in": ["riparazione", "sim", "internet", "fisso"]}}, {"_id": 0, "tipo": 1, "stato": 1, "prezzo_finale": 1, "importo": 1, "costo_componente": 1, "con_ricambio": 1, "ricambi_usati": 1,
+                                                                                                    "operatore_id": 1, "created_by": 1, "lavorato_da_id": 1, "lavorato_at": 1, "data_lavorazione": 1, "data_uscita": 1, "data_attivazione": 1, "created_at": 1,
                                                                                                     "tipo_attivazione": 1, "operatore_tel": 1, "esito_attivazione": 1}):
-        uid = s.get("operatore_id") or s.get("created_by") or ""
-        if uid not in partecipanti:
-            continue
         if s["tipo"] == "riparazione":
-            if s.get("stato") != "consegnato" or _ym(s.get("data_uscita") or s.get("created_at")) != mese:
+            uid = s.get("lavorato_da_id") or s.get("operatore_id") or s.get("created_by") or ""
+            if uid not in partecipanti or s.get("stato") not in ("pronto", "pronto_ritiro", "consegnato"):
                 continue
+            if _ym(s.get("lavorato_at") or s.get("data_lavorazione") or s.get("data_uscita") or s.get("created_at")) != mese:
+                continue
+            prezzo = float(s.get("prezzo_finale") or s.get("importo") or 0)
+            costo = float(s.get("costo_componente") or 0) if s.get("con_ricambio") else sum(float(r.get("prezzo_acquisto") or r.get("costo") or 0) * int(r.get("quantita") or 1) for r in s.get("ricambi_usati") or [])
             val[uid]["riparazioni_n"] += 1
-            val[uid]["riparazioni_margine"] += max(0.0, float(s.get("prezzo_finale") or 0) - float(s.get("costo_componente") or 0))
+            val[uid]["riparazioni_margine"] += max(0.0, prezzo - costo)
         else:
+            uid = s.get("operatore_id") or s.get("created_by") or ""
+            if uid not in partecipanti:
+                continue
             if _ym(s.get("data_attivazione") or s.get("created_at")) != mese or s.get("esito_attivazione") in ("annullata", "respinta", "stornata", "non_riconosciuta"):
                 continue
             if s["tipo"] == "sim":
@@ -708,6 +745,8 @@ async def mio(mese: str, request: Request):
     cfg = await get_config()
     if not cfg.get("online") and user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Incentivi non ancora attivi")
+    if cfg.get("mese_partenza") and mese < cfg["mese_partenza"] and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail=f"La gara parte da {cfg['mese_partenza']}")
     if user["id"] not in cfg.get("partecipanti", []) and user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Non partecipi alla gara")
     c = await calcola(mese, cfg)
@@ -785,6 +824,7 @@ async def regolamento_pdf(request: Request):
     pdf.cell(95, 6, t("L'azienda"), new_x="RIGHT"); pdf.cell(95, 6, t("Il dipendente (per presa visione e accettazione)"), new_x="LMARGIN", new_y="NEXT"); pdf.ln(6)
     for u in cfg.get("partecipanti", []):
         pdf.cell(95, 6, t("______________________________"), new_x="RIGHT"); pdf.cell(95, 6, t(f"{users.get(u, u)}: ______________________________"), new_x="LMARGIN", new_y="NEXT"); pdf.ln(2)
+    await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"regolamento_generato_at": _now()}})
     return Response(content=bytes(pdf.output()), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="regolamento_incentivi_rs.pdf"'})
 
 

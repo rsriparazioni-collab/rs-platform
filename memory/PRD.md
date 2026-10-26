@@ -689,3 +689,9 @@ Vedi /app/memory/test_credentials.md
 - Importate schede foglio: 2026-05 (1630) 06 (2333) 07 (2945) 08 (7220) 09 (3140) 10 (4485) = TOTALE foglio. Scheda = mese di liquidazione (gid 66717898 = ottobre). Config `persona_negozio` (Gravedona→Kevin) attribuisce righe foglio senza venditore.
 - Cron `incentivi-classifica` lunedì 9:00 → POST /api/incentivi/cron/classifica (solo se online; barra fondo vs miglior mese ultimi 6); tasto "Invia classifica WhatsApp ora". Testato in dry-run (wa_log).
 - PDP: `incentivi.spese_pdp()` in contabilita._pdp_calcolo → "Compensi EOLO negozi esterni (pagati)" nel centro ditta (Morbegno+Gravedona), "Compensi CambiaOra negozi esterni (pagati)" nel centro SRLS (Sondrio), solo quando spuntato pagato nel mese.
+
+## 2026-10-26 (ter) — Incentivi: riparazioni reali, checklist Vai online, telefoni; PDP fatture non sdoppiate — TESTATO (curl + screenshot)
+- Riparazioni in classifica: stati pronto/pronto_ritiro/consegnato, attribuite a `lavorato_da_id` (fallback operatore/created_by), margine = prezzo_finale/importo − costo_componente (o ricambi_usati). Verificato con record temporaneo Bruno.
+- PDP: fatture scritte nelle chiusure NON sommate se per il mese esistono fatture AdE (sono le stesse) → settembre M+G da 28.443,52 a 26.466,52 (−1.977 = 2 fatture senza numero). Nota visibile in PuntoPareggio (`fatture_manuali.nota`).
+- Telefoni utenti: Silvio 3519924497, Bruno 3519657558, Kevin 3404812263, Deborah 3492799464.
+- Checklist Vai online (GET /incentivi/checklist, POST /online con mese_partenza/forza): partecipanti ≥2, regolamento generato dopo ultima modifica regole, telefoni, mese di partenza, soglie EOLO del mese. /mio blocca mesi prima della partenza. mese_partenza impostato 2026-11.

@@ -11,6 +11,7 @@ import { IncentiviSimulazione } from "../components/incentivi/IncentiviSimulazio
 import { IncentiviEstrattoConto } from "../components/incentivi/IncentiviEstrattoConto";
 import { IncentiviSoglie } from "../components/incentivi/IncentiviSoglie";
 import { IncentiviStorico } from "../components/incentivi/IncentiviStorico";
+import { VaiOnlineDialog } from "../components/incentivi/VaiOnlineDialog";
 
 const oggi = new Date();
 export const meseDefault = `${oggi.getFullYear()}-${String(oggi.getMonth() + 1).padStart(2, "0")}`;
@@ -19,13 +20,14 @@ export default function Incentivi() {
   const [cfg, setCfg] = useState(null);
   const [meta, setMeta] = useState(null);
   const [mese, setMese] = useState(meseDefault);
+  const [onlineOpen, setOnlineOpen] = useState(false);
   const load = useCallback(() => Promise.all([api.get("/incentivi/config"), api.get("/incentivi/meta")]).then(([c, m]) => { setCfg(c.data); setMeta(m.data); }).catch((e) => toast.error(apiError(e))), []);
   useEffect(() => { load(); }, [load]);
 
   const toggleOnline = async () => {
-    const next = !cfg.online;
-    if (!window.confirm(next ? "Rendere la gara visibile ai partecipanti (area 'I miei incentivi' nei KPI)?" : "Nascondere di nuovo la gara ai partecipanti?")) return;
-    try { await api.post("/incentivi/online", { online: next }); toast.success(next ? "Incentivi ONLINE: i partecipanti vedono la classifica" : "Incentivi nascosti ai partecipanti"); load(); }
+    if (!cfg.online) return setOnlineOpen(true);
+    if (!window.confirm("Nascondere di nuovo la gara ai partecipanti?")) return;
+    try { await api.post("/incentivi/online", { online: false }); toast.success("Incentivi nascosti ai partecipanti"); load(); }
     catch (e) { toast.error(apiError(e)); }
   };
 
@@ -69,6 +71,7 @@ export default function Incentivi() {
         <TabsContent value="storico"><IncentiviStorico /></TabsContent>
       </Tabs>
       <p className="flex items-center gap-2 text-xs text-slate-400"><Trophy className="h-3.5 w-3.5" /> Nessun pagamento automatico: i premi vanno confermati con la chiusura mese e verificati con consulente del lavoro e commercialista.</p>
+      <VaiOnlineDialog open={onlineOpen} onOpenChange={setOnlineOpen} onDone={load} />
     </div>
   );
 }
