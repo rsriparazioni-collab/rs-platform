@@ -24,6 +24,7 @@ import PrezziRiparazioni from "./pages/PrezziRiparazioni";
 import Kpi from "./pages/Kpi";
 import Compensi from "./pages/Compensi";
 import Incentivi from "./pages/Incentivi";
+import FirmaRegolamento from "./pages/FirmaRegolamento";
 import Contabilita from "./pages/Contabilita";
 import FirmaRitiro from "./pages/FirmaRitiro";
 import ResetPassword from "./pages/ResetPassword";
@@ -70,6 +71,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/firma/:token" element={<FirmaRitiro />} />
+          <Route path="/firma-regolamento/:token" element={<FirmaRegolamento />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/formazione/presentazione" element={<Presentazione />} />
           <Route path="/" element={<Protected><Layout /></Protected>}>

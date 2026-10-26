@@ -39,12 +39,21 @@ export const ConfrontoNegozi = ({ anno }) => {
               </tr>
             ))}
             {(d.centri || []).map((c) => (
+              <>
               <tr key={c.id} className="bg-slate-50/60 text-[11px]" data-testid={`confronto-pdp-${c.id}`}>
                 <td className="px-2 py-1 text-slate-600">Guadagno netto PDP · <b>{c.nome}</b></td>
                 {c.mesi.map((m) => <td key={m.mese} className={`px-2 py-1 text-right tabular-nums ${m.risultato == null ? "text-slate-300" : m.risultato >= 0 ? "text-emerald-700" : "text-rose-700"}`} title={m.uscite != null ? `Entrate ${eur(m.entrate)} − pareggio ${eur(m.uscite)}` : "PDP non compilato"}>{m.risultato == null ? "·" : eur(m.risultato).replace("€ ", "")}</td>)}
                 <td className={`px-2 py-1 text-right font-semibold tabular-nums ${c.tot == null ? "text-slate-300" : c.tot >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{c.tot == null ? "—" : eur(c.tot)}</td>
                 <td />
               </tr>
+              {c.mesi.some((m) => m.foglio_entrate != null) && <tr key={`${c.id}-foglio`} className="text-[11px]" data-testid={`confronto-foglio-${c.id}`}>
+                <td className="px-2 py-1 text-slate-500">Entrate: foglio Google vs PDP · <b>{c.nome}</b></td>
+                {c.mesi.map((m) => <td key={m.mese} className="px-2 py-1 text-right tabular-nums" title={m.foglio_entrate != null ? `Foglio ${eur(m.foglio_entrate)} · PDP ${eur(m.entrate ?? 0)} · uscite foglio ${eur(m.foglio_uscite)} (diff ${eur(m.diff_uscite)})` : "Scheda non importata"}>
+                  {m.foglio_entrate == null ? <span className="text-slate-300">·</span> : <span>{eur(m.foglio_entrate).replace("€ ", "")}<br /><span className={`rounded px-1 ${Math.abs(m.diff_entrate) < 1 ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>{m.diff_entrate > 0 ? "+" : ""}{eur(m.diff_entrate).replace("€ ", "")}</span></span>}
+                </td>)}
+                <td /><td />
+              </tr>}
+              </>
             ))}
           </tbody>
         </table>

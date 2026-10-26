@@ -192,6 +192,15 @@ async def importa_pdp_fogli(db, fetch, centri: list, stores: list, user_name: st
                     else:
                         n_ric += 1
         confronto = await _confronto(db, p, anno, mese, cid_fatt, per_centro, slug_store, store_centro, mese_dati) if mese_dati else []
+        # Totali del foglio per il confronto mese per mese nel PDP (entrate = corrispettivi + fatture emesse; uscite = spese + fatture ricevute)
+        for cid in set(per_centro) | ({cid_fatt} - {None}):
+            negozi_cid = [n for n, d in p["negozi"].items() if slug_store.get(n) and store_centro.get(slug_store[n]["id"]) == cid]
+            corr_f = round(sum(p["negozi"][n]["corrispettivi_foglio"] or 0 for n in negozi_cid), 2)
+            spese_f = round(sum(v for n in negozi_cid for v in p["negozi"][n]["valori"].values()), 2)
+            em_f = round(sum(x["totale"] for x in p["emesse"]), 2) if cid == cid_fatt else 0.0
+            ric_f = round(sum(x["totale"] for x in p["ricevute"]), 2) if cid == cid_fatt else 0.0
+            await db.pdp_foglio_totali.update_one({"centro_id": cid, "anno": anno, "mese": mese},
+                                                  {"$set": {"corrispettivi": corr_f, "emesse": em_f, "ricevute": ric_f, "spese": spese_f, "entrate": round(corr_f + em_f, 2), "uscite": round(spese_f + ric_f, 2), "at": now, "gid": gid}}, upsert=True)
         esito.append({"anno": anno, "mese": mese, "nuova_scheda": gid not in GIDS_PDP, "centri": list(per_centro.keys()), "voci": sum(len(v) for v in per_centro.values()), "corrispettivi_ade_nuovi": n_corr,
                       "confronto": confronto,
                       "fatture_emesse_nuove": n_em, "fatture_ricevute_nuove": n_ric, "tot_emesse_foglio": round(sum(x["totale"] for x in p["emesse"]), 2),

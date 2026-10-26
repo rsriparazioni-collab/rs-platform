@@ -129,10 +129,13 @@ async def checklist_online() -> dict:
     cfg = await get_config()
     users = {u["id"]: u async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1, "telefono": 1})}
     senza_tel = [users[u]["name"] for u in cfg.get("partecipanti", []) if u in users and not (users[u].get("telefono") or "").strip()]
+    firmati = {f["user_id"] async for f in db.incentivi_firme.find({"stato": "firmata", "versione": cfg.get("updated_at", "")}, {"_id": 0, "user_id": 1})}
+    senza_firma = [users[u]["name"] for u in cfg.get("partecipanti", []) if u in users and u not in firmati]
     voci = [
         {"id": "partecipanti", "label": "Almeno 2 partecipanti configurati", "ok": len(cfg.get("partecipanti", [])) >= 2, "dettaglio": f"{len(cfg.get('partecipanti', []))} partecipanti"},
         {"id": "regolamento", "label": "Regolamento PDF generato con le regole attuali", "ok": bool(cfg.get("regolamento_generato_at")) and cfg.get("regolamento_generato_at", "") >= cfg.get("updated_at", ""),
          "dettaglio": f"generato il {cfg.get('regolamento_generato_at', '')[:10]}" if cfg.get("regolamento_generato_at") else "non ancora generato"},
+        {"id": "firme", "label": "Regolamento firmato digitalmente da tutti i partecipanti", "ok": not senza_firma, "dettaglio": ("mancano: " + ", ".join(senza_firma)) if senza_firma else "tutti firmato"},
         {"id": "telefoni", "label": "Numero WhatsApp per tutti i partecipanti", "ok": not senza_tel, "dettaglio": ("mancano: " + ", ".join(senza_tel)) if senza_tel else "tutti presenti"},
         {"id": "mese", "label": "Mese di partenza impostato", "ok": bool(cfg.get("mese_partenza")), "dettaglio": cfg.get("mese_partenza") or "da scegliere"},
         {"id": "soglie", "label": "Tabella soglie EOLO caricata per il mese di partenza", "ok": bool(cfg.get("mese_partenza")) and bool(await db.incentivi_soglie.find_one({"mese": cfg.get("mese_partenza")})), "dettaglio": ""},
@@ -672,7 +675,7 @@ async def calcola(mese: str, cfg: dict) -> dict:
                       "fattore_costo_datore": fatt, "trattenute_esterni": trattenute_tot,
                       "risultato_azienda": _r(eolo_gruppo + energia_gruppo + trattenute_tot - costo_datore), "premi_per_entita": {k: _r(v) for k, v in premi_per_entita.items()}},
             "classifica": classifica, "estratti_conto": estratti, "anomalie": anomalie, "n_provvigioni": len(provv),
-            "parametri": {k: cfg.get(k) for k in ("gettone_lordo", "eolo_fondo_pct", "trattenuta_terzi_pct", "premi_pct", "coef_eolo", "coef_energia", "coef_riparazione", "valore_sim_nuova", "valore_sim_mnp", "valore_fisso", "tetto_fondo", "costo_datore_fattore")}}
+            "parametri": {k: cfg.get(k) for k in ("gettone_lordo", "eolo_fondo_pct", "trattenuta_terzi_pct", "premi_pct", "coef_eolo", "coef_energia", "coef_riparazione", "valore_sim_nuova", "valore_sim_mnp", "valore_fisso", "tetto_fondo", "costo_datore_fattore", "energia_lavorazione")}}
 
 
 @router.get("/calcolo")
@@ -777,15 +780,8 @@ async def spese_pdp(centro: dict, anno: int, mese: int) -> dict:
 
 
 # ---------------- Regolamento PDF ----------------
-@router.get("/regolamento.pdf")
-async def regolamento_pdf(request: Request):
+def _build_regolamento(cfg: dict, users: dict, stores: dict, firme: Optional[dict] = None) -> bytes:
     from fpdf import FPDF
-    from fastapi.responses import Response
-    await _admin(request)
-    db = _d["db"]
-    cfg = await get_config()
-    users = {u["id"]: u["name"] async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1})}
-    stores = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
 
     def t(s):
         return str(s).replace("€", "EUR").replace("–", "-").replace("—", "-").replace("→", "->").replace("×", "x").replace("≈", "~").encode("latin-1", "replace").decode("latin-1")
@@ -801,31 +797,196 @@ async def regolamento_pdf(request: Request):
             pdf.multi_cell(0, 4.6, t("- " + r), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1.5)
 
-    premi = cfg.get("premi_pct", [])
-    sez("1. Partecipanti", [", ".join(users.get(u, u) for u in cfg.get("partecipanti", [])), "Negozi che alimentano il fondo: " + ", ".join(stores.get(s, s) for s in cfg.get("negozi_fondo", []))])
-    sez("2. Gettone per contratto", [f"Per ogni contratto EOLO o luce/gas (CambiaOra/ENEL) confermato dal fornitore e attribuito al venditore: {cfg['gettone_lordo']:.2f} EUR lordi in busta paga.",
-                                     "Il gettone matura nel mese in cui il fornitore conferma la provvigione (fattura), non alla firma del contratto.",
-                                     "Contratti annullati, respinti o stornati dal fornitore non generano gettone; gli storni successivi vengono compensati sul mese seguente."])
-    sez("3. Fondo premi", [f"Il fondo e' alimentato esclusivamente dalle provvigioni EOLO confermate dei negozi indicati: {cfg['eolo_fondo_pct']:.0f}% della provvigione residua dopo il costo del gettone.",
-                           "Le provvigioni luce/gas coprono il gettone e restano all'azienda. SIM, riparazioni, vendite e negozi esterni non alimentano il fondo.",
-                           "Il fondo non puo' essere negativo e viene distribuito solo se effettivamente incassato." + (f" Tetto mensile: {cfg['tetto_fondo']:.2f} EUR." if cfg.get("tetto_fondo") else "")])
-    sez("4. Classifica mensile", ["Il punteggio e' il valore generato nel mese, con questi pesi:",
-                                  f"EOLO: {cfg['coef_eolo']:.0f}% della provvigione confermata; luce/gas: {cfg['coef_energia']:.0f}% della provvigione confermata;",
-                                  f"riparazioni consegnate: {cfg['coef_riparazione']:.0f}% del margine (prezzo - ricambio); SIM nuova {cfg['valore_sim_nuova']:.2f} EUR, SIM MNP {cfg['valore_sim_mnp']:.2f} EUR, fisso/internet non EOLO {cfg['valore_fisso']:.2f} EUR (valori figurativi).",
-                                  "Spareggio: piu' contratti EOLO+energia, poi piu' attivita' totali, infine premio diviso in parti uguali."])
-    sez("5. Premi", ["Il fondo del mese e' ripartito tra i primi classificati: " + ", ".join(f"{i + 1}o {p:.0f}%" for i, p in enumerate(premi)) + ".",
-                     "Un partecipante con valore zero nel mese non riceve premio. I premi sono importi lordi erogati in busta paga, soggetti a tassazione e contributi di legge.",
-                     "Nessun premio e' dovuto finche' l'amministrazione non chiude il mese e conferma gli importi."])
-    sez("6. Trasparenza", ["Ogni partecipante vede la propria posizione, i propri numeri e il proprio premio stimato nell'area 'I miei incentivi'; la classifica e' visibile a tutti, gli importi solo a chi li riceve.",
-                           "Le regole possono essere modificate dall'amministrazione con preavviso; ogni modifica e' registrata con data e valori precedenti.",
-                           "Il presente regolamento integra e non sostituisce il contratto di lavoro; le garanzie retributive esistenti restano invariate."])
+    for titolo, righe in regole_testo(cfg, users, stores):
+        sez(titolo, righe)
     pdf.ln(4); pdf.set_font("helvetica", "", 10)
     pdf.cell(0, 6, t("Luogo e data: ______________________________"), new_x="LMARGIN", new_y="NEXT"); pdf.ln(2)
     pdf.cell(95, 6, t("L'azienda"), new_x="RIGHT"); pdf.cell(95, 6, t("Il dipendente (per presa visione e accettazione)"), new_x="LMARGIN", new_y="NEXT"); pdf.ln(6)
     for u in cfg.get("partecipanti", []):
-        pdf.cell(95, 6, t("______________________________"), new_x="RIGHT"); pdf.cell(95, 6, t(f"{users.get(u, u)}: ______________________________"), new_x="LMARGIN", new_y="NEXT"); pdf.ln(2)
-    await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"regolamento_generato_at": _now()}})
-    return Response(content=bytes(pdf.output()), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="regolamento_incentivi_rs.pdf"'})
+        f = (firme or {}).get(u)
+        y = pdf.get_y()
+        pdf.cell(95, 6, t("______________________________"), new_x="RIGHT")
+        if f and f.get("firma_png"):
+            try:
+                pdf.image(io.BytesIO(base64.b64decode(f["firma_png"].split(",")[-1])), x=pdf.get_x() + 40, y=y - 5, h=9)
+            except Exception:
+                pass
+            pdf.cell(95, 6, t(f"{users.get(u, u)}: firmato digitalmente il {f.get('firmato_at', '')[:16].replace('T', ' ')}"), new_x="LMARGIN", new_y="NEXT")
+        else:
+            pdf.cell(95, 6, t(f"{users.get(u, u)}: ______________________________"), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(4)
+    return bytes(pdf.output())
+
+
+def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
+    premi = cfg.get("premi_pct", [])
+    return [
+        ("1. Partecipanti", [", ".join(users.get(u, u) for u in cfg.get("partecipanti", [])), "Negozi che alimentano il fondo: " + ", ".join(stores.get(s, s) for s in cfg.get("negozi_fondo", []))]),
+        ("2. Gettone per contratto", [f"Per ogni contratto EOLO o luce/gas (CambiaOra/ENEL) confermato dal fornitore e attribuito al venditore: {cfg['gettone_lordo']:.2f} EUR lordi in busta paga.",
+                                      "Il gettone matura nel mese in cui il fornitore conferma la provvigione (fattura), non alla firma del contratto.",
+                                      "Contratti annullati, respinti o stornati dal fornitore non generano gettone; gli storni successivi vengono compensati sul mese seguente."]),
+        ("3. Fondo premi", [f"Il fondo e' alimentato esclusivamente dalle provvigioni EOLO confermate dei negozi indicati: {cfg['eolo_fondo_pct']:.0f}% della provvigione residua dopo il costo del gettone.",
+                            "Le provvigioni luce/gas coprono il gettone e restano all'azienda. SIM, riparazioni, vendite e negozi esterni non alimentano il fondo.",
+                            "Il fondo non puo' essere negativo e viene distribuito solo se effettivamente incassato." + (f" Tetto mensile: {cfg['tetto_fondo']:.2f} EUR." if cfg.get("tetto_fondo") else "")]),
+        ("4. Classifica mensile", ["Il punteggio e' il valore generato nel mese, con questi pesi:",
+                                   f"EOLO: {cfg['coef_eolo']:.0f}% della provvigione confermata; luce/gas: {cfg['coef_energia']:.0f}% della provvigione confermata;",
+                                   f"riparazioni lavorate (pronte/consegnate): {cfg['coef_riparazione']:.0f}% del margine (prezzo - ricambio); SIM nuova {cfg['valore_sim_nuova']:.2f} EUR, SIM MNP {cfg['valore_sim_mnp']:.2f} EUR, fisso/internet non EOLO {cfg['valore_fisso']:.2f} EUR (valori figurativi).",
+                                   "Spareggio: piu' contratti EOLO+energia, poi piu' attivita' totali, infine premio diviso in parti uguali."]),
+        ("5. Premi", ["Il fondo del mese e' ripartito tra i primi classificati: " + ", ".join(f"{i + 1}o {p:.0f}%" for i, p in enumerate(premi)) + ".",
+                      "Un partecipante con valore zero nel mese non riceve premio. I premi sono importi lordi erogati in busta paga, soggetti a tassazione e contributi di legge.",
+                      "Nessun premio e' dovuto finche' l'amministrazione non chiude il mese e conferma gli importi."]),
+        ("6. Trasparenza", ["Ogni partecipante vede la propria posizione, i propri numeri e il proprio premio stimato nell'area 'I miei incentivi'; la classifica e' visibile a tutti, gli importi solo a chi li riceve.",
+                            "Le regole possono essere modificate dall'amministrazione con preavviso; ogni modifica e' registrata con data e valori precedenti.",
+                            "Il presente regolamento integra e non sostituisce il contratto di lavoro; le garanzie retributive esistenti restano invariate."]),
+    ]
+
+
+async def _nomi() -> tuple:
+    db = _d["db"]
+    users = {u["id"]: u["name"] async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1})}
+    stores = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    return users, stores
+
+
+@router.get("/regolamento.pdf")
+async def regolamento_pdf(request: Request):
+    from fastapi.responses import Response
+    await _admin(request)
+    cfg = await get_config()
+    users, stores = await _nomi()
+    firme = {f["user_id"]: f async for f in _d["db"].incentivi_firme.find({"stato": "firmata", "versione": cfg.get("updated_at", "")}, {"_id": 0})}
+    await _d["db"].incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"regolamento_generato_at": _now()}})
+    return Response(content=_build_regolamento(cfg, users, stores, firme), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="regolamento_incentivi_rs.pdf"'})
+
+
+# ---------------- Firma digitale regolamento ----------------
+@router.post("/firme/invia")
+async def firme_invia(request: Request):
+    """Crea (o riusa) un link di firma per ogni partecipante e lo manda su WhatsApp. Una firma vale per la versione regole corrente."""
+    user = await _admin(request)
+    db = _d["db"]
+    cfg = await get_config()
+    versione = cfg.get("updated_at", "")
+    base = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    inviati, senza_tel = 0, []
+    for uid in cfg.get("partecipanti", []):
+        u = await db.users.find_one({"id": uid}, {"_id": 0, "name": 1, "telefono": 1})
+        if not u:
+            continue
+        f = await db.incentivi_firme.find_one({"user_id": uid, "versione": versione}, {"_id": 0})
+        if not f:
+            f = {"id": str(uuid.uuid4()), "user_id": uid, "nome": u["name"], "token": uuid.uuid4().hex, "versione": versione, "stato": "inviata", "created_at": _now(), "created_by": user["name"]}
+            await db.incentivi_firme.insert_one(dict(f))
+        if f["stato"] == "firmata":
+            continue
+        if not (u.get("telefono") or "").strip():
+            senza_tel.append(u["name"])
+            continue
+        await _d["wa_send"](u["telefono"], f"Ciao {u['name']}, ecco il regolamento Incentivi RS da leggere e firmare col dito dal telefono:\n{base}/firma-regolamento/{f['token']}\nLa firma vale come presa visione e accettazione.", session="default", tipo="incentivi_firma")
+        await db.incentivi_firme.update_one({"id": f["id"]}, {"$set": {"inviata_at": _now()}})
+        inviati += 1
+    return {"inviati": inviati, "senza_telefono": senza_tel}
+
+
+@router.get("/firme")
+async def firme_stato(request: Request):
+    await _admin(request)
+    cfg = await get_config()
+    users, _ = await _nomi()
+    firme = {f["user_id"]: f async for f in _d["db"].incentivi_firme.find({"versione": cfg.get("updated_at", "")}, {"_id": 0, "firma_png": 0})}
+    return [{"user_id": u, "nome": users.get(u, u), **{k: firme.get(u, {}).get(k) for k in ("stato", "inviata_at", "firmato_at", "token")}} for u in cfg.get("partecipanti", [])]
+
+
+@router.get("/public/firma-regolamento/{token}")
+async def public_firma_info(token: str):
+    f = await _d["db"].incentivi_firme.find_one({"token": token}, {"_id": 0, "firma_png": 0})
+    if not f:
+        raise HTTPException(status_code=404, detail="Link non valido")
+    cfg = await get_config()
+    users, stores = await _nomi()
+    return {"nome": f["nome"], "stato": f["stato"], "firmato_at": f.get("firmato_at"), "versione_attuale": f["versione"] == cfg.get("updated_at", ""),
+            "regole": [{"titolo": tt, "righe": rr} for tt, rr in regole_testo(cfg, users, stores)]}
+
+
+class FirmaRegolamentoInput(BaseModel):
+    firma_png: str
+
+
+@router.post("/public/firma-regolamento/{token}")
+async def public_firma_salva(token: str, body: FirmaRegolamentoInput):
+    db = _d["db"]
+    f = await db.incentivi_firme.find_one({"token": token}, {"_id": 0, "id": 1, "stato": 1, "versione": 1, "nome": 1})
+    if not f:
+        raise HTTPException(status_code=404, detail="Link non valido")
+    if f["stato"] == "firmata":
+        return {"ok": True, "gia_firmata": True}
+    if (await get_config()).get("updated_at", "") != f["versione"]:
+        raise HTTPException(status_code=400, detail="Le regole sono cambiate dopo l'invio: chiedi un nuovo link")
+    if not body.firma_png.startswith("data:image/png;base64,") or len(body.firma_png) > 400_000:
+        raise HTTPException(status_code=400, detail="Firma non valida")
+    await db.incentivi_firme.update_one({"id": f["id"]}, {"$set": {"stato": "firmata", "firma_png": body.firma_png, "firmato_at": _now()}})
+    return {"ok": True}
+
+
+# ---------------- Fattura intercompany SRLS -> ditta ----------------
+async def intercompany_righe(mese: str, cfg: dict) -> list:
+    """Contratti energia di negozi SRLS (cliente di Sondrio) la cui pratica e' stata inserita da personale della ditta individuale: quota lavorazione."""
+    db = _d["db"]
+    stores_srls = {e["store_id"] for e in cfg.get("entita", []) if e["entita"] == "srls"}
+    stores_ditta = {e["store_id"] for e in cfg.get("entita", []) if e["entita"] == "ditta"}
+    users = {u["id"]: u async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1, "store_ids": 1, "role": 1})}
+    out = []
+    async for c in db.clients.find({"venditore_id": {"$in": list(stores_srls)}, "lavorazione": {"$in": ["cambio_effettuato", "rinnovato"]}, "anonimizzato_at": {"$in": [None]}}, {"_id": 0}):
+        if _ym(c.get("data_contratto") or c.get("updated_at")) != mese:
+            continue
+        uid = c.get("operatore_id") or c.get("created_by") or ""
+        u = users.get(uid)
+        if not u:
+            continue
+        u_stores = set(u.get("store_ids") or [])
+        if u["role"] == "operatore" or (u_stores & stores_ditta and not (u_stores & stores_srls)):
+            out.append({"data": (c.get("data_contratto") or "")[:10], "cliente": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "tipo": c.get("tipo_bolletta") or "", "gestione": (c.get("gestione") or "cambiaora").upper(),
+                        "lavorato_da": u["name"], "quota": float(cfg["energia_lavorazione"])})
+    return out
+
+
+@router.get("/intercompany")
+async def intercompany(mese: str, request: Request):
+    await _admin(request)
+    cfg = await get_config()
+    righe = await intercompany_righe(mese, cfg)
+    return {"mese": mese, "righe": righe, "totale": _r(sum(r["quota"] for r in righe)), "quota": cfg["energia_lavorazione"]}
+
+
+@router.get("/intercompany.pdf")
+async def intercompany_pdf(mese: str, request: Request):
+    from fpdf import FPDF
+    from fastapi.responses import Response
+    await _admin(request)
+    cfg = await get_config()
+    righe = await intercompany_righe(mese, cfg)
+
+    def t(s):
+        return str(s).replace("€", "EUR").replace("–", "-").encode("latin-1", "replace").decode("latin-1")
+
+    pdf = FPDF(format="A4", unit="mm"); pdf.set_auto_page_break(auto=True, margin=12); pdf.add_page()
+    pdf.set_font("helvetica", "B", 14); pdf.cell(0, 8, t(f"Riepilogo quote lavorazione CambiaOra - {mese}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("helvetica", "", 9)
+    pdf.multi_cell(0, 5, t("Da: RS Riparazioni SRLS (negozio Sondrio, incassa la provvigione CambiaOra)\nA: Enrico Mangani ditta individuale (negozi Morbegno / Gravedona, che hanno lavorato la pratica)\n"
+                           f"Quota lavorazione concordata: {cfg['energia_lavorazione']:.2f} EUR per contratto. Documento di supporto alla fattura intercompany: verificare con il commercialista."), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3); pdf.set_font("helvetica", "B", 9)
+    for w, h in ((22, "Data"), (60, "Cliente"), (18, "Tipo"), (24, "Gestione"), (36, "Lavorato da"), (26, "Quota EUR")):
+        pdf.cell(w, 6, t(h), border=1)
+    pdf.ln(); pdf.set_font("helvetica", "", 9)
+    for r in righe:
+        for w, v in ((22, r["data"]), (60, r["cliente"][:34]), (18, r["tipo"]), (24, r["gestione"]), (36, r["lavorato_da"]), (26, f"{r['quota']:.2f}")):
+            pdf.cell(w, 6, t(v), border=1)
+        pdf.ln()
+    if not righe:
+        pdf.cell(0, 6, t("Nessun contratto lavorato per la SRLS nel mese."), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("helvetica", "B", 10); pdf.ln(2)
+    pdf.cell(0, 7, t(f"Totale: {len(righe)} contratti x {cfg['energia_lavorazione']:.2f} EUR = {sum(r['quota'] for r in righe):.2f} EUR"), new_x="LMARGIN", new_y="NEXT")
+    return Response(content=bytes(pdf.output()), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="intercompany_{mese}.pdf"'})
 
 
 # ---------------- Avviso WhatsApp settimanale ----------------

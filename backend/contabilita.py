@@ -898,6 +898,7 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     import incentivi as incentivi_module
     for v, imp in (await incentivi_module.spese_pdp(centro, anno, mese)).items():
         sezioni["fornitori"][v] = imp
+    foglio_tot = await db.pdp_foglio_totali.find_one({"centro_id": centro["id"], "anno": anno, "mese": mese}, {"_id": 0})
     sezioni["fornitori"] = {"Fatture ricevute non abbinate (AdE)": tot_non_abb, **sezioni["fornitori"]}
     tot_entrate = round(sum(entrate.values()), 2)
     tot_spese = {cat: round(sum(d.values()), 2) for cat, d in sezioni.items()}
@@ -954,6 +955,7 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
             "fatture_manuali": {"riconciliate": riconciliate, "non_riconciliate": non_riconciliate, "tot_non_riconciliate": tot_manuali_sole,
                                 "sommate": bool(tot_manuali_sole and not emesse_ade),
                                 "nota": ("Fatture in chiusura senza corrispondenza AdE: NON sommate (le fatture dei corrispettivi sono quelle AdE). Verificare numero/importo." if tot_manuali_sole and emesse_ade else "")},
+            "foglio": {**foglio_tot, "diff_entrate": round(tot_entrate - foglio_tot["entrate"], 2), "diff_uscite": round(tot_uscite - foglio_tot["uscite"], 2)} if foglio_tot else None,
             "ade_dettaglio": {k: ade[k] for k in ("emesse_imponibile", "emesse_imposta", "ricevute_imponibile", "ricevute_imposta", "note_credito_emesse", "note_credito_ricevute")},
             "break_even": break_even,
             "punto_pareggio": bep if bep is not None else tot_uscite, "risultato": round(tot_entrate - tot_uscite, 2),
@@ -1237,7 +1239,10 @@ async def report_confronto(anno: int, request: Request):
         for m in range(1, 13):
             pdp = await _pdp_calcolo(c, anno, m)
             ha = pdp["compilato"] and pdp["tot_uscite"] > 0
-            mesi.append({"mese": m, "risultato": pdp["risultato"] if ha else None, "uscite": pdp["tot_uscite"] if ha else None, "entrate": pdp["tot_entrate"] if ha else None})
+            fg = await _d["db"].pdp_foglio_totali.find_one({"centro_id": c["id"], "anno": anno, "mese": m}, {"_id": 0})
+            mesi.append({"mese": m, "risultato": pdp["risultato"] if ha else None, "uscite": pdp["tot_uscite"] if ha else None, "entrate": pdp["tot_entrate"] if ha else None,
+                         "foglio_entrate": fg["entrate"] if fg else None, "foglio_uscite": fg["uscite"] if fg else None,
+                         "diff_entrate": round(pdp["tot_entrate"] - fg["entrate"], 2) if fg else None, "diff_uscite": round(pdp["tot_uscite"] - fg["uscite"], 2) if fg else None})
         vals = [x["risultato"] for x in mesi if x["risultato"] is not None]
         centri.append({"id": c["id"], "nome": c["nome"], "mesi": mesi, "tot": round(sum(vals), 2) if vals else None})
     return {"anno": anno, "mesi": [MESI_IT[m] for m in range(1, 13)], "negozi": negozi, "centri": centri}

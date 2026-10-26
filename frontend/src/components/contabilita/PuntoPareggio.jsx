@@ -61,6 +61,10 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
       </div>
       <PdpImportReport esito={report} onClose={() => setReport(null)} onChanged={async () => { load(); try { const r = await api.post("/contabilita/pdp/importa-fogli"); setReport(r.data.esito); } catch (e) { toast.error(apiError(e)); } }} />
       <p className="text-xs text-slate-500" data-testid="pdp-centro-negozi">Centro di costo <b>{d.centro.nome}</b>: {d.centro.negozi.join(" + ")} — i corrispettivi dei negozi entrano automaticamente nelle entrate.</p>
+      {d.foglio && <div className={`flex flex-wrap items-center gap-3 rounded-lg border px-4 py-2 text-sm ${Math.abs(d.foglio.diff_entrate) < 1 && Math.abs(d.foglio.diff_uscite) < 1 ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`} data-testid="pdp-foglio-confronto">
+        <b>Foglio Google:</b> entrate {eur(d.foglio.entrate)} <span className="text-xs">(corrispettivi {eur(d.foglio.corrispettivi)} + fatture {eur(d.foglio.emesse)})</span> → PDP {eur(d.tot_entrate)} <b>{d.foglio.diff_entrate > 0 ? "+" : ""}{eur(d.foglio.diff_entrate)}</b>
+        <span className="text-slate-400">|</span> uscite {eur(d.foglio.uscite)} → PDP {eur(d.tot_uscite)} <b>{d.foglio.diff_uscite > 0 ? "+" : ""}{eur(d.foglio.diff_uscite)}</b>
+      </div>}
       {d.ereditato_da && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900" data-testid="pdp-ereditato">
           <span>Valori precompilati da <b>{d.ereditato_da}</b>: modificali se sono cambiati, poi premi "Salva valori" per confermarli per questo mese.</span>

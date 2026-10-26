@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, FileDown } from "lucide-react";
 import { toast } from "sonner";
-import api, { apiError } from "../../lib/api";
+import api, { apiError, downloadBlob } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { eur } from "./IncentiviCalcolo";
@@ -35,6 +35,10 @@ export const IncentiviEstrattoConto = ({ mese, meta }) => {
           <Input type="number" step="0.5" placeholder="€" value={nuova.importo} onChange={(e) => setNuova({ ...nuova, importo: e.target.value })} data-testid="inc-comp-importo" />
           <Button size="sm" onClick={add} data-testid="inc-comp-add"><Plus className="h-4 w-4" /> Aggiungi</Button>
         </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 text-sm" data-testid="inc-intercompany">
+        <div><b>Fattura intercompany SRLS → ditta individuale</b><p className="text-xs text-slate-500">Contratti CambiaOra di Sondrio (incassati dalla SRLS) lavorati da Morbegno/Gravedona: quota lavorazione {d.parametri?.energia_lavorazione ?? 25} € a contratto.</p></div>
+        <Button variant="outline" size="sm" className="gap-1" onClick={() => downloadBlob(`/incentivi/intercompany.pdf?mese=${mese}`, `intercompany_${mese}.pdf`)} data-testid="inc-intercompany-pdf"><FileDown className="h-4 w-4" /> PDF {mese}</Button>
       </div>
       {d.estratti_conto.map((e) => (
         <div key={e.store_id} className="rounded-xl border border-slate-200 bg-white" data-testid={`inc-estratto-${e.store_id}`}>

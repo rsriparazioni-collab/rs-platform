@@ -695,3 +695,9 @@ Vedi /app/memory/test_credentials.md
 - PDP: fatture scritte nelle chiusure NON sommate se per il mese esistono fatture AdE (sono le stesse) → settembre M+G da 28.443,52 a 26.466,52 (−1.977 = 2 fatture senza numero). Nota visibile in PuntoPareggio (`fatture_manuali.nota`).
 - Telefoni utenti: Silvio 3519924497, Bruno 3519657558, Kevin 3404812263, Deborah 3492799464.
 - Checklist Vai online (GET /incentivi/checklist, POST /online con mese_partenza/forza): partecipanti ≥2, regolamento generato dopo ultima modifica regole, telefoni, mese di partenza, soglie EOLO del mese. /mio blocca mesi prima della partenza. mese_partenza impostato 2026-11.
+
+## 2026-10-26 (quater) — Firma digitale regolamento, confronto foglio↔PDP, fattura intercompany — TESTATO (curl + PDF + screenshot)
+- Firma: POST /incentivi/firme/invia (link WhatsApp /firma-regolamento/{token} per partecipante, versione = config.updated_at), GET /incentivi/firme, public GET/POST /incentivi/public/firma-regolamento/{token}; pagina `pages/FirmaRegolamento.jsx` (regole + canvas). Firme nel PDF regolamento; checklist voce "firme". Test: Bruno firmato (preview, dry-run WA).
+- Confronto foglio: `pdp_foglio_totali` salvato all'import fogli (entrate = corrispettivi+emesse, uscite = spese+ricevute); PDP risponde `foglio` con diff (banner in PuntoPareggio) e report/confronto riga "Entrate: foglio vs PDP" per ogni mese (ConfrontoNegozi). Settembre: PDP 26.466,52 vs foglio 23.904,52 (+2.562 = corrispettivi 10.717 vs 8.155).
+- Intercompany: GET /incentivi/intercompany(.pdf)?mese= → contratti energia di negozi SRLS lavorati da personale ditta (operatore/created_by con store ditta o ruolo operatore) × energia_lavorazione. Tasto in tab Estratti conto.
+- Soglie novembre: richiede la foto del volantino dall'utente (tab Gara EOLO).
