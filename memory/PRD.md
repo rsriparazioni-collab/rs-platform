@@ -677,3 +677,9 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-19 — Report inserimenti mensili
 - backend/report_inserimenti.py: GET /report/inserimenti?mesi&store_id&user_id (servizi per tipo, vendite, ritiri, utenze luce/gas, nuovi clienti -> per lavorazione/negozio/persona × mese + dettaglio negozio×persona; scope negozio per ruoli non admin) + /export xlsx 4 fogli. UI: ReportInserimenti.jsx in fondo alla pagina KPI Team (solo chi vede tutti).
+
+## 2026-10-26 — Incentivi RS (modulo completo, in BOZZA solo admin) — TESTATO (iteration_34: 14/16 backend poi 2 fix verificati; frontend OK)
+- Backend `backend/incentivi.py` (/api/incentivi/*): config versionata con log, provvigioni previste→confermate ("In pagamento" nel mese fattura), storni compensati mese successivo (fondo mai negativo), import foglio Google storico (dedupe, tot settembre 4485 = foglio), Carica gara EOLO (foto → gpt-5.4 vision → tabella soglie, verificato sul volantino ottobre), calcolo fondo/gettoni/classifica/premi/ex aequo, estratti conto negozi esterni e SRLS (trattenuta 15%, compensazioni, pagato), simulazione via override (nulla salvato), chiusura/riapertura mese, export Excel 5 fogli, entità per negozio con data (tasto cambia entità), /mio per partecipanti quando online.
+- Frontend `pages/Incentivi.jsx` + `components/incentivi/*` (nav solo admin), `IncentiviMio` nei KPI (visibile solo se online e partecipante). Tasto "Vai online"/"Torna in bozza".
+- Regole concordate: vedi `/app/memory/incentivi_rs_ragionamento.md`. Default: gettone 25 lordi, EOLO 50% fondo, premi 50/30/20, coef riparazioni 50%, fattore costo datore 1,45.
+- Backlog: contratto/regolamento per i ragazzi; parametri fiscali da confermare con consulente; dati preview senza EOLO/riparazioni reali (in produzione si popolano).

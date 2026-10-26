@@ -1,0 +1,45 @@
+{
+  "summary": "Incentivi RS module tested end-to-end. Backend: 16 pytest tests (config/log, premi validation, import-foglio preview/import/dedupe, conferma, calcolo, override simulation, storno, chiusura/riapertura, export xlsx, compensazioni, mio/online with non-admin Kevin, entita by date) -> 14 passed, 2 failed (override bad type 500; compensazione on store without provvigioni in month invisible). Frontend (admin with TOTP): nav, BOZZA badge, month 2026-09 fondo 1.981,25 EUR, Kevin 1st, export 200, In pagamento, Simulazione 2 scenarios (1981,25 vs 1188,75), Estratti conto Sondrio, Regole save 200, Gara EOLO table+button, Storico 2026-09 all OK.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/incentivi/calcolo?override=", "issue": "Override with non-numeric value (e.g. {\"eolo_fondo_pct\":\"abc\"}) -> 500 ValueError 'could not convert string to float'. Only JSON parse errors are caught; validate override keys/types (whitelist numeric params) and return 400."},
+      {"endpoint": "POST /api/incentivi/compensazioni + calcolo estratti_conto", "issue": "Estratti conto are built only from stores having provvigioni in the month (esterni dict). A compensation for a store with no provvigioni that month (e.g. Sondrio in 2026-06) is saved but never shown in estratti_conto and can't be deleted from the UI (orphan). Reproduced: POST compensazione Sondrio 2026-06 srls 30 -> Sondrio missing from estratti_conto. Works in 2026-09 (Sondrio has rows): avere_srls=30, saldo_srls=-30. Fix: also iterate stores present in compensazioni."},
+      {"endpoint": "calcolo premi", "issue": "When fewer than 3 participants have valore>0, the unawarded % stays as 'residuo' (e.g. 2026-06 test: fondo 1223.38, premi 978.70, residuo 244.67), so premi sum != fondo. Probably by design, but confirm with the business rule 'premi 50/30/20 del fondo'."},
+      {"endpoint": "storno / calcolo", "issue": "Fondo is clamped with max(0, ...) but the negative deficit is not carried into the next month (e.g. 2026-07 with only a -150 storno -> fondo 0, the -75 is lost). Confirm whether a deficit should carry forward."},
+      {"endpoint": "POST /api/incentivi/import-foglio", "issue": "Dedupe is only within the same mese (ref_id foglio:gid:row + mese). Importing the same sheet into another month duplicates all rows."},
+      {"endpoint": "compensazioni / chiusura", "issue": "POST/DELETE compensazioni and POST estratto-conto/pagato don't check whether the month is closed (conferma, storno and delete provvigione do)."},
+      {"endpoint": "PUT /api/incentivi/config", "issue": "No range validation: negative premi_pct, eolo_fondo_pct > 100 or negative gettone are accepted."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Incentivi header", "issues": ["The notification bell with its badge (top-right) overlaps the 'Vai online' button, covering part of its label"]},
+      {"screen": "Fondo & classifica", "issues": ["The Gettoni KPI subtitle is hardcoded to '25 € lordi a contratto' and won't update if gettone_lordo changes", "Deborah's negozio shows '—' because she has no store_ids; entita falls back to 'ditta'"]},
+      {"screen": "Regole", "issues": ["The toast 'Regole salvate (modifica registrata)' appears even when nothing changed and no log entry is written"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter34_incentivi.py", "/app/test_reports/pytest/pytest_iter34.xml"],
+  "action_items": [
+    "Validate the calcolo override (numeric whitelist) and return 400 instead of 500",
+    "Include stores that only have compensazioni in estratti_conto so they show up and can be deleted",
+    "Block compensazioni and pagato changes on closed months",
+    "Fix the bell/badge overlapping the 'Vai online' button",
+    "Make the Gettoni KPI subtitle use cfg.gettone_lordo",
+    "Confirm the business rules for residuo when fewer than 3 participants score and for carrying a negative fondo forward"
+  ],
+  "critical_code_review_comments": [
+    "incentivi.py is 744 lines (>700). Split into config / provvigioni / calcolo / export modules",
+    "calcola() is called once per month inside /storico (N full recalculations). It gets slow as months accumulate",
+    "_attivita_mese scans all servizi for every calcolo call with no date filter in the query. Add mese filtering at DB level",
+    "Storno does not reverse the gettone already paid, and storno of foglio rows is allowed. Check this is intended"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter34_incentivi.py"],
+  "success_rate": {"backend": "87.5% (14/16)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Test data in 2026-06 (foglio import 43 rows + 2 manual rows) and 2026-07 (storno) was deleted after testing. 2026-09 was not touched (one compensation was added and then removed). Kevin's 2FA was enrolled temporarily for the /mio test and reset by admin in teardown (totp_enabled=false). Config restored: online=false, gettone 25. entita now has an extra rule {Gravedona, ditta, da 2026-08} (the requested restore).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0 (sequential; the pytest.ini xdist loadscope breaks the order-dependent STATE). The test file imports into 2026-06 and stornos into 2026-07: delete incentivi_provvigioni for those months before re-running, otherwise the gettoni_n/fondo assertions fail. The Kevin fixture enrolls 2FA and resets it in teardown. The admin TOTP has replay protection, so wait for a new 30s window between logins. Do not call /api/incentivi/carica-gara."
+}

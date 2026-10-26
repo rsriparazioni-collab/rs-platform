@@ -32,3 +32,5 @@
 
 ## Stima
 ~5× report inserimenti in 4 fasi (config+carica gara+import foglio 1,5× / motore+simulazione 1,5× / dashboard+Excel+chiusura 1× / area dipendente+test 1×). Stop dopo Fase 2 per valutare la simulazione.
+
+## 2026-10-26 — IMPLEMENTATO (bozza, solo admin). Modello finale: gettone 25 € lordi uguale per EOLO ed energia; energia resto all'azienda (niente fondo); EOLO dopo gettone 50% azienda / 50% fondo; premi 50/30/20. Settembre reale: fondo ≈1.981 € con 4.035 € EOLO gruppo.

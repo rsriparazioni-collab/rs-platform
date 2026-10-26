@@ -606,6 +606,9 @@ async def calcola(mese: str, cfg: dict) -> dict:
     trattenute_tot = _r(sum(r["trattenuta"] for e in esterni.values() for r in e["righe"]))
 
     comp = await db.incentivi_compensazioni.find({"mese": mese}, {"_id": 0}).to_list(2000)
+    for c in comp:
+        if c["store_id"] not in esterni and c["store_id"] not in fondo_set:
+            esterni[c["store_id"]]  # negozio con sole compensazioni nel mese
     pag = {(p["store_id"], p["societa"]): p["pagato"] async for p in db.incentivi_pagamenti.find({"mese": mese}, {"_id": 0})}
     estratti = []
     for sid, e in esterni.items():
@@ -639,7 +642,12 @@ async def get_calcolo(mese: str, request: Request, override: str = ""):
     cfg = await get_config()
     if override:
         try:
-            cfg = {**cfg, **json.loads(override)}
+            ov = json.loads(override)
+            assert isinstance(ov, dict)
+            cfg = {**cfg, **ov}
+            for k in ("gettone_lordo", "eolo_fondo_pct", "costo_datore_fattore", "trattenuta_terzi_pct", "coef_eolo", "coef_energia", "coef_riparazione", "valore_sim_nuova", "valore_sim_mnp", "valore_fisso", "tetto_fondo"):
+                cfg[k] = float(cfg.get(k) or 0)
+            cfg["premi_pct"] = [float(x) for x in cfg.get("premi_pct", [])]
         except Exception:
             raise HTTPException(status_code=400, detail="Override non valido")
     return await calcola(mese, cfg)
