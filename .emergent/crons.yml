@@ -83,3 +83,11 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/scadenze-fiscali"
     method: POST
     enabled: true
+  - name: incentivi-classifica
+    description: "Ogni lunedì alle 9:00 invia ai partecipanti della gara Incentivi RS la posizione in classifica e la barra del fondo (solo se il modulo è online)"
+    cron: "0 9 * * 1"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/incentivi/cron/classifica"
+    method: POST
+    enabled: true

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -54,6 +54,7 @@ async def _default_config() -> dict:
             "partecipanti": [users[n] for n in ("kevin", "deborah", "silvio", "bruno") if n in users],
             "coef_eolo": 100.0, "coef_energia": 100.0, "coef_riparazione": 50.0, "valore_sim_nuova": 5.0, "valore_sim_mnp": 10.0, "valore_fisso": 20.0,
             "negozi_fondo": fondo, "entita": [{"store_id": s, "entita": "ditta", "da": ""} for s in fondo] + [{"store_id": s, "entita": "srls", "da": ""} for s in srls],
+            "persona_negozio": {stores["gravedona"]: users["kevin"]} if "gravedona" in stores and "kevin" in users else {},
             "spareggio": "contratti_eolo_energia", "updated_at": _now()}
 
 
@@ -86,6 +87,7 @@ class ConfigInput(BaseModel):
     valore_fisso: Optional[float] = None
     negozi_fondo: Optional[List[str]] = None
     entita: Optional[List[dict]] = None
+    persona_negozio: Optional[dict] = None
     spareggio: Optional[str] = None
 
 
@@ -529,7 +531,7 @@ async def calcola(mese: str, cfg: dict) -> dict:
         ent = _entita_di(cfg, sid, mese) if sid else ("ditta" if is_padre else "")
         if not sid and not is_padre:
             anomalie.append({"tipo": "negozio_mancante", "descrizione": p.get("descrizione", ""), "importo": imp})
-        uid = p.get("user_id", "")
+        uid = p.get("user_id", "") or (cfg.get("persona_negozio") or {}).get(sid, "")
         gett_applicato = uid in pset and imp > 0 and in_gruppo
         if gett_applicato:
             per_persona[uid]["gettoni_n"] += 1
@@ -619,6 +621,7 @@ async def calcola(mese: str, cfg: dict) -> dict:
         avere_ditta = _r(sum(c["importo"] for c in avere if c["societa"] == "ditta"))
         avere_srls = _r(sum(c["importo"] for c in avere if c["societa"] == "srls"))
         estratti.append({"store_id": sid, "negozio": stores.get(sid, sid), "entita": ent or "terzo", "n_contratti": e["n"], "eolo_lordo": _r(e["eolo"]), "energia_lordo": _r(e["energia"]),
+                         "dare_eolo": dare_eolo, "dare_energia": dare_energia,
                          "trattenuta": _r(sum(r["trattenuta"] for r in e["righe"])), "dare_ditta": _r(dare_eolo + dare_energia), "avere_ditta": avere_ditta, "avere_srls": avere_srls,
                          "saldo_ditta": _r(dare_eolo + dare_energia - avere_ditta), "saldo_srls": _r(-avere_srls), "compensazioni": avere, "righe": e["righe"],
                          "pagato_ditta": pag.get((sid, "ditta"), False), "pagato_srls": pag.get((sid, "srls"), False),
@@ -712,6 +715,129 @@ async def mio(mese: str, request: Request):
     me = next((x for x in c["classifica"] if x["user_id"] == user["id"]), None)
     return {"mese": mese, "online": cfg.get("online"), "chiuso": c["chiuso"], "classifica": cl,
             "mio": {k: me[k] for k in ("posizione", "valore", "eolo_n", "energia_n", "riparazioni_n", "riparazioni_margine", "sim_nuova", "sim_mnp", "fisso", "gettoni_n", "gettoni_lordo", "premio_lordo", "premio_pct", "totale_lordo")} if me else None}
+
+
+# ---------------- Spese nel PDP (quote girate pagate) ----------------
+async def spese_pdp(centro: dict, anno: int, mese: int) -> dict:
+    """Quote pagate ai negozi esterni nel mese: EOLO → centro della ditta (Morbegno/Gravedona), energia CambiaOra → centro della SRLS (Sondrio)."""
+    m = f"{anno:04d}-{mese:02d}"
+    if not await _d["db"].incentivi_pagamenti.find_one({"mese": m, "societa": "ditta", "pagato": True}):
+        return {}
+    cfg = await get_config()
+    ent_centro = {_entita_di(cfg, sid, m) for sid in centro["store_ids"]}
+    c = await calcola(m, cfg)
+    out = {}
+    for e in c["estratti_conto"]:
+        if not e["pagato_ditta"]:
+            continue
+        if "ditta" in ent_centro and e["dare_eolo"]:
+            out["Compensi EOLO negozi esterni (pagati)"] = _r(out.get("Compensi EOLO negozi esterni (pagati)", 0) + e["dare_eolo"])
+        if "srls" in ent_centro and e["dare_energia"]:
+            out["Compensi CambiaOra negozi esterni (pagati)"] = _r(out.get("Compensi CambiaOra negozi esterni (pagati)", 0) + e["dare_energia"])
+    return out
+
+
+# ---------------- Regolamento PDF ----------------
+@router.get("/regolamento.pdf")
+async def regolamento_pdf(request: Request):
+    from fpdf import FPDF
+    from fastapi.responses import Response
+    await _admin(request)
+    db = _d["db"]
+    cfg = await get_config()
+    users = {u["id"]: u["name"] async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1})}
+    stores = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+
+    def t(s):
+        return str(s).replace("€", "EUR").replace("–", "-").replace("—", "-").replace("→", "->").replace("×", "x").replace("≈", "~").encode("latin-1", "replace").decode("latin-1")
+
+    pdf = FPDF(format="A4", unit="mm"); pdf.set_auto_page_break(auto=True, margin=10); pdf.set_margins(12, 10, 12); pdf.add_page()
+    pdf.set_font("helvetica", "B", 15); pdf.cell(0, 8, t("Regolamento Incentivi RS"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("helvetica", "", 8); pdf.cell(0, 5, t(f"Versione regole del {cfg.get('updated_at', '')[:10]} - documento generato il {datetime.now(timezone.utc).date().isoformat()}"), new_x="LMARGIN", new_y="NEXT"); pdf.ln(2)
+
+    def sez(titolo, righe):
+        pdf.set_font("helvetica", "B", 11); pdf.cell(0, 7, t(titolo), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", "", 9)
+        for r in righe:
+            pdf.multi_cell(0, 4.6, t("- " + r), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1.5)
+
+    premi = cfg.get("premi_pct", [])
+    sez("1. Partecipanti", [", ".join(users.get(u, u) for u in cfg.get("partecipanti", [])), "Negozi che alimentano il fondo: " + ", ".join(stores.get(s, s) for s in cfg.get("negozi_fondo", []))])
+    sez("2. Gettone per contratto", [f"Per ogni contratto EOLO o luce/gas (CambiaOra/ENEL) confermato dal fornitore e attribuito al venditore: {cfg['gettone_lordo']:.2f} EUR lordi in busta paga.",
+                                     "Il gettone matura nel mese in cui il fornitore conferma la provvigione (fattura), non alla firma del contratto.",
+                                     "Contratti annullati, respinti o stornati dal fornitore non generano gettone; gli storni successivi vengono compensati sul mese seguente."])
+    sez("3. Fondo premi", [f"Il fondo e' alimentato esclusivamente dalle provvigioni EOLO confermate dei negozi indicati: {cfg['eolo_fondo_pct']:.0f}% della provvigione residua dopo il costo del gettone.",
+                           "Le provvigioni luce/gas coprono il gettone e restano all'azienda. SIM, riparazioni, vendite e negozi esterni non alimentano il fondo.",
+                           "Il fondo non puo' essere negativo e viene distribuito solo se effettivamente incassato." + (f" Tetto mensile: {cfg['tetto_fondo']:.2f} EUR." if cfg.get("tetto_fondo") else "")])
+    sez("4. Classifica mensile", ["Il punteggio e' il valore generato nel mese, con questi pesi:",
+                                  f"EOLO: {cfg['coef_eolo']:.0f}% della provvigione confermata; luce/gas: {cfg['coef_energia']:.0f}% della provvigione confermata;",
+                                  f"riparazioni consegnate: {cfg['coef_riparazione']:.0f}% del margine (prezzo - ricambio); SIM nuova {cfg['valore_sim_nuova']:.2f} EUR, SIM MNP {cfg['valore_sim_mnp']:.2f} EUR, fisso/internet non EOLO {cfg['valore_fisso']:.2f} EUR (valori figurativi).",
+                                  "Spareggio: piu' contratti EOLO+energia, poi piu' attivita' totali, infine premio diviso in parti uguali."])
+    sez("5. Premi", ["Il fondo del mese e' ripartito tra i primi classificati: " + ", ".join(f"{i + 1}o {p:.0f}%" for i, p in enumerate(premi)) + ".",
+                     "Un partecipante con valore zero nel mese non riceve premio. I premi sono importi lordi erogati in busta paga, soggetti a tassazione e contributi di legge.",
+                     "Nessun premio e' dovuto finche' l'amministrazione non chiude il mese e conferma gli importi."])
+    sez("6. Trasparenza", ["Ogni partecipante vede la propria posizione, i propri numeri e il proprio premio stimato nell'area 'I miei incentivi'; la classifica e' visibile a tutti, gli importi solo a chi li riceve.",
+                           "Le regole possono essere modificate dall'amministrazione con preavviso; ogni modifica e' registrata con data e valori precedenti.",
+                           "Il presente regolamento integra e non sostituisce il contratto di lavoro; le garanzie retributive esistenti restano invariate."])
+    pdf.ln(4); pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 6, t("Luogo e data: ______________________________"), new_x="LMARGIN", new_y="NEXT"); pdf.ln(2)
+    pdf.cell(95, 6, t("L'azienda"), new_x="RIGHT"); pdf.cell(95, 6, t("Il dipendente (per presa visione e accettazione)"), new_x="LMARGIN", new_y="NEXT"); pdf.ln(6)
+    for u in cfg.get("partecipanti", []):
+        pdf.cell(95, 6, t("______________________________"), new_x="RIGHT"); pdf.cell(95, 6, t(f"{users.get(u, u)}: ______________________________"), new_x="LMARGIN", new_y="NEXT"); pdf.ln(2)
+    return Response(content=bytes(pdf.output()), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="regolamento_incentivi_rs.pdf"'})
+
+
+# ---------------- Avviso WhatsApp settimanale ----------------
+def _barra(pct: float) -> str:
+    n = max(0, min(10, round(pct / 10)))
+    return "█" * n + "░" * (10 - n)
+
+
+async def invia_classifica_whatsapp() -> dict:
+    db = _d["db"]
+    cfg = await get_config()
+    if not cfg.get("online"):
+        return {"inviati": 0, "motivo": "incentivi non online"}
+    oggi = datetime.now(timezone.utc)
+    mese = f"{oggi.year:04d}-{oggi.month:02d}"
+    c = await calcola(mese, cfg)
+    storico = [(await calcola(m, cfg))["fondo"]["fondo_disponibile"] for m in sorted({p["mese"] async for p in db.incentivi_provvigioni.find({"mese": {"$lt": mese}}, {"_id": 0, "mese": 1})})[-6:]]
+    rif = max(storico) if storico else 0
+    fondo = c["fondo"]["fondo_disponibile"]
+    pct = (fondo / rif * 100) if rif else (100 if fondo else 0)
+    inviati = 0
+    for x in c["classifica"]:
+        u = await db.users.find_one({"id": x["user_id"]}, {"_id": 0, "telefono": 1, "name": 1})
+        if not u or not u.get("telefono"):
+            continue
+        testo = (f"🏆 *Incentivi RS – {mese}*\nCiao {u['name']}, sei *{x['posizione']}º* in classifica con valore {x['valore']:.0f}.\n"
+                 f"EOLO {x['eolo_n']} · energia {x['energia_n']} · riparazioni {x['riparazioni_n']} · SIM {x['sim_nuova'] + x['sim_mnp']}\n"
+                 f"Gettoni maturati: {x['gettoni_n']} ({x['gettoni_lordo']:.2f} € lordi) · premio stimato {x['premio_lordo']:.2f} € lordi\n"
+                 f"Fondo premi: {_barra(pct)} {fondo:.0f} €" + (f" (miglior mese {rif:.0f} €)" if rif else "") + "\n"
+                 "Classifica: " + " · ".join(f"{y['posizione']}. {y['nome']}" for y in c["classifica"]) + "\n_Stima: diventa definitiva con la chiusura del mese._")
+        await _d["wa_send"](u["telefono"], testo, session="default", tipo="incentivi_classifica")
+        inviati += 1
+    return {"inviati": inviati, "mese": mese}
+
+
+@router.post("/cron/classifica")
+async def cron_classifica(request: Request):
+    import hmac
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    import asyncio
+    asyncio.create_task(invia_classifica_whatsapp())
+    return {"status": "accepted"}
+
+
+@router.post("/invia-classifica")
+async def invia_classifica_manuale(request: Request):
+    await _admin(request)
+    return await invia_classifica_whatsapp()
 
 
 # ---------------- Export ----------------

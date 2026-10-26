@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Save, ArrowLeftRight } from "lucide-react";
+import { Save, ArrowLeftRight, FileText, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
-import api, { apiError } from "../../lib/api";
+import api, { apiError, downloadBlob } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
@@ -18,7 +18,7 @@ export const IncentiviRegole = ({ cfg, meta, reload }) => {
 
   const salva = async () => {
     const body = Object.fromEntries(NUM.map(([k]) => [k, parseFloat(f[k]) || 0]));
-    body.premi_pct = premi.split("/").map((x) => parseFloat(x) || 0); body.partecipanti = f.partecipanti; body.negozi_fondo = f.negozi_fondo; body.padre_in_fondo = f.padre_in_fondo;
+    body.premi_pct = premi.split("/").map((x) => parseFloat(x) || 0); body.partecipanti = f.partecipanti; body.negozi_fondo = f.negozi_fondo; body.padre_in_fondo = f.padre_in_fondo; body.persona_negozio = f.persona_negozio || {};
     try { await api.put("/incentivi/config", body); toast.success("Regole salvate (modifica registrata)"); reload(); } catch (e) { toast.error(apiError(e)); }
   };
   const cambiaEntita = async () => {
@@ -39,7 +39,16 @@ export const IncentiviRegole = ({ cfg, meta, reload }) => {
         <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm"><p className="font-medium text-slate-800">Negozi che alimentano il fondo</p><div className="mt-2 flex flex-wrap gap-2">{meta.stores.map((s) => <label key={s.id} className={`cursor-pointer rounded-full border px-3 py-1 ${f.negozi_fondo.includes(s.id) ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}><input type="checkbox" className="mr-1" checked={f.negozi_fondo.includes(s.id)} onChange={() => toggle("negozi_fondo", s.id)} data-testid={`inc-fondo-${s.id}`} />{s.nome}</label>)}
           <label className={`cursor-pointer rounded-full border px-3 py-1 ${f.padre_in_fondo ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}><input type="checkbox" className="mr-1" checked={!!f.padre_in_fondo} onChange={() => setF({ ...f, padre_in_fondo: !f.padre_in_fondo })} data-testid="inc-fondo-padre" />Codice PADRE (foglio)</label></div></div>
       </div>
-      <Button onClick={salva} className="gap-2" data-testid="inc-cfg-salva"><Save className="h-4 w-4" /> Salva regole</Button>
+      <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm" data-testid="inc-persona-negozio">
+        <p className="font-medium text-slate-800">Persona predefinita per negozio</p>
+        <p className="text-xs text-slate-500">Usata quando una provvigione non ha il venditore (es. righe importate dal foglio): il contratto viene attribuito a questa persona per gettone e classifica.</p>
+        <div className="mt-2 flex flex-wrap gap-2">{meta.stores.map((s) => <label key={s.id} className="flex items-center gap-1 text-xs"><span className="w-20 text-slate-600">{s.nome}</span><select className="h-8 rounded-md border border-slate-200 px-1" value={(f.persona_negozio || {})[s.id] || ""} onChange={(e) => setF({ ...f, persona_negozio: { ...(f.persona_negozio || {}), [s.id]: e.target.value } })} data-testid={`inc-pn-${s.id}`}><option value="">—</option>{meta.users.filter((u) => f.partecipanti.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>)}</div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={salva} className="gap-2" data-testid="inc-cfg-salva"><Save className="h-4 w-4" /> Salva regole</Button>
+        <Button variant="outline" className="gap-2" onClick={() => downloadBlob("/incentivi/regolamento.pdf", "regolamento_incentivi_rs.pdf")} data-testid="inc-regolamento-pdf"><FileText className="h-4 w-4" /> Regolamento PDF da firmare</Button>
+        <Button variant="outline" className="gap-2" onClick={async () => { if (!window.confirm("Inviare ora il WhatsApp di classifica ai partecipanti con numero di telefono? (solo se il modulo è online)")) return; try { const r = await api.post("/incentivi/invia-classifica"); toast.success(`Inviati: ${r.data.inviati}${r.data.motivo ? " – " + r.data.motivo : ""}`); } catch (e) { toast.error(apiError(e)); } }} data-testid="inc-invia-classifica"><MessageCircle className="h-4 w-4" /> Invia classifica WhatsApp ora</Button>
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm" data-testid="inc-entita">
         <p className="flex items-center gap-2 font-medium text-slate-800"><ArrowLeftRight className="h-4 w-4" /> Società per negozio (tasto cambia entità)</p>

@@ -894,6 +894,9 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     for v, imp in ade_fornitori.items():
         sezioni["fornitori"][v] = imp if imp else sezioni["fornitori"].get(v, 0.0)
     tot_non_abb = round(sum(x["totale"] for x in non_abbinate), 2)
+    import incentivi as incentivi_module
+    for v, imp in (await incentivi_module.spese_pdp(centro, anno, mese)).items():
+        sezioni["fornitori"][v] = imp
     sezioni["fornitori"] = {"Fatture ricevute non abbinate (AdE)": tot_non_abb, **sezioni["fornitori"]}
     tot_entrate = round(sum(entrate.values()), 2)
     tot_spese = {cat: round(sum(d.values()), 2) for cat, d in sezioni.items()}

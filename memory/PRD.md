@@ -683,3 +683,9 @@ Vedi /app/memory/test_credentials.md
 - Frontend `pages/Incentivi.jsx` + `components/incentivi/*` (nav solo admin), `IncentiviMio` nei KPI (visibile solo se online e partecipante). Tasto "Vai online"/"Torna in bozza".
 - Regole concordate: vedi `/app/memory/incentivi_rs_ragionamento.md`. Default: gettone 25 lordi, EOLO 50% fondo, premi 50/30/20, coef riparazioni 50%, fattore costo datore 1,45.
 - Backlog: contratto/regolamento per i ragazzi; parametri fiscali da confermare con consulente; dati preview senza EOLO/riparazioni reali (in produzione si popolano).
+
+## 2026-10-26 (bis) — Incentivi RS: regolamento PDF, storico foglio, WhatsApp lunedì, spese PDP — TESTATO (curl + PDF renderizzato + screenshot)
+- GET /api/incentivi/regolamento.pdf (fpdf, 1 pagina, firme partecipanti) — tasto in tab Regole.
+- Importate schede foglio: 2026-05 (1630) 06 (2333) 07 (2945) 08 (7220) 09 (3140) 10 (4485) = TOTALE foglio. Scheda = mese di liquidazione (gid 66717898 = ottobre). Config `persona_negozio` (Gravedona→Kevin) attribuisce righe foglio senza venditore.
+- Cron `incentivi-classifica` lunedì 9:00 → POST /api/incentivi/cron/classifica (solo se online; barra fondo vs miglior mese ultimi 6); tasto "Invia classifica WhatsApp ora". Testato in dry-run (wa_log).
+- PDP: `incentivi.spese_pdp()` in contabilita._pdp_calcolo → "Compensi EOLO negozi esterni (pagati)" nel centro ditta (Morbegno+Gravedona), "Compensi CambiaOra negozi esterni (pagati)" nel centro SRLS (Sondrio), solo quando spuntato pagato nel mese.
