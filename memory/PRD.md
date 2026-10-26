@@ -707,3 +707,9 @@ Vedi /app/memory/test_credentials.md
 - `pdp_foglio_totali.giorni_diff` salvato all'import; banner PuntoPareggio con dettaglio espandibile (giorno/negozio/diff; rosso = manca nel gestionale, grigio = solo gestionale).
 - Cron `incentivi-riepilogo-mese` (1º del mese 8:00) → WA a 3792773557 con fondo/classifica/premi del mese chiuso + tasto manuale "Riepilogo mese ad amministrazione". Cron `incentivi-sollecito-firme` (10:00, dopo 3 gg, max 3). `_check_cron` condiviso.
 - Soglie EOLO salvate 2026-10 (dal volantino) e copiate su 2026-11 (nota "copiata da ottobre"): checklist verde tranne firme. Gare pagate a 90 gg: le soglie di ottobre servono per i contratti di ottobre, liquidati a gennaio.
+
+## 2026-10-26 (sexies) — Compila giorni rossi, storico soglie EOLO, premio squadra — TESTATO (curl + screenshot)
+- POST /contabilita/pdp/allinea-foglio {centro_id, anno, mese}: compila i giorni presenti nel foglio e assenti nel gestionale (merce = totale RT, contanti +=), anche se esiste un doc con solo fatture; `giorni_diff` include store_id. Tasto nel banner PDP (admin). Test: 4 giorni Gravedona settembre compilati.
+- GET /incentivi/soglie/storico + POST /incentivi/soglie/copia?da&a; SoglieInput.copiata_da. Tabella storico in tab Gara EOLO (originale/copiata/nessuna, EOLO n/€, gare €).
+- Premio squadra: config `bonus_squadra_pct` (default 20): se fondo mese > miglior fondo dei 6 mesi precedenti → bonus = pct × min(eccedenza, quota azienda sull'eccedenza) diviso in parti uguali tra partecipanti con valore>0 (autofinanziato dalla quota azienda, mai dal fondo). In calcolo `bonus_squadra`, classifica `bonus_squadra`, costi `bonus_squadra_lordi`, regolamento §5. Test agosto override 50%: fondo 1.706 vs best 646 → bonus 530 a Kevin.
+- Firme reali: inviare solo dopo publish e Vai online (richiesta utente).

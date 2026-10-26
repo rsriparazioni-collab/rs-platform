@@ -12,8 +12,10 @@ export const IncentiviSoglie = ({ mese }) => {
   const [lista, setLista] = useState([]);
   const [form, setForm] = useState(vuota(mese));
   const [busy, setBusy] = useState(false);
+  const [storico, setStorico] = useState([]);
+  const [copia, setCopia] = useState({ da: mese, a: "" });
   const fileRef = useRef();
-  const load = useCallback(() => api.get("/incentivi/soglie").then((r) => { setLista(r.data); const f = r.data.find((x) => x.mese === mese); setForm(f || vuota(mese)); }).catch(() => {}), [mese]);
+  const load = useCallback(() => Promise.all([api.get("/incentivi/soglie"), api.get("/incentivi/soglie/storico")]).then(([r, s]) => { setLista(r.data); setStorico(s.data); const f = r.data.find((x) => x.mese === mese); setForm(f || vuota(mese)); }).catch(() => {}), [mese]);
   useEffect(() => { load(); }, [load]);
 
   const carica = async (file) => {
@@ -56,6 +58,23 @@ export const IncentiviSoglie = ({ mese }) => {
           <Button size="sm" variant="ghost" onClick={() => setForm({ ...form, accessori: [...form.accessori, { voce: "", importo: "" }] })}><Plus className="h-4 w-4" /></Button></div>
       </div>
       <p className="text-xs text-slate-500">Soglie salvate: {lista.map((l) => l.mese).join(", ") || "nessuna"}. La soglia (Da 5/10/15/20) si calcola sul totale EOLO del mese di tutti i negozi e propone l'importo nei contratti "In pagamento".</p>
+      <div className="rounded-xl border border-slate-200 bg-white p-4" data-testid="inc-soglie-storico">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="font-semibold text-slate-900">Storico tabelle gara per mese</h4>
+          <div className="flex items-center gap-2 text-xs"><span className="text-slate-500">Copia</span><input type="month" value={copia.da} onChange={(e) => setCopia({ ...copia, da: e.target.value })} className="h-8 rounded-md border border-slate-200 px-1" data-testid="inc-copia-da" /><span>→</span><input type="month" value={copia.a} onChange={(e) => setCopia({ ...copia, a: e.target.value })} className="h-8 rounded-md border border-slate-200 px-1" data-testid="inc-copia-a" />
+            <Button size="sm" variant="outline" onClick={async () => { try { await api.post(`/incentivi/soglie/copia?da=${copia.da}&a=${copia.a}`); toast.success(`Tabella ${copia.da} copiata su ${copia.a}`); load(); } catch (e) { toast.error(apiError(e)); } }} data-testid="inc-copia-btn">Copia</Button></div>
+        </div>
+        <table className="mt-2 w-full text-sm">
+          <thead className="text-left text-xs uppercase text-slate-500"><tr><th className="px-2 py-1">Mese liquidazione</th><th className="px-2 py-1">Tabella gara</th><th className="px-2 py-1">Periodo</th><th className="px-2 py-1 text-right">Righe</th><th className="px-2 py-1">Aggiornata</th><th className="px-2 py-1 text-right">EOLO n</th><th className="px-2 py-1 text-right">EOLO €</th><th className="px-2 py-1 text-right">di cui gare €</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {storico.map((r) => <tr key={r.mese} data-testid={`inc-soglie-storico-${r.mese}`}><td className="px-2 py-1 font-medium">{r.mese}</td>
+              <td className="px-2 py-1"><span className={`rounded-full px-2 py-0.5 text-xs ${r.tabella === "originale" ? "bg-emerald-100 text-emerald-800" : r.tabella === "copiata" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-500"}`}>{r.tabella}{r.copiata_da ? ` da ${r.copiata_da}` : ""}</span></td>
+              <td className="px-2 py-1 text-xs text-slate-500">{r.periodo}</td><td className="px-2 py-1 text-right">{r.n_righe || "—"}</td><td className="px-2 py-1 text-xs text-slate-500">{r.aggiornata_il} {r.da}</td>
+              <td className="px-2 py-1 text-right">{r.eolo_n}</td><td className="px-2 py-1 text-right">{r.eolo_importo.toLocaleString("it-IT", { minimumFractionDigits: 2 })}</td><td className="px-2 py-1 text-right text-slate-500">{r.gare_importo.toLocaleString("it-IT", { minimumFractionDigits: 2 })}</td></tr>)}
+          </tbody>
+        </table>
+        <p className="mt-2 text-xs text-slate-500">Le gare EOLO vengono liquidate a 90 giorni: la tabella del mese di competenza serve a stimare i contratti che saranno pagati 3 mesi dopo.</p>
+      </div>
     </div>
   );
 };

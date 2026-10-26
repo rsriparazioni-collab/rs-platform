@@ -383,6 +383,40 @@ async def del_corrispettivo(store_id: str, data: str, request: Request):
     return {"ok": True}
 
 
+class AllineaFoglioInput(BaseModel):
+    centro_id: str
+    anno: int
+    mese: int
+
+
+@router.post("/pdp/allinea-foglio")
+async def allinea_giorni_rossi(body: AllineaFoglioInput, request: Request):
+    """Compila dal foglio i giorni 'rossi' del banner (presenti nel foglio, assenti nel gestionale) di tutti i negozi del centro."""
+    user = await _user(request)
+    db = _d["db"]
+    fg = await db.pdp_foglio_totali.find_one({"centro_id": body.centro_id, "anno": body.anno, "mese": body.mese}, {"_id": 0})
+    if not fg:
+        raise HTTPException(status_code=404, detail="Nessun confronto foglio per questo mese")
+    rossi = [g for g in fg.get("giorni_diff", []) if g.get("foglio") and not g.get("scontrini") and g.get("store_id")]
+    n = 0
+    compilati = set()
+    for g in rossi:
+        await _store_completo(user, g["store_id"])
+        esist = await db.corrispettivi.find_one({"store_id": g["store_id"], "data": g["data"]}, {"_id": 0})
+        if esist and round(float(esist.get("riparazioni") or 0) + float(esist.get("merce") or 0) + float(esist.get("art74") or 0), 2) > 0:
+            continue
+        base = {k: esist.get(k) for k in ("riparazioni", "art74", "fatture", "fatture_dettaglio", "pos", "contanti", "non_riscosso", "versati", "spese") if esist and esist.get(k) is not None} if esist else {}
+        doc = _norm({**base, "merce": g["foglio"], "contanti": float((esist or {}).get("contanti") or 0) + float(g["foglio"]), "note": ((esist or {}).get("note") or "") + " Scontrini compilati dal foglio Google (giorno mancante)".strip()})
+        doc.update({"store_id": g["store_id"], "data": g["data"], "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": f"{user.get('name', '')} (foglio Google)", "fonte": "foglio_google"})
+        await db.corrispettivi.update_one({"store_id": g["store_id"], "data": g["data"]}, {"$set": doc, "$setOnInsert": {"id": str(uuid.uuid4())}}, upsert=True)
+        compilati.add((g["store_id"], g["data"]))
+        n += 1
+    restanti = [g for g in fg.get("giorni_diff", []) if (g.get("store_id"), g.get("data")) not in compilati]
+    await db.pdp_foglio_totali.update_one({"centro_id": body.centro_id, "anno": body.anno, "mese": body.mese}, {"$set": {"giorni_diff": restanti}})
+    return {"compilati": n}
+
+
+
 class RiportoInput(BaseModel):
     riporto: float = 0
     riporto_note: str = ""

@@ -36,7 +36,7 @@ export const ClassificaTable = ({ classifica, mostraEuro = true }) => (
             <td className="px-3 py-2 text-right">{c.fisso}</td>
             {mostraEuro && <>
               <td className="px-3 py-2 text-right">{c.gettoni_n} · {eur(c.gettoni_lordo)}</td>
-              <td className="px-3 py-2 text-right">{c.premio_pct}% · <b>{eur(c.premio_lordo)}</b></td>
+              <td className="px-3 py-2 text-right">{c.premio_pct}% · <b>{eur(c.premio_lordo)}</b>{c.bonus_squadra > 0 && <span className="block text-xs text-emerald-700">+ squadra {eur(c.bonus_squadra)}</span>}</td>
               <td className="px-3 py-2 text-right font-semibold">{eur(c.totale_lordo)}</td>
               <td className="px-3 py-2 text-right text-slate-500">{eur(c.costo_azienda)}</td></>}
           </tr>
@@ -48,6 +48,7 @@ export const ClassificaTable = ({ classifica, mostraEuro = true }) => (
 );
 
 export const FondoPanel = ({ d }) => (
+  <div className="space-y-2">
   <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
     <Kpi label="EOLO gruppo" value={eur(d.fondo.eolo_gruppo_lordo)} sub="Morbegno + Gravedona confermato" testid="inc-kpi-eolo" />
     <Kpi label="Energia gruppo" value={eur(d.fondo.energia_gruppo_lordo)} sub="copre i gettoni, non va a fondo" testid="inc-kpi-energia" />
@@ -55,6 +56,12 @@ export const FondoPanel = ({ d }) => (
     <Kpi label="Premi assegnati" value={eur(d.fondo.premi_assegnati)} sub={`residuo ${eur(d.fondo.residuo)}`} testid="inc-kpi-premi" />
     <Kpi label="Gettoni" value={`${d.costi.gettoni_n} · ${eur(d.costi.gettoni_lordi)}`} sub="25 € lordi a contratto" testid="inc-kpi-gettoni" />
     <Kpi label="Risultato azienda" value={eur(d.costi.risultato_azienda)} sub={`costo datore ${eur(d.costi.costo_datore_totale)} · trattenute ${eur(d.costi.trattenute_esterni)}`} testid="inc-kpi-risultato" tone={d.costi.risultato_azienda < 0 ? "border-red-200 bg-red-50/40" : ""} />
+  </div>
+  {d.bonus_squadra?.attivo && <div className={`rounded-xl border px-4 py-2 text-sm ${d.bonus_squadra.superato ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-white text-slate-600"}`} data-testid="inc-bonus-squadra">
+    <b>Premio squadra</b> ({d.bonus_squadra.pct}% dell'eccedenza): miglior fondo ultimi 6 mesi {eur(d.bonus_squadra.miglior_fondo_6m)} → fondo mese {eur(d.fondo.fondo_disponibile)}.
+    {d.bonus_squadra.superato ? <> Superato di {eur(d.bonus_squadra.eccedenza)}: bonus {eur(d.bonus_squadra.importo)} = {eur(d.bonus_squadra.per_persona)} a testa per {d.bonus_squadra.beneficiari.join(", ")}.</> : " Non superato: nessun bonus."}
+    <span className="ml-2 text-xs text-slate-500">({d.bonus_squadra.mesi_confronto.map((m) => `${m.mese.slice(5)}: ${Math.round(m.fondo)}`).join(" · ")})</span>
+  </div>}
   </div>
 );
 

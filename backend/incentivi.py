@@ -53,6 +53,7 @@ async def _default_config() -> dict:
             "premi_pct": [50, 30, 20], "tetto_fondo": 0.0, "padre_in_fondo": True,
             "partecipanti": [users[n] for n in ("kevin", "deborah", "silvio", "bruno") if n in users],
             "coef_eolo": 100.0, "coef_energia": 100.0, "coef_riparazione": 50.0, "valore_sim_nuova": 5.0, "valore_sim_mnp": 10.0, "valore_fisso": 20.0,
+            "bonus_squadra_pct": 0.0,
             "negozi_fondo": fondo, "entita": [{"store_id": s, "entita": "ditta", "da": ""} for s in fondo] + [{"store_id": s, "entita": "srls", "da": ""} for s in srls],
             "persona_negozio": {stores["gravedona"]: users["kevin"]} if "gravedona" in stores and "kevin" in users else {},
             "spareggio": "contratti_eolo_energia", "updated_at": _now()}
@@ -85,6 +86,7 @@ class ConfigInput(BaseModel):
     valore_sim_nuova: Optional[float] = None
     valore_sim_mnp: Optional[float] = None
     valore_fisso: Optional[float] = None
+    bonus_squadra_pct: Optional[float] = None
     negozi_fondo: Optional[List[str]] = None
     entita: Optional[List[dict]] = None
     persona_negozio: Optional[dict] = None
@@ -456,6 +458,37 @@ class SoglieInput(BaseModel):
     righe: List[dict]
     accessori: List[dict] = []
     note: str = ""
+    copiata_da: str = ""
+
+
+@router.post("/soglie/copia")
+async def copia_soglie(request: Request, da: str, a: str):
+    """Copia la tabella gara di un mese su un altro (in attesa del volantino nuovo); segnata come 'copiata'."""
+    user = await _admin(request)
+    db = _d["db"]
+    src = await db.incentivi_soglie.find_one({"mese": da}, {"_id": 0})
+    if not src:
+        raise HTTPException(status_code=404, detail=f"Nessuna tabella per {da}")
+    doc = {**src, "id": str(uuid.uuid4()), "mese": a, "copiata_da": da, "updated_at": _now(), "updated_by": user["name"]}
+    await db.incentivi_soglie.update_one({"mese": a}, {"$set": doc}, upsert=True)
+    return doc
+
+
+@router.get("/soglie/storico")
+async def soglie_storico(request: Request):
+    """Mese per mese: tabella gara usata (originale/copiata), n. contratti EOLO liquidati e importo."""
+    await _admin(request)
+    db = _d["db"]
+    soglie = {s["mese"]: s async for s in db.incentivi_soglie.find({}, {"_id": 0})}
+    mesi = sorted(set(soglie) | {p["mese"] async for p in db.incentivi_provvigioni.find({"fonte": "eolo"}, {"_id": 0, "mese": 1})})
+    out = []
+    for m in mesi:
+        pv = await db.incentivi_provvigioni.find({"mese": m, "fonte": "eolo"}, {"_id": 0, "importo": 1, "sezione": 1}).to_list(10000)
+        s = soglie.get(m)
+        out.append({"mese": m, "tabella": "nessuna" if not s else ("copiata" if s.get("copiata_da") else "originale"), "copiata_da": (s or {}).get("copiata_da", ""), "periodo": (s or {}).get("periodo", ""),
+                    "n_righe": len((s or {}).get("righe", [])), "aggiornata_il": (s or {}).get("updated_at", "")[:10], "da": (s or {}).get("updated_by", ""),
+                    "eolo_n": len(pv), "eolo_importo": _r(sum(p["importo"] for p in pv)), "gare_importo": _r(sum(p["importo"] for p in pv if p.get("sezione") in ("gare", "gara_retail")))})
+    return out
 
 
 @router.post("/soglie")
@@ -630,6 +663,29 @@ async def calcola(mese: str, cfg: dict) -> dict:
         i = j + 1
     for c in classifica:
         c["totale_lordo"] = _r(c["gettoni_lordo"] + c["premio_lordo"])
+
+    # Premio squadra: se il fondo del mese supera il miglior fondo dei 6 mesi precedenti, una % dell'eccedenza (presa dalla quota azienda EOLO, quindi autofinanziata) va in parti uguali a chi ha valore > 0
+    bonus = {"attivo": float(cfg.get("bonus_squadra_pct") or 0) > 0, "pct": float(cfg.get("bonus_squadra_pct") or 0), "miglior_fondo_6m": 0.0, "mesi_confronto": [], "superato": False, "eccedenza": 0.0, "importo": 0.0, "per_persona": 0.0, "beneficiari": []}
+    if bonus["attivo"] and not cfg.get("_no_bonus_ricorsione"):
+        prec = sorted({p["mese"] async for p in db.incentivi_provvigioni.find({"mese": {"$lt": mese}, "fonte": "eolo"}, {"_id": 0, "mese": 1})})[-6:]
+        fondi = []
+        for m in prec:
+            fondi.append((await calcola(m, {**cfg, "_no_bonus_ricorsione": True}))["fondo"]["fondo_disponibile"])
+        bonus["mesi_confronto"] = [{"mese": m, "fondo": _r(f)} for m, f in zip(prec, fondi)]
+        bonus["miglior_fondo_6m"] = _r(max(fondi) if fondi else 0)
+        if fondi and fondo > max(fondi):
+            quota_azienda_eccedenza = (fondo - max(fondi)) * (100 - float(cfg["eolo_fondo_pct"])) / max(float(cfg["eolo_fondo_pct"]), 1)
+            bonus["superato"], bonus["eccedenza"] = True, _r(fondo - max(fondi))
+            bonus["importo"] = _r(min(quota_azienda_eccedenza, bonus["eccedenza"]) * bonus["pct"] / 100)
+            ben = [c for c in classifica if c["valore"] > 0]
+            if ben and bonus["importo"] > 0:
+                bonus["per_persona"] = _r(bonus["importo"] / len(ben))
+                bonus["beneficiari"] = [c["nome"] for c in ben]
+                for c in ben:
+                    c["bonus_squadra"] = bonus["per_persona"]
+                    c["totale_lordo"] = _r(c["totale_lordo"] + bonus["per_persona"])
+    for c in classifica:
+        c.setdefault("bonus_squadra", 0.0)
         c["costo_azienda"] = _r(c["totale_lordo"] * fatt)
         c["netto_stimato"] = _r(c["totale_lordo"] / 1.47)
 
@@ -642,8 +698,9 @@ async def calcola(mese: str, cfg: dict) -> dict:
         premi_per_entita[c["entita"]] += c["totale_lordo"]
 
     premi_lordi = _r(sum(c["premio_lordo"] for c in classifica))
+    bonus_lordi = _r(sum(c["bonus_squadra"] for c in classifica))
     gettoni_lordi = _r(gettoni_tot * gettone)
-    costo_datore = _r((premi_lordi + gettoni_lordi) * fatt)
+    costo_datore = _r((premi_lordi + gettoni_lordi + bonus_lordi) * fatt)
     eolo_gruppo = _r(sum(float(p.get("importo") or 0) for p in provv if p.get("fonte") == "eolo" and (p.get("store_id") in fondo_set or (not p.get("store_id") and p.get("negozio_nome") == "PADRE"))))
     trattenute_tot = _r(sum(r["trattenuta"] for e in esterni.values() for r in e["righe"]))
 
@@ -671,10 +728,10 @@ async def calcola(mese: str, cfg: dict) -> dict:
     return {"mese": mese, "chiuso": bool(chiusura), "chiusura": chiusura,
             "fondo": {"eolo_gruppo_lordo": eolo_gruppo, "energia_gruppo_lordo": _r(energia_gruppo), "fondo_pct": cfg["eolo_fondo_pct"], "fondo_disponibile": _r(fondo),
                       "fondo_oltre_tetto": _r(fondo_eccedenza_tetto), "premi_assegnati": premi_lordi, "residuo": _r(fondo - premi_lordi), "per_entita": {k: _r(v) for k, v in fondo_per_entita.items()}},
-            "costi": {"gettoni_n": gettoni_tot, "gettoni_lordi": gettoni_lordi, "premi_lordi": premi_lordi, "costo_datore_totale": costo_datore,
+            "costi": {"gettoni_n": gettoni_tot, "gettoni_lordi": gettoni_lordi, "premi_lordi": premi_lordi, "bonus_squadra_lordi": bonus_lordi, "costo_datore_totale": costo_datore,
                       "fattore_costo_datore": fatt, "trattenute_esterni": trattenute_tot,
                       "risultato_azienda": _r(eolo_gruppo + energia_gruppo + trattenute_tot - costo_datore), "premi_per_entita": {k: _r(v) for k, v in premi_per_entita.items()}},
-            "classifica": classifica, "estratti_conto": estratti, "anomalie": anomalie, "n_provvigioni": len(provv),
+            "classifica": classifica, "bonus_squadra": bonus, "estratti_conto": estratti, "anomalie": anomalie, "n_provvigioni": len(provv),
             "parametri": {k: cfg.get(k) for k in ("gettone_lordo", "eolo_fondo_pct", "trattenuta_terzi_pct", "premi_pct", "coef_eolo", "coef_energia", "coef_riparazione", "valore_sim_nuova", "valore_sim_mnp", "valore_fisso", "tetto_fondo", "costo_datore_fattore", "energia_lavorazione")}}
 
 
@@ -834,7 +891,8 @@ def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
                                    "Spareggio: piu' contratti EOLO+energia, poi piu' attivita' totali, infine premio diviso in parti uguali."]),
         ("5. Premi", ["Il fondo del mese e' ripartito tra i primi classificati: " + ", ".join(f"{i + 1}o {p:.0f}%" for i, p in enumerate(premi)) + ".",
                       "Un partecipante con valore zero nel mese non riceve premio. I premi sono importi lordi erogati in busta paga, soggetti a tassazione e contributi di legge.",
-                      "Nessun premio e' dovuto finche' l'amministrazione non chiude il mese e conferma gli importi."]),
+                      "Nessun premio e' dovuto finche' l'amministrazione non chiude il mese e conferma gli importi."]
+         + ([f"Premio squadra: se il fondo del mese supera il miglior fondo dei 6 mesi precedenti, il {cfg['bonus_squadra_pct']:.0f}% dell'eccedenza (presa dalla quota azienda, mai dal fondo) viene diviso in parti uguali tra tutti i partecipanti con valore maggiore di zero."] if float(cfg.get("bonus_squadra_pct") or 0) > 0 else [])),
         ("6. Trasparenza", ["Ogni partecipante vede la propria posizione, i propri numeri e il proprio premio stimato nell'area 'I miei incentivi'; la classifica e' visibile a tutti, gli importi solo a chi li riceve.",
                             "Le regole possono essere modificate dall'amministrazione con preavviso; ogni modifica e' registrata con data e valori precedenti.",
                             "Il presente regolamento integra e non sostituisce il contratto di lavoro; le garanzie retributive esistenti restano invariate."]),
