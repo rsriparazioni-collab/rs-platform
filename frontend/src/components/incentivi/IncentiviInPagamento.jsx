@@ -63,7 +63,7 @@ export const IncentiviInPagamento = ({ mese, meta }) => {
                   <td className="px-2 py-1"><input type="checkbox" disabled={r.gia_caricata} checked={!!sel[r.ref_id]} onChange={(e) => setSel({ ...sel, [r.ref_id]: e.target.checked })} data-testid={`inc-prev-check-${r.ref_id}`} /></td>
                   <td className="px-2 py-1 uppercase text-xs font-semibold">{r.fonte}</td><td className="px-2 py-1">{r.negozio}</td><td className="px-2 py-1">{r.persona}</td><td className="px-2 py-1">{r.data_contratto}</td><td className="px-2 py-1">{r.descrizione}</td>
                   <td className="px-2 py-1"><Input type="number" step="0.5" className="h-8 w-24" value={importi[r.ref_id] ?? r.importo} onChange={(e) => setImporti({ ...importi, [r.ref_id]: e.target.value })} disabled={r.gia_caricata} /></td>
-                  <td className="px-2 py-1 text-xs text-amber-700">{r.gia_caricata ? "già caricata" : r.anomalia}</td>
+                  <td className="px-2 py-1 text-xs text-amber-700">{r.gia_caricata ? "già caricata" : r.anomalia}{r.fonte === "energia" && !r.gia_caricata && <span className={`ml-1 rounded px-1 ${r.incassato ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"}`}>{r.incassato ? "incassata (Compensi)" : "non ancora incassata"}</span>}</td>
                 </tr>))}
               {prev && !prev.righe.length && <tr><td colSpan={8} className="px-2 py-4 text-center text-slate-400">Nessun contratto EOLO/energia nel mese di competenza</td></tr>}
             </tbody>
@@ -71,6 +71,7 @@ export const IncentiviInPagamento = ({ mese, meta }) => {
         </div>
         <div className="mt-3 flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setSel(Object.fromEntries((prev?.righe || []).filter((r) => !r.gia_caricata).map((r) => [r.ref_id, true])))} data-testid="inc-prev-tutti">Seleziona tutti</Button>
+          <Button size="sm" variant="outline" onClick={() => setSel(Object.fromEntries((prev?.righe || []).filter((r) => !r.gia_caricata && (r.fonte !== "energia" || r.incassato)).map((r) => [r.ref_id, true])))} data-testid="inc-prev-incassati">Seleziona solo incassati</Button>
           <Button size="sm" onClick={confermaSel} data-testid="inc-conferma">Carica selezionati in pagamento {mese}</Button>
         </div>
       </section>

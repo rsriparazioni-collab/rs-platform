@@ -719,3 +719,7 @@ Vedi /app/memory/test_credentials.md
 - Intercompany SRLS→ditta: ora include anche i contratti dei negozi della ditta (25 €) oltre alle pratiche di Sondrio lavorate (25 €), con colonna motivo.
 - Deborah assegnata al negozio Morbegno (store_ids) → classifica mostra Morbegno per Silvio/Bruno/Deborah. Silvio presente in classifica (4 partecipanti).
 - Clienti: POST /clients/{id}/mark-unpaid + tasto "Rimetti non pagato" (ClientDetail) per annullare un pagato errato.
+
+## 2026-10-26 (octies) — Gettone energia separato + collegamento Compensi↔Incentivi — TESTATO (curl)
+- Config `gettone_energia_lordo` (default 10 €; EOLO resta 25). Classifica/costi usano gettoni per fonte; regolamento §2 aggiornato. Test: 1 EOLO 150 + 1 energia 25 → gettoni 35 €, fondo 56,88, risultato azienda +83.
+- Collegamento Compensi: estratti conto usano `stores.trattenuta_pct` (sezione Compensi → Negozi) se impostata, altrimenti default incentivi; "In pagamento" mostra per ogni contratto energia se è "incassato" (stessa logica effective_pagato di Compensi) + tasto "Seleziona solo incassati".

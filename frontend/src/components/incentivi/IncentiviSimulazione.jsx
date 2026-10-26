@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { eur, ClassificaTable, FondoPanel } from "./IncentiviCalcolo";
 
-const CAMPI = [["gettone_lordo", "Gettone lordo €"], ["eolo_fondo_pct", "% EOLO al fondo"], ["costo_datore_fattore", "Fattore costo datore"], ["coef_riparazione", "Coeff. riparazioni %"], ["coef_eolo", "Coeff. EOLO %"], ["coef_energia", "Coeff. energia %"], ["valore_sim_nuova", "Valore SIM nuova €"], ["valore_sim_mnp", "Valore SIM MNP €"], ["valore_fisso", "Valore fisso €"], ["bonus_squadra_pct", "Premio squadra %"], ["tetto_fondo", "Tetto fondo € (0 = nessuno)"]];
+const CAMPI = [["gettone_lordo", "Gettone EOLO lordo €"], ["gettone_energia_lordo", "Gettone energia lordo €"], ["eolo_fondo_pct", "% EOLO al fondo"], ["costo_datore_fattore", "Fattore costo datore"], ["coef_riparazione", "Coeff. riparazioni %"], ["coef_eolo", "Coeff. EOLO %"], ["coef_energia", "Coeff. energia %"], ["valore_sim_nuova", "Valore SIM nuova €"], ["valore_sim_mnp", "Valore SIM MNP €"], ["valore_fisso", "Valore fisso €"], ["bonus_squadra_pct", "Premio squadra %"], ["tetto_fondo", "Tetto fondo € (0 = nessuno)"]];
 
 export const IncentiviSimulazione = ({ mese, cfg }) => {
   const [scenari, setScenari] = useState([{ nome: "Scenario A", p: Object.fromEntries(CAMPI.map(([k]) => [k, cfg[k]])), premi: cfg.premi_pct.join("/") }]);

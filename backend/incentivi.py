@@ -48,7 +48,7 @@ async def _default_config() -> dict:
     users = {u["name"].strip().lower(): u["id"] async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1})}
     fondo = [stores[n] for n in ("morbegno", "gravedona") if n in stores]
     srls = [stores[n] for n in ("sondrio",) if n in stores]
-    return {"id": CONFIG_ID, "online": False, "gettone_lordo": 25.0, "costo_datore_fattore": 1.45, "eolo_fondo_pct": 50.0,
+    return {"id": CONFIG_ID, "online": False, "gettone_lordo": 25.0, "gettone_energia_lordo": 10.0, "costo_datore_fattore": 1.45, "eolo_fondo_pct": 50.0,
             "trattenuta_terzi_pct": 15.0, "energia_importo": 50.0, "energia_acquisizione": 25.0, "energia_lavorazione": 25.0,
             "premi_pct": [50, 30, 20], "tetto_fondo": 0.0, "padre_in_fondo": True,
             "partecipanti": [users[n] for n in ("kevin", "deborah", "silvio", "bruno") if n in users],
@@ -70,6 +70,7 @@ async def get_config() -> dict:
 
 class ConfigInput(BaseModel):
     gettone_lordo: Optional[float] = None
+    gettone_energia_lordo: Optional[float] = None
     costo_datore_fattore: Optional[float] = None
     eolo_fondo_pct: Optional[float] = None
     trattenuta_terzi_pct: Optional[float] = None
@@ -251,8 +252,9 @@ async def previste(mese: str, request: Request):
         if _ym(c.get("data_contratto") or c.get("updated_at")) != mese:
             continue
         uid = c.get("operatore_id") or c.get("created_by") or ""
+        incassato = _d["effective_pagato"](c.get("pagato", False), c.get("last_payment_date")) if _d.get("effective_pagato") else bool(c.get("pagato"))
         out.append({"ref_id": f"client:{c['id']}", "fonte": "energia", "store_id": c.get("venditore_id", ""), "negozio": stores.get(c.get("venditore_id", ""), "—"),
-                    "user_id": uid if uid in users else "", "persona": users.get(uid, "—"), "data_contratto": (c.get("data_contratto") or "")[:10],
+                    "user_id": uid if uid in users else "", "persona": users.get(uid, "—"), "data_contratto": (c.get("data_contratto") or "")[:10], "incassato": incassato,
                     "descrizione": f"{c.get('cognome', '')} {c.get('nome', '')} · {c.get('tipo_bolletta') or ''} · {(c.get('gestione') or 'cambiaora').upper()}".strip(),
                     "importo": float(cfg["energia_importo"]), "gia_caricata": f"client:{c['id']}" in gia, "anomalia": "" if uid in users else "Operatore non identificato"})
     eolo = [s async for s in db.servizi.find({"operatore_tel": {"$regex": "^eolo$", "$options": "i"}, "esito_attivazione": {"$nin": ["annullata", "respinta", "stornata", "non_riconosciuta"]}}, {"_id": 0})]
@@ -589,11 +591,14 @@ async def calcola(mese: str, cfg: dict) -> dict:
     pset = set(partecipanti)
     fondo_set = set(cfg.get("negozi_fondo", []))
     gettone, fatt = float(cfg["gettone_lordo"]), float(cfg["costo_datore_fattore"])
+    gettone_energia = float(cfg.get("gettone_energia_lordo", cfg["gettone_lordo"]))
+    gettoni_lordi_tot = 0.0
+    tratt_store = {s["id"]: s.get("trattenuta_pct") async for s in db.stores.find({"trattenuta_pct": {"$ne": None}}, {"_id": 0, "id": 1, "trattenuta_pct": 1})}
     tratt_pct = float(cfg["trattenuta_terzi_pct"]) / 100
     provv = await db.incentivi_provvigioni.find({"mese": mese}, {"_id": 0}).to_list(10000)
     anomalie = []
 
-    per_persona = {u: {"user_id": u, "nome": users[u], "eolo_n": 0, "eolo_importo": 0.0, "energia_n": 0, "energia_importo": 0.0, "gettoni_n": 0} for u in partecipanti}
+    per_persona = {u: {"user_id": u, "nome": users[u], "eolo_n": 0, "eolo_importo": 0.0, "energia_n": 0, "energia_importo": 0.0, "gettoni_n": 0, "gettoni_lordo": 0.0} for u in partecipanti}
     fondo_lordo_eolo, energia_gruppo, gettoni_tot = 0.0, 0.0, 0
     fondo_per_entita = defaultdict(float)
     esterni = defaultdict(lambda: {"eolo": 0.0, "energia": 0.0, "n": 0, "righe": []})
@@ -606,9 +611,12 @@ async def calcola(mese: str, cfg: dict) -> dict:
             anomalie.append({"tipo": "negozio_mancante", "descrizione": p.get("descrizione", ""), "importo": imp})
         uid = p.get("user_id", "") or (cfg.get("persona_negozio") or {}).get(sid, "")
         gett_applicato = uid in pset and imp > 0 and in_gruppo
+        gett_val = gettone if fonte == "eolo" else gettone_energia
         if gett_applicato:
             per_persona[uid]["gettoni_n"] += 1
+            per_persona[uid]["gettoni_lordo"] += gett_val
             gettoni_tot += 1
+            gettoni_lordi_tot += gett_val
             per_persona[uid][f"{fonte}_n"] += 1
             per_persona[uid][f"{fonte}_importo"] += imp
         elif uid in pset and imp < 0:
@@ -622,8 +630,9 @@ async def calcola(mese: str, cfg: dict) -> dict:
             else:
                 energia_gruppo += imp
         else:
-            # negozi esterni / SRLS: trattenuta su EOLO (fatturato alla ditta) e su energia solo per terzi
-            tr = imp * tratt_pct if (fonte == "eolo" or ent != "srls") else 0.0
+            # negozi esterni / SRLS: trattenuta su EOLO (fatturato alla ditta) e su energia solo per terzi; % dal negozio (sezione Compensi) se impostata, altrimenti default incentivi
+            pct = float(tratt_store.get(sid)) / 100 if tratt_store.get(sid) is not None else tratt_pct
+            tr = imp * pct if (fonte == "eolo" or ent != "srls") else 0.0
             if fonte == "energia" and ent == "srls":
                 tr = 0.0  # la SRLS incassa direttamente dal fornitore
             e = esterni[sid or p.get("negozio_nome", "?")]
@@ -646,7 +655,7 @@ async def calcola(mese: str, cfg: dict) -> dict:
                   + a["sim_mnp"] * float(cfg["valore_sim_mnp"]) + a["fisso"] * float(cfg["valore_fisso"]))
         classifica.append({**pp, **a, "valore": _r(valore), "contratti_eolo_energia": pp["eolo_n"] + pp["energia_n"],
                            "attivita_totali": pp["eolo_n"] + pp["energia_n"] + a["riparazioni_n"] + a["sim_nuova"] + a["sim_mnp"] + a["fisso"],
-                           "gettoni_lordo": _r(pp["gettoni_n"] * gettone)})
+                           "gettoni_lordo": _r(pp["gettoni_lordo"])})
     classifica.sort(key=lambda x: (-x["valore"], -x["contratti_eolo_energia"], -x["attivita_totali"], x["nome"]))
     premi_pct = list(cfg.get("premi_pct", []))
     i = 0
@@ -699,7 +708,7 @@ async def calcola(mese: str, cfg: dict) -> dict:
 
     premi_lordi = _r(sum(c["premio_lordo"] for c in classifica))
     bonus_lordi = _r(sum(c["bonus_squadra"] for c in classifica))
-    gettoni_lordi = _r(gettoni_tot * gettone)
+    gettoni_lordi = _r(gettoni_lordi_tot)
     costo_datore = _r((premi_lordi + gettoni_lordi + bonus_lordi) * fatt)
     eolo_gruppo = _r(sum(float(p.get("importo") or 0) for p in provv if p.get("fonte") == "eolo" and (p.get("store_id") in fondo_set or (not p.get("store_id") and p.get("negozio_nome") == "PADRE"))))
     trattenute_tot = _r(sum(r["trattenuta"] for e in esterni.values() for r in e["righe"]))
@@ -879,7 +888,7 @@ def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
     premi = cfg.get("premi_pct", [])
     return [
         ("1. Partecipanti", [", ".join(users.get(u, u) for u in cfg.get("partecipanti", [])), "Negozi che alimentano il fondo: " + ", ".join(stores.get(s, s) for s in cfg.get("negozi_fondo", []))]),
-        ("2. Gettone per contratto", [f"Per ogni contratto EOLO o luce/gas (CambiaOra/ENEL) confermato dal fornitore e attribuito al venditore: {cfg['gettone_lordo']:.2f} EUR lordi in busta paga.",
+        ("2. Gettone per contratto", [f"Per ogni contratto EOLO confermato dal fornitore e attribuito al venditore: {cfg['gettone_lordo']:.2f} EUR lordi in busta paga; per ogni contratto luce/gas (CambiaOra/ENEL): {float(cfg.get('gettone_energia_lordo', cfg['gettone_lordo'])):.2f} EUR lordi.",
                                       "Il gettone matura nel mese in cui il fornitore conferma la provvigione (fattura), non alla firma del contratto.",
                                       "Contratti annullati, respinti o stornati dal fornitore non generano gettone; gli storni successivi vengono compensati sul mese seguente."]),
         ("3. Fondo premi", [f"Il fondo e' alimentato esclusivamente dalle provvigioni EOLO confermate dei negozi indicati: {cfg['eolo_fondo_pct']:.0f}% della provvigione residua dopo il costo del gettone.",
