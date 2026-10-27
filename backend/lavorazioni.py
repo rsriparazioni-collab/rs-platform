@@ -91,15 +91,18 @@ async def addetti_put(input: AddettiInput, admin: dict = Depends(require_admin))
 
 async def _ultimo_cambio(client_ids: list) -> dict:
     out = {}
-    cur = _d["db"].lavorazioni_log.aggregate([{"$match": {"client_id": {"$in": client_ids}}},
-                                              {"$group": {"_id": "$client_id", "at": {"$max": "$created_at"}}}])
+    cur = _d["db"].lavorazioni_log.aggregate([{"$match": {"client_id": {"$in": client_ids}}}, {"$sort": {"created_at": 1}},
+                                              {"$group": {"_id": "$client_id", "at": {"$max": "$created_at"},
+                                                          "note": {"$push": {"$cond": [{"$eq": ["$status", "nota"]}, {"n": "$note", "da": "$operatore_name", "at": "$created_at"}, None]}}}}])
     async for r in cur:
-        out[r["_id"]] = r["at"]
+        note = [n for n in r["note"] if n]
+        out[r["_id"]] = {"at": r["at"], "nota": note[-1] if note else None}
     return out
 
 
 def _riga(c: dict, nomi_store: dict, ultimo: dict) -> dict:
-    rif = ultimo.get(c["id"]) or c.get("updated_at") or c.get("created_at")
+    u = ultimo.get(c["id"]) or {}
+    rif = u.get("at") or c.get("updated_at") or c.get("created_at")
     giorni = _days(rif)
     lav = c.get("lavorazione") or "da_quotare"
     return {"id": c["id"], "client_name": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "telefono": c.get("telefono", ""),
@@ -108,7 +111,7 @@ def _riga(c: dict, nomi_store: dict, ultimo: dict) -> dict:
             "ultimo_cambio": rif, "giorni_fermo": giorni, "semaforo": _semaforo(giorni),
             "presa_in_carico_nome": c.get("presa_in_carico_nome", ""), "presa_in_carico_da": c.get("presa_in_carico_da", ""),
             "presa_in_carico_at": c.get("presa_in_carico_at"), "reinserimenti": int(c.get("reinserimenti") or 0),
-            "verifica_esito": lav in VERIFICA_ESITO and giorni >= GIORNI_VERIFICA}
+            "ultima_nota": u.get("nota"), "verifica_esito": lav in VERIFICA_ESITO and giorni >= GIORNI_VERIFICA}
 
 
 async def _clienti_energia(scope: dict, extra: dict) -> list:
@@ -179,6 +182,59 @@ async def presa_in_carico(client_id: str, input: PresaInput, user: dict = Depend
     await db.clients.update_one({"id": client_id}, upd)
     await _d["log_lavorazione"](c, user, c.get("lavorazione", ""), "Presa in carico" if input.attiva else "Rilasciata presa in carico")
     return {"status": "ok"}
+
+
+class NotaInput(BaseModel):
+    nota: str
+
+
+@router.post("/lavorazioni/{client_id}/nota")
+async def nota_rapida(client_id: str, input: NotaInput, user: dict = Depends(require_addetto)):
+    if not input.nota.strip():
+        raise HTTPException(status_code=400, detail="Nota vuota")
+    c = await _d["db"].clients.find_one({**_d["client_scope_filter"](user), "id": client_id}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    await _d["log_lavorazione"](c, user, "nota", input.nota.strip())
+    return {"status": "ok"}
+
+
+@router.get("/lavorazioni/storico-settimanale")
+async def storico_settimanale(settimane: int = 8, user: dict = Depends(require_addetto)):
+    """Pratiche chiuse (cambio effettuato / rinnovato) per settimana ISO, negozio e operatore."""
+    db = _d["db"]
+    settimane = max(1, min(settimane, 52))
+    oggi = date.today()
+    lunedi = oggi - timedelta(days=oggi.weekday())
+    inizio = lunedi - timedelta(weeks=settimane - 1)
+    logs = await db.lavorazioni_log.find({"status": {"$in": LAVORATE}, "created_at": {"$gte": inizio.isoformat()}},
+                                         {"_id": 0, "client_id": 1, "operatore_name": 1, "created_at": 1}).to_list(20000)
+    scope = _d["client_scope_filter"](user)
+    cids = list({l["client_id"] for l in logs})
+    store_of = {c["id"]: c.get("venditore_id", "") async for c in db.clients.find({**scope, "id": {"$in": cids}}, {"_id": 0, "id": 1, "venditore_id": 1})}
+    nomi_store = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    sett = [(inizio + timedelta(weeks=i)) for i in range(settimane)]
+    righe = {w.isoformat(): {"settimana": w.isoformat(), "fine": (w + timedelta(days=6)).isoformat(), "negozi": {}, "operatori": {}, "totale": 0} for w in sett}
+    visti = set()
+    for l in logs:
+        if l["client_id"] not in store_of:
+            continue
+        d = datetime.fromisoformat(l["created_at"]).date()
+        key = (l["client_id"], d.isocalendar()[:2])
+        if key in visti:
+            continue
+        visti.add(key)
+        w = (d - timedelta(days=d.weekday())).isoformat()
+        r = righe.get(w)
+        if not r:
+            continue
+        st = nomi_store.get(store_of[l["client_id"]], "-")
+        r["negozi"][st] = r["negozi"].get(st, 0) + 1
+        r["operatori"][l["operatore_name"]] = r["operatori"].get(l["operatore_name"], 0) + 1
+        r["totale"] += 1
+    negozi = sorted({n for r in righe.values() for n in r["negozi"]})
+    operatori = sorted({o for r in righe.values() for o in r["operatori"]})
+    return {"settimane": list(reversed(list(righe.values()))), "negozi": negozi, "operatori": operatori}
 
 
 class ReinserisciInput(BaseModel):

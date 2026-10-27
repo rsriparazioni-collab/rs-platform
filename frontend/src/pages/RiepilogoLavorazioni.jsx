@@ -9,6 +9,7 @@ import { RiepilogoNegozi } from "../components/lavorazioni/RiepilogoNegozi";
 import { ColonnaPratiche } from "../components/lavorazioni/ColonnaPratiche";
 import { AgendaGiorno, AgendaNuovo } from "../components/lavorazioni/AgendaGiorno";
 import { AddettiDialog } from "../components/lavorazioni/AddettiDialog";
+import { StoricoSettimanale } from "../components/lavorazioni/StoricoSettimanale";
 
 export default function RiepilogoLavorazioni() {
   const { user } = useAuth();
@@ -58,6 +59,7 @@ export default function RiepilogoLavorazioni() {
             <ColonnaPratiche titolo="Da reinserire" colore="rose" righe={data.da_reinserire} testid="col-da-reinserire"
                              onOpen={setDetail} onChanged={load} onAgenda={setAgendaFor} reinserire />
           </div>
+          <StoricoSettimanale />
         </>
       )}
 

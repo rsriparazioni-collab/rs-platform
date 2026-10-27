@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Hand, RotateCcw, CalendarPlus, AlertTriangle } from "lucide-react";
+import { Hand, RotateCcw, CalendarPlus, AlertTriangle, StickyNote } from "lucide-react";
+import { Input } from "../ui/input";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
@@ -13,7 +14,15 @@ const COLORI = { sky: "border-sky-200 bg-sky-50/60", emerald: "border-emerald-20
 const Riga = ({ r, lavorate, reinserire, onOpen, onChanged, onAgenda }) => {
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [notaOpen, setNotaOpen] = useState(false);
+  const [nota, setNota] = useState("");
   const mia = r.presa_in_carico_da === user.id;
+  const salvaNota = async (e) => {
+    e.stopPropagation();
+    if (!nota.trim()) return;
+    setBusy(true);
+    try { await api.post(`/lavorazioni/${r.id}/nota`, { nota }); setNota(""); setNotaOpen(false); toast.success("Nota salvata"); onChanged(); } catch (err) { toast.error(apiError(err)); } finally { setBusy(false); }
+  };
   const presa = async (e) => {
     e.stopPropagation(); setBusy(true);
     try { await api.post(`/lavorazioni/${r.id}/presa-in-carico`, { attiva: !mia }); onChanged(); } catch (err) { toast.error(apiError(err)); } finally { setBusy(false); }
@@ -43,8 +52,20 @@ const Riga = ({ r, lavorate, reinserire, onOpen, onChanged, onAgenda }) => {
             {r.verifica_esito && <span className="flex items-center gap-1 text-orange-600 font-medium" data-testid="verifica-esito"><AlertTriangle className="h-3 w-3" /> verifica esito</span>}
             {r.presa_in_carico_nome && <span className="text-sky-700">in carico a {r.presa_in_carico_nome}</span>}
           </div>
+          {r.ultima_nota && (
+            <p className="mt-1 flex items-start gap-1 rounded bg-amber-50 px-1.5 py-1 text-xs text-amber-900" data-testid={`ultima-nota-${r.id}`}>
+              <StickyNote className="mt-0.5 h-3 w-3 shrink-0" /><span className="truncate"><b>{r.ultima_nota.da}</b>: {r.ultima_nota.n}</span>
+            </p>
+          )}
         </div>
       </div>
+      {notaOpen && (
+        <div className="mt-2 flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <Input autoFocus value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Nota rapida…" className="h-7 text-xs"
+                 onKeyDown={(e) => { if (e.key === "Enter") salvaNota(e); if (e.key === "Escape") setNotaOpen(false); }} data-testid={`nota-input-${r.id}`} />
+          <Button size="sm" className="h-7 text-xs" disabled={busy || !nota.trim()} onClick={salvaNota} data-testid={`nota-save-${r.id}`}>Salva</Button>
+        </div>
+      )}
       {!lavorate && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           <Button size="sm" variant={mia ? "default" : "outline"} className="h-7 text-xs" disabled={busy} onClick={presa} data-testid={`presa-${r.id}`}>
@@ -52,6 +73,7 @@ const Riga = ({ r, lavorate, reinserire, onOpen, onChanged, onAgenda }) => {
           </Button>
           {reinserire && <Button size="sm" variant="outline" className="h-7 text-xs border-rose-300 text-rose-700" disabled={busy} onClick={reins} data-testid={`reinserisci-${r.id}`}><RotateCcw className="mr-1 h-3 w-3" /> Reinserisci</Button>}
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onAgenda(r); }} data-testid={`agenda-${r.id}`}><CalendarPlus className="mr-1 h-3 w-3" /> Agenda</Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); setNotaOpen((o) => !o); }} data-testid={`nota-btn-${r.id}`}><StickyNote className="mr-1 h-3 w-3" /> Nota</Button>
         </div>
       )}
     </div>
