@@ -5,6 +5,7 @@ import api, { apiError } from "../lib/api";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 
+const notify = () => window.dispatchEvent(new Event("ricordi-changed"));
 const fmtData = (iso) => (iso ? iso.split("-").reverse().join("/") : "");
 
 export const RicordiBox = ({ clientId, onBirthdayLoaded }) => {
@@ -18,9 +19,9 @@ export const RicordiBox = ({ clientId, onBirthdayLoaded }) => {
   if (!data) return null;
   const add = async () => {
     if (!testo.trim()) return;
-    try { await api.post(`/clients/${clientId}/ricordi`, { testo }); setTesto(""); load(); } catch (e) { toast.error(apiError(e)); }
+    try { await api.post(`/clients/${clientId}/ricordi`, { testo }); setTesto(""); load(); notify(); } catch (e) { toast.error(apiError(e)); }
   };
-  const del = async (id) => { try { await api.delete(`/clients/${clientId}/ricordi/${id}`); load(); } catch (e) { toast.error(apiError(e)); } };
+  const del = async (id) => { try { await api.delete(`/clients/${clientId}/ricordi/${id}`); load(); notify(); } catch (e) { toast.error(apiError(e)); } };
   return (
     <div className="rounded-xl border border-amber-300 bg-amber-50 p-3" data-testid="ricordi-box">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -54,11 +55,17 @@ export const RicordiBox = ({ clientId, onBirthdayLoaded }) => {
 
 export const useRicordiPreview = (ids) => {
   const [map, setMap] = useState({});
+  const [tick, setTick] = useState(0);
   const key = (ids || []).filter(Boolean).slice(0, 300).join(",");
+  useEffect(() => {
+    const h = () => setTick((t) => t + 1);
+    window.addEventListener("ricordi-changed", h);
+    return () => window.removeEventListener("ricordi-changed", h);
+  }, []);
   useEffect(() => {
     if (!key) { setMap({}); return; }
     api.get("/ricordi/preview", { params: { ids: key } }).then((r) => setMap(r.data)).catch(() => {});
-  }, [key]);
+  }, [key, tick]);
   return map;
 };
 

@@ -140,7 +140,8 @@ async def invia_auguri() -> dict:
     db = _d["db"]
     oggi = date.today()
     stores = {s["id"]: s async for s in db.stores.find({}, {"_id": 0})}
-    inviati, errori, visti = [], [], set()
+    inviati, errori = [], []
+    visti = {_persona_key(c) async for c in db.clients.find({"auguri_anno": oggi.year}, {"_id": 0, "id": 1, "codice_fiscale": 1, "telefono": 1})}
     proj = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "telefono": 1, "venditore_id": 1, "data_nascita": 1, "codice_fiscale": 1, "auguri_anno": 1, "no_recensioni": 1}
     async for c in db.clients.find({"anonimizzato_at": {"$in": [None]}, "telefono": {"$nin": [None, ""]}, "no_recensioni": {"$ne": True},
                                     "auguri_anno": {"$ne": oggi.year}}, proj):
@@ -155,7 +156,8 @@ async def invia_auguri() -> dict:
         msg = _d["store_msg"](store, "msg_compleanno", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
         try:
             await _d["wa_send"](c["telefono"], msg, session=c.get("venditore_id") or "default", tipo="compleanno", client_id=c["id"])
-            await db.clients.update_one({"id": c["id"]}, {"$set": {"auguri_anno": oggi.year, "auguri_sent_at": _now().isoformat()}})
+            stessa_persona = {"$or": [{"id": c["id"]}] + ([{"codice_fiscale": c["codice_fiscale"]}] if c.get("codice_fiscale") else []) + [{"telefono": c["telefono"]}]}
+            await db.clients.update_many(stessa_persona, {"$set": {"auguri_anno": oggi.year, "auguri_sent_at": _now().isoformat()}})
             inviati.append(c["id"])
         except Exception as e:
             errori.append({"client_id": c["id"], "error": str(getattr(e, "detail", e))})

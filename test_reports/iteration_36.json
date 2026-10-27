@@ -1,0 +1,41 @@
+{
+  "summary": "Tested 'Da ricordare' (client notes) and the WhatsApp birthday greetings. Backend: 7 of 8 pytest passed. Passed: CF birth-date parsing (male, female day+40, lowercase, invalid CF, invalid month, Feb 31), ricordi GET/POST/DELETE (blank text gives 400, text cut to 200 chars, newest first, double delete gives 404, unknown client gives 404), preview map, PATCH data_nascita saved and nascita_da_cf flips to false, stato totals add up, cron with no or wrong Bearer gives 401, non-admin invia-ora gives 403, compleanni list sorted with no duplicate for two utenze of the same person and correct oggi/eta/negozio, invia-ora sends once with the custom store msg_compleanno and writes a dry-run wa_log of type 'compleanno'. FAILED: calling invia-ora a second time the same day greets the same person again through the second utenza. Frontend (admin with TOTP): Dashboard compleanni-box, count and stato render; the Clienti detail shows ricordi-box, ricordi-vuoto and the CF birthday chip; adding a note creates a chip; ricordi-line shows in the list ONLY after a page reload, not when the detail is closed; deleting a note works; input-data-nascita is present in the edit form; the Negozi edit form has the 'Auguri di compleanno (ore 9:00)' editor behind 'Personalizza'. All my TEST data was removed and the Tirano msg_compleanno was restored.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "invia_auguri() in ricordi.py (cron + POST /api/ricordi/compleanni/invia-ora)", "issue": "Same-person check works only inside one run. The query skips docs with auguri_anno == this year, but only the utenza that was actually messaged gets auguri_anno set. A second run on the same day (cron retry, manual 'Invia ora' after the 9:00 cron, or a backend restart) picks up the person's other utenza (same CF/telefono) and sends a SECOND birthday message. Reproduced: 2 clients with the same CF and phone; call 1 sent 1 message, call 2 sent 1 more to the other client_id. Fix: set auguri_anno on all clients with the same persona key, or check against a per-person/phone wa_log for this year.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/ricordi/compleanni/stato", "issue": "There is no admin role check and no client_scope_filter, so any authenticated user gets global client counts. The frontend only calls it for admin. Add a role check."},
+      {"endpoint": "GET /api/ricordi/compleanni", "issue": "With several utenze, the entry shown is the first one found. If the greeting went out on another utenza, auguri_inviati can show false ('in attesa') even though the greeting was sent. Compute auguri_inviati across the persona."},
+      {"endpoint": "_persona_key", "issue": "One utenza with a CF and another with only the phone get different keys, so they are not deduped."},
+      {"endpoint": "DELETE /api/clients/{id}", "issue": "Does not delete the client's client_ricordi documents, leaving orphan records."},
+      {"endpoint": "ClientInput.data_nascita", "issue": "The date format is not validated. Any string is accepted, and an invalid one silently disables the greeting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Clienti list / RicordiLine", "issue": "After adding a note in ClientDetail and closing it, ricordi-line does not appear until a page reload. useRicordiPreview refetches only when the ids key changes, and onClose does not trigger a refresh. The same is likely on Riparazioni, Telefonia and Riepilogo. Add a refresh token/callback from RicordiBox, or refetch on detail close.", "selector": "[data-testid=ricordi-line]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ClientForm", "issues": ["input-data-nascita uses the browser's native type=date picker instead of the shadcn Calendar used elsewhere"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter36_ricordi_compleanni.py", "/app/test_reports/pytest/pytest_iter36.xml"],
+  "action_items": [
+    "Fix the duplicate birthday greeting on a second run for multi-utenza persons (mark all utenze of the persona with auguri_anno, or dedupe against this year's wa_log by phone/CF)",
+    "Refresh the ricordi preview in the lists when ClientDetail closes or after a note is added or deleted",
+    "Add an admin check to /api/ricordi/compleanni/stato",
+    "Delete client_ricordi when a client is deleted; validate the data_nascita format"
+  ],
+  "critical_code_review_comments": [
+    "invia_auguri sends with session=venditore_id, not wa_session_cliente(). Clients with no venditore_id go to 'default'. This is intended ('dal numero del negozio') but check ENEL/CambiaOra clients.",
+    "compleanni() and invia_auguri() scan every client in Python on each Dashboard load. Fine at about 660 clients, but it will not scale; consider storing an MM-DD field."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter36_ricordi_compleanni.py"],
+  "success_rate": {"backend": "87.5% (7/8)", "frontend": "90% (ricordi-line live refresh fails)"},
+  "seed_data_creation": "None kept. The test creates TEST_Ricordi/TEST_Compleanno clients and deletes them, restores Tirano msg_compleanno, removes the compleanno wa_logs it created and unsets auguri_anno on any real client marked during the test. Pre-existing TEST_Regression client 22a88213 with the ricordo 'appassionato di cani' (created by the main agent) was left alone.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: pytest tests/test_iter36_ricordi_compleanni.py -n0 (pytest.ini adds xdist). TOTP codes cannot be reused within the same 30s window: wait for a new window between API login and UI login. WA dry-run is active (settings.wa_dry_run=true). Store message editor: store-edit-{id}, then click 'Personalizza'."
+}

@@ -732,3 +732,7 @@ Vedi /app/memory/test_credentials.md
 - Nuovo stato lavorazione `annullato` (backend + constants.js). Clienti anonimizzati GDPR esclusi.
 - Frontend: /lavorazioni (pages/RiepilogoLavorazioni.jsx + components/lavorazioni/*), nav "Riepilogo Lavorazioni" visibile solo ad admin e addetti. Deborah seedata come addetta.
 - 2026-10-27 (bis): Nota rapida dalla colonna (POST /api/lavorazioni/{id}/nota → lavorazioni_log status "nota", ultima nota mostrata sulla pratica) + Storico settimanale pratiche chiuse per negozio/operatore (GET /api/lavorazioni/storico-settimanale?settimane=N). Testato via curl + screenshot.
+
+## 2026-10-27 (ter) — "Da ricordare" + Auguri di compleanno — TESTATO (iteration_36 + fix verificati)
+- Backend `/app/backend/ricordi.py`: ricordi per cliente (collezione client_ricordi, CRUD + /api/ricordi/preview per le liste), compleanni (data_nascita o estratta dal codice fiscale), cron /api/cron/auguri-compleanno 09:00 (WhatsApp dal numero del negozio, una volta l'anno per persona anche con più utenze, esclusi blacklist/senza telefono/anonimizzati), /api/ricordi/compleanni(+stato, invia-ora admin). Nuovo msg_compleanno per negozio (MSG_DEFAULTS + StoreMessaggiEditor). ClientInput.data_nascita.
+- Frontend: RicordiBox nella scheda cliente, RicordiLine nelle liste Clienti/Riparazioni/Telefonia/Riepilogo Lavorazioni (evento ricordi-changed), CompleanniBox in Dashboard, campo data di nascita nel form cliente.
