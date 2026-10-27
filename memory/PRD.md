@@ -726,3 +726,8 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-27 — Avviso "Pronto da ritirare" al cliente parte dal numero del negozio
 - `invia_avviso_pronto` (server.py) usa la sessione WhatsApp del negozio (es. Morbegno 3286363327), non più quella del laboratorio. Avviso al negozio, privacy, recensione e promemoria restano invariati (laboratorio). Mappa invii aggiornata. Verificato via /api/whatsapp/mappa-invii.
+
+## 2026-10-27 — Sezione "Riepilogo Lavorazioni" (energia ENEL+CambiaOra) — TESTATA (iteration_35: 11/11 backend + UI ok)
+- Backend `/app/backend/lavorazioni.py`: /api/lavorazioni/riepilogo (3 colonne + contatori per negozio + verifica esito >30gg + agenda), presa-in-carico, reinserisci (annullato/problema_tecnico → da_quotare, contatore reinserimenti, log), agenda personale CRUD, accesso/addetti (settings.lavorazioni_cfg.addetti; admin sempre), cron /api/cron/riepilogo-lavorazioni 08:00 lun-sab (WhatsApp agli addetti con telefono).
+- Nuovo stato lavorazione `annullato` (backend + constants.js). Clienti anonimizzati GDPR esclusi.
+- Frontend: /lavorazioni (pages/RiepilogoLavorazioni.jsx + components/lavorazioni/*), nav "Riepilogo Lavorazioni" visibile solo ad admin e addetti. Deborah seedata come addetta.

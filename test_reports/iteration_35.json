@@ -1,0 +1,41 @@
+{
+  "summary": "Riepilogo Lavorazioni tested end to end. Backend: 11/11 pytest passed (accesso, addetti GET/PUT, riepilogo structure + semaforo + store filter + no GDPR names, presa in carico on/off + log, reinserisci from annullato/problema_tecnico -> da_quotare + reinserimenti++ + log + 400 on non-annullata, agenda CRUD + validation + agenda_scadute logic, PATCH client with annullato, unauth). Frontend (admin+TOTP): nav-lavorazioni visible, /lavorazioni renders store table (8 rows incl '-'), 3 columns counts match API (257/387/1), store row filter works and Tutti resets, Prendi in carico -> 'La lavoro io ✓' + 'in carico a Enrico', release works, Agenda dialog opens (default domani), click pratica opens ClientDetail, Addetti dialog lists 7 non-admin users with Deborah checked and save closes it, agenda add/fatto/delete all work. All test data cleaned up and the addetti list was not changed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/lavorazioni/{id}/presa-in-carico", "issue": "It writes a lavorazioni_log entry, and _ultimo_cambio uses the max log created_at. So just taking or releasing a pratica resets giorni_fermo to 0 and turns the semaforo green, even though the lavorazione state did not change. The 'ferma da X gg' signal can be gamed or lost. Suggest computing giorni_fermo only from logs where the status changed (exclude 'Presa in carico'/'Rilasciata' notes), or store the presa elsewhere."},
+      {"endpoint": "POST /api/lavorazioni/{id}/presa-in-carico (KPI side effect)", "issue": "The presa log rows use status = current lavorazione and operatore_id = the client's operatore_id (or the actor). kpi.py:233 counts logs with status != cambio_effettuato and server.py:1495 counts lavorazioni_mese, so every presa/rilascio inflates KPI 'lavorazioni' counts and may credit the wrong operator. Suggest using a distinct status (e.g. 'presa_in_carico') and excluding it from the KPIs."},
+      {"endpoint": "POST /api/lavorazioni/{id}/presa-in-carico attiva=false", "issue": "Any addetto can release a pratica taken by another addetto (there is no owner check, unlike attiva=true which returns 409)."},
+      {"endpoint": "PUT /api/clients/{id}", "issue": "Returns 405: the update endpoint is PATCH. PATCH with lavorazione='annullato' works. No backend validation of lavorazione against the LAVORAZIONI list (any string is accepted)."},
+      {"endpoint": "GET /api/lavorazioni/riepilogo", "issue": "Stati 'non_cambiare' (17 clients) and 'non_vuole_cambiare' are in no column, so they are silently excluded. Please confirm this is intended. 1 energia client has an empty venditore_id and shows as store '-'."},
+      {"endpoint": "POST /api/lavorazioni/agenda", "issue": "client_id is not scope-checked (it can reference any client and leaks its name into the agenda). Low risk because only addetti can call it."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/lavorazioni header", "issues": ["The global notification bell badge (top-right, fixed) overlaps the 'Addetti' button, so the label is clipped to 'Addet…'. Add right padding/margin to the header actions or move the bell.", "Agenda date inputs use the native browser date picker (type=date) instead of the shadcn Calendar.", "When a store is selected, the first row is still labelled 'Tutti i negozi' but shows the filtered totals."]},
+      {"screen": "ClientDetail Storico lavorazioni", "issues": ["Presa in carico / Rilascio entries show only 'Enrico · Da Quotare' (the note is not displayed), so the history looks like duplicate state changes."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter_lavorazioni.py", "/app/test_reports/pytest/pytest_lavorazioni.xml"],
+  "action_items": [
+    "Exclude presa-in-carico/rilascio log entries from the giorni_fermo/semaforo calculation (_ultimo_cambio)",
+    "Use a distinct log status for presa in carico so the KPI counts (kpi.py, /api/kpi operators) are not inflated",
+    "Fix the overlap between the notification bell and the Addetti button in the /lavorazioni header",
+    "Optional: owner check on releasing a presa; validate lavorazione values; confirm non_cambiare exclusion"
+  ],
+  "critical_code_review_comments": [
+    "lavorazioni.py: _ultimo_cambio aggregates all lavorazioni_log entries (including presa logs). This is the root cause of the semaforo reset.",
+    "lavorazioni.py: riepilogo loads up to 5000 docs twice and filters cliente_energia in Python. Fine for now but unbounded.",
+    "lavorazioni.py: date.today() uses server local time while the other timestamps are UTC. Minor edge at midnight."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter_lavorazioni.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Temporary TEST_Reins / TEST_UiLav clients and TEST_ agenda items were created and deleted. Addetti list unchanged ([Deborah]).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Admin TOTP codes cannot be reused within the same 30s window (replay protection). Wait for the next window between logins. Run pytest with -n0 for print output (pytest.ini uses xdist). Non-admin users get 403 because MFA setup is required, so the role-based 403 for addetti was not isolated. Client update is PATCH, not PUT.",
+  "rca of the issue": "Semaforo reset: presa_in_carico() calls log_lavorazione() -> new lavorazioni_log row -> _ultimo_cambio max(created_at) = now -> giorni_fermo=0. Repro: pick a red pratica, click 'Prendi in carico', refresh: it shows 'ferma da 0 gg', green."
+}
