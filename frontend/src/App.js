@@ -23,6 +23,7 @@ import Formazione from "./pages/Formazione";
 import PrezziRiparazioni from "./pages/PrezziRiparazioni";
 import Kpi from "./pages/Kpi";
 import Compensi from "./pages/Compensi";
+import RiepilogoLavorazioni from "./pages/RiepilogoLavorazioni";
 import Incentivi from "./pages/Incentivi";
 import FirmaRegolamento from "./pages/FirmaRegolamento";
 import Contabilita from "./pages/Contabilita";
@@ -95,6 +96,7 @@ function App() {
             <Route path="prezzi" element={<RequireRole roles={["admin"]}><PrezziRiparazioni /></RequireRole>} />
             <Route path="compensi" element={<RequireRole roles={["admin"]}><Compensi /></RequireRole>} />
             <Route path="incentivi" element={<RequireRole roles={["admin"]}><Incentivi /></RequireRole>} />
+            <Route path="lavorazioni" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]} section="energia"><RiepilogoLavorazioni /></RequireRole>} />
             <Route path="contabilita" element={<RequireRole roles={["admin", "operatore", "negozio", "tecnico"]}><Contabilita /></RequireRole>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

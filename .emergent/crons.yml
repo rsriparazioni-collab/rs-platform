@@ -107,3 +107,11 @@ crons:
     endpoint: "{{BASE_URL}}/api/incentivi/cron/sollecito-firme"
     method: POST
     enabled: true
+  - name: riepilogo-lavorazioni
+    description: "Alle 8:00 (lun-sab) WhatsApp agli addetti lavorazioni energia con il riepilogo: da lavorare, da reinserire, ferme, agenda"
+    cron: "0 8 * * 1-6"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/riepilogo-lavorazioni"
+    method: POST
+    enabled: true

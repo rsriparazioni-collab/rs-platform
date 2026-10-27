@@ -69,7 +69,7 @@ LAVORAZIONI = [
     "cambiare", "non_cambiare", "cambio_effettuato", "in_quotazione",
     "richieste_bollette", "in_attesa_ok", "problema_tecnico", "da_quotare",
     "contattare_cliente", "non_vuole_cambiare", "passa_in_negozio",
-    "attesa_documenti", "rinnovato"
+    "attesa_documenti", "rinnovato", "annullato"
 ]
 
 # ---------------- Auth helpers ----------------
@@ -6187,6 +6187,20 @@ import google_drive as google_drive_module
 import kpi as kpi_module
 kpi_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send)
 api_router.include_router(kpi_module.router)
+import lavorazioni as lavorazioni_module
+lavorazioni_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, client_scope_filter=client_scope_filter,
+                         log_lavorazione=log_lavorazione, cliente_energia=cliente_energia)
+api_router.include_router(lavorazioni_module.router)
+
+@api_router.post("/cron/riepilogo-lavorazioni")
+async def cron_riepilogo_lavorazioni(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(lavorazioni_module.riepilogo_mattutino)
+    return {"status": "accepted"}
 import report_inserimenti as report_inserimenti_module
 report_inserimenti_module.setup(db=db, current_user=kpi_module._current_user)
 api_router.include_router(report_inserimenti_module.router)

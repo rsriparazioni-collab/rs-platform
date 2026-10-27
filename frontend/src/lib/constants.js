@@ -24,6 +24,7 @@ export const LAVORAZIONI = [
   { id: "passa_in_negozio", label: "Passa in Negozio", badge: "bg-teal-500/15 text-teal-700 border-teal-300" },
   { id: "attesa_documenti", label: "Attesa Documenti", badge: "bg-orange-500/15 text-orange-700 border-orange-300" },
   { id: "rinnovato", label: "Rinnovato", badge: "bg-green-600/15 text-green-800 border-green-300" },
+  { id: "annullato", label: "Annullato (da reinserire)", badge: "bg-red-600/15 text-red-800 border-red-300" },
 ];
 
 export const lavorazioneLabel = (id) =>
