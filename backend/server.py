@@ -3791,7 +3791,7 @@ async def whatsapp_mappa_invii(user: dict = Depends(get_current_user)):
             {"flusso": "Riparazione – privacy", "da": sess(rip_sess), "a": "cliente", "testo": store_msg(s, "msg_privacy", nome="Mario")},
             {"flusso": "Riparazione – pronta in laboratorio (avviso al negozio)", "da": sess(LAB_SESSION if connessi.get(LAB_SESSION, {}).get("connessa") else rip_sess), "a": f"negozio {s['nome']} ({(s.get('telefono_avvisi') or s.get('telefono') or connessi.get(s['id'], {}).get('numero') or 'NESSUN NUMERO')})",
              "testo": f"Laboratorio: la riparazione N. RT… (dispositivo di Mario Rossi) è PRONTA. Passa a ritirarla dal laboratorio e portala in negozio {s['nome']}; poi metti lo stato 'Pronto da ritirare' per avvisare il cliente."},
-            {"flusso": "Riparazione – pronta da ritirare (al cliente)", "da": sess(rip_sess), "a": "cliente", "testo": store_msg(s, "msg_pronto", nome="Mario", dispositivo="iPhone 12", numero="RT123")},
+            {"flusso": "Riparazione – pronta da ritirare (al cliente)", "da": sess(s["id"]), "a": "cliente", "testo": store_msg(s, "msg_pronto", nome="Mario", dispositivo="iPhone 12", numero="RT123")},
             {"flusso": "Riparazione – recensione (alla consegna)", "da": sess(rip_sess), "a": "cliente", "testo": review_message_for_store(s) or "⚠️ Nessun link recensione impostato: messaggio NON inviato"},
             {"flusso": "Riparazione – promemoria ritiro (cron)", "da": sess(rip_sess), "a": "cliente", "testo": "Promemoria: il tuo dispositivo è pronto da ritirare in negozio…"},
             {"flusso": "Telefonia (SIM/Internet/Fisso) – privacy", "da": sess(s["id"]), "a": "cliente", "testo": store_msg(s, "msg_privacy", nome="Mario")},
@@ -5479,10 +5479,11 @@ async def invia_avviso_pronto(svc: dict) -> None:
     if not client_doc or not client_doc.get("telefono"):
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_error": "Cliente senza numero di telefono"}})
         return
-    sessione = await wa_session_servizio(svc)
+    await wa_session_servizio(svc)
     if not svc.get("venditore_id"):
         svc = await db.servizi.find_one({"id": svc["id"]}, {"_id": 0}) or svc
     store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
+    sessione = svc.get("venditore_id") or "default"
     msg = store_msg(store, "msg_pronto", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", "dispositivo"),
                     numero=svc.get("numero_riparazione", "-"))
     try:

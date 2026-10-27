@@ -723,3 +723,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-26 (octies) — Gettone energia separato + collegamento Compensi↔Incentivi — TESTATO (curl)
 - Config `gettone_energia_lordo` (default 10 €; EOLO resta 25). Classifica/costi usano gettoni per fonte; regolamento §2 aggiornato. Test: 1 EOLO 150 + 1 energia 25 → gettoni 35 €, fondo 56,88, risultato azienda +83.
 - Collegamento Compensi: estratti conto usano `stores.trattenuta_pct` (sezione Compensi → Negozi) se impostata, altrimenti default incentivi; "In pagamento" mostra per ogni contratto energia se è "incassato" (stessa logica effective_pagato di Compensi) + tasto "Seleziona solo incassati".
+
+## 2026-10-27 — Avviso "Pronto da ritirare" al cliente parte dal numero del negozio
+- `invia_avviso_pronto` (server.py) usa la sessione WhatsApp del negozio (es. Morbegno 3286363327), non più quella del laboratorio. Avviso al negozio, privacy, recensione e promemoria restano invariati (laboratorio). Mappa invii aggiornata. Verificato via /api/whatsapp/mappa-invii.
