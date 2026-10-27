@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { RIP_STATI, ripStatoLabel, ripStatoBadge, fmtDate } from "../lib/constants";
 import ServizioForm from "../components/ServizioForm";
 import { ClienteLink } from "../components/ClienteLink";
+import { useRicordiPreview, RicordiLine } from "../components/Ricordi";
 import ServizioDetail from "../components/ServizioDetail";
 import ReportLaboratorio from "../components/ReportLaboratorio";
 import { Button } from "../components/ui/button";
@@ -16,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 export default function Riparazioni() {
   const { user } = useAuth();
   const [servizi, setServizi] = useState([]);
+  const ricordi = useRicordiPreview(servizi.map((s) => s.client_id));
   const [meta, setMeta] = useState({ stores: [], operators: [] });
   const [filters, setFilters] = useState({ q: "", stato: "all", venditore_id: "all" });
   const [formOpen, setFormOpen] = useState(false);
@@ -118,7 +120,7 @@ export default function Riparazioni() {
                 <tr key={s.id} className="cursor-pointer transition-colors hover:bg-slate-50"
                     onClick={() => setDetailRow(s)} data-testid={`riparazione-row-${i}`}>
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-600" data-testid={`riparazione-numero-${i}`}>{s.numero_riparazione || "-"}</td>
-                  <td className="px-4 py-3 font-medium text-slate-900"><ClienteLink clientId={s.client_id}>{s.client_name || "-"}</ClienteLink></td>
+                  <td className="px-4 py-3 font-medium text-slate-900"><ClienteLink clientId={s.client_id}>{s.client_name || "-"}</ClienteLink><RicordiLine testi={ricordi[s.client_id]} /></td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-1.5">
                       <Wrench className="h-3.5 w-3.5 text-slate-400" /> {s.dispositivo || "-"}

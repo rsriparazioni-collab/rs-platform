@@ -12,13 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import StoreMessaggiEditor from "../components/StoreMessaggiEditor";
 import MessaggiEnelEditor from "../components/MessaggiEnelEditor";
 
-const MSG_KEYS = ["msg_privacy", "msg_pronto", "msg_recensione", "msg_promemoria", "msg_vincolo", "msg_offerta_annuale", "msg_rinnovo_energia", "msg_truffe", "msg_bollette"];
+const MSG_KEYS = ["msg_privacy", "msg_pronto", "msg_recensione", "msg_promemoria", "msg_vincolo", "msg_offerta_annuale", "msg_rinnovo_energia", "msg_truffe", "msg_bollette", "msg_compleanno"];
 
 export default function Negozi() {
   const { user } = useAuth();
   const [stores, setStores] = useState([]);
   const [open, setOpen] = useState(false);
-  const EMPTY_FORM = { nome: "", referente: "", tipo: "negozio", note: "", review_link: "", telefono_avvisi: "", email_commercialista: "", msg_privacy: "", msg_pronto: "", msg_recensione: "", msg_promemoria: "", msg_vincolo: "", msg_offerta_annuale: "", msg_rinnovo_energia: "", msg_truffe: "", msg_bollette: "" };
+  const EMPTY_FORM = { nome: "", referente: "", tipo: "negozio", note: "", review_link: "", telefono_avvisi: "", email_commercialista: "", msg_privacy: "", msg_pronto: "", msg_recensione: "", msg_promemoria: "", msg_vincolo: "", msg_offerta_annuale: "", msg_rinnovo_energia: "", msg_truffe: "", msg_bollette: "", msg_compleanno: "" };
   const [form, setForm] = useState(EMPTY_FORM);
   const [editing, setEditing] = useState(null);
   const isAdmin = user.role === "admin";

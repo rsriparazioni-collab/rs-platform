@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import MarginiChart from "../components/MarginiChart";
 import DaRichiamare from "../components/DaRichiamare";
+import CompleanniBox from "../components/CompleanniBox";
 import CodaWhatsApp from "../components/CodaWhatsApp";
 import StatoInviiWhatsApp from "../components/StatoInviiWhatsApp";
 import ContattoDialog, { ContattoBadge, ContattoButton } from "../components/ContattoDialog";
@@ -139,6 +140,7 @@ export default function Dashboard() {
       {(user.role === "admin" || user.can_view_all) && <CodaWhatsApp />}
       <StatoInviiWhatsApp />
       <DaRichiamare refreshKey={refreshKey} onChanged={reloadScadenze} />
+      <CompleanniBox />
 
       {scadenze && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="scadenze-panel">

@@ -5,6 +5,7 @@ import { PerIproButton } from "./PerIproButton";
 import WhatsAppLog from "./WhatsAppLog";
 import MessaggiPrevisti from "./MessaggiPrevisti";
 import WaCustomDialog from "./WaCustomDialog";
+import { RicordiBox } from "./Ricordi";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import PortaleBox from "./PortaleBox";
@@ -254,6 +255,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   ? <span className="status-badge bg-emerald-500/15 text-emerald-700 border-emerald-300">Pagato</span>
                   : <span className="status-badge bg-rose-500/15 text-rose-700 border-rose-300">Non pagato</span>}
               </div>
+              <RicordiBox clientId={detail.id} />
 
               <div className="rounded-xl border border-slate-200 p-4">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">Timeline contratto</p>

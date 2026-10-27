@@ -24,6 +24,7 @@ import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Label } from "../components/ui/label";
+import { useRicordiPreview, RicordiLine } from "../components/Ricordi";
 
 export default function Clienti() {
   const { user } = useAuth();
@@ -91,6 +92,7 @@ export default function Clienti() {
     return out;
   }, [clients, perPersona, espansi]);
   const persone = useMemo(() => new Set(clients.map((c) => c.persona_key || c.id)).size, [clients]);
+  const ricordi = useRicordiPreview(clients.map((c) => c.id));
 
   const exportExcel = async () => {
     try {
@@ -288,6 +290,7 @@ export default function Clienti() {
                         </span>
                       )}
                     </p>
+                    <RicordiLine testi={ricordi[c.id]} />
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex flex-wrap items-center gap-1" data-testid={`client-tipi-${i}`}>

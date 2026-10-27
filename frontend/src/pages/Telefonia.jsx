@@ -7,6 +7,7 @@ import { servizioTipoLabel, fmtDate } from "../lib/constants";
 import ServizioForm from "../components/ServizioForm";
 import ServizioDetail from "../components/ServizioDetail";
 import { ClienteLink } from "../components/ClienteLink";
+import { useRicordiPreview, RicordiLine } from "../components/Ricordi";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 
@@ -51,6 +52,7 @@ export default function Telefonia() {
   const openNew = (tipo) => { setEditing(null); setFormTipo(tipo); setFormOpen(true); };
   const sez = SEZIONI[tab];
   const rows = sez ? servizi.filter((s) => sez.tipi.includes(s.tipo)) : [];
+  const ricordi = useRicordiPreview(rows.map((s) => s.client_id));
   const inScadenza = vincoli.filter((v) => v.giorni_alla_scadenza <= 60).length;
 
   const tabs = [
@@ -115,7 +117,7 @@ export default function Telefonia() {
                     <tr key={s.id} className="cursor-pointer transition-colors hover:bg-slate-50"
                         onClick={() => setDetailRow(s)} data-testid={`telefonia-row-${i}`}>
                       <td className="px-4 py-3 font-medium text-slate-900"><ClienteLink clientId={s.client_id}>{s.client_name || "-"}</ClienteLink>
-                        {tab === "fisso" && <span className="ml-2 text-xs text-slate-400">{servizioTipoLabel(s.tipo)}</span>}</td>
+                        {tab === "fisso" && <span className="ml-2 text-xs text-slate-400">{servizioTipoLabel(s.tipo)}</span>}<RicordiLine testi={ricordi[s.client_id]} /></td>
                       <td className="px-4 py-3"><span className="status-badge bg-sky-500/15 text-sky-700 border-sky-300"><sez.icon className="h-3 w-3" /> {s.operatore_tel || "-"}</span></td>
                       <td className="px-4 py-3 text-slate-600">{s.numero || "-"}</td>
                       <td className="px-4 py-3 text-slate-600">{fmtDate(s.data_attivazione)}</td>

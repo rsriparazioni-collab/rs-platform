@@ -7,11 +7,12 @@ import { useAuth } from "../../context/AuthContext";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { lavorazioneLabel, lavorazioneBadge } from "../../lib/constants";
+import { RicordiLine } from "../Ricordi";
 
 const SEMAFORO = { verde: "bg-emerald-500", giallo: "bg-amber-400", rosso: "bg-red-500" };
 const COLORI = { sky: "border-sky-200 bg-sky-50/60", emerald: "border-emerald-200 bg-emerald-50/60", rose: "border-rose-200 bg-rose-50/60" };
 
-const Riga = ({ r, lavorate, reinserire, onOpen, onChanged, onAgenda }) => {
+const Riga = ({ r, lavorate, reinserire, onOpen, onChanged, onAgenda, ricordi }) => {
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   const [notaOpen, setNotaOpen] = useState(false);
@@ -52,6 +53,7 @@ const Riga = ({ r, lavorate, reinserire, onOpen, onChanged, onAgenda }) => {
             {r.verifica_esito && <span className="flex items-center gap-1 text-orange-600 font-medium" data-testid="verifica-esito"><AlertTriangle className="h-3 w-3" /> verifica esito</span>}
             {r.presa_in_carico_nome && <span className="text-sky-700">in carico a {r.presa_in_carico_nome}</span>}
           </div>
+          <RicordiLine testi={ricordi?.[r.id]} />
           {r.ultima_nota && (
             <p className="mt-1 flex items-start gap-1 rounded bg-amber-50 px-1.5 py-1 text-xs text-amber-900" data-testid={`ultima-nota-${r.id}`}>
               <StickyNote className="mt-0.5 h-3 w-3 shrink-0" /><span className="truncate"><b>{r.ultima_nota.da}</b>: {r.ultima_nota.n}</span>

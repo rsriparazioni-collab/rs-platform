@@ -10,6 +10,7 @@ import { ColonnaPratiche } from "../components/lavorazioni/ColonnaPratiche";
 import { AgendaGiorno, AgendaNuovo } from "../components/lavorazioni/AgendaGiorno";
 import { AddettiDialog } from "../components/lavorazioni/AddettiDialog";
 import { StoricoSettimanale } from "../components/lavorazioni/StoricoSettimanale";
+import { useRicordiPreview } from "../components/Ricordi";
 
 export default function RiepilogoLavorazioni() {
   const { user } = useAuth();
@@ -18,6 +19,7 @@ export default function RiepilogoLavorazioni() {
   const [detail, setDetail] = useState(null);
   const [agendaFor, setAgendaFor] = useState(null);
   const [denied, setDenied] = useState(false);
+  const ricordi = useRicordiPreview(data ? [...data.da_lavorare, ...data.da_reinserire].map((r) => r.id) : []);
 
   const load = useCallback(() => {
     api.get("/lavorazioni/riepilogo", { params: { store_id: storeId } })
@@ -52,11 +54,11 @@ export default function RiepilogoLavorazioni() {
           <RiepilogoNegozi negozi={data.negozi} totali={data.totali} storeId={storeId} onSelect={setStoreId} />
           <AgendaGiorno scadute={data.agenda_scadute} oggi={data.oggi} onChanged={load} />
           <div className="grid gap-4 lg:grid-cols-3">
-            <ColonnaPratiche titolo="Da lavorare" colore="sky" righe={data.da_lavorare} testid="col-da-lavorare"
+            <ColonnaPratiche titolo="Da lavorare" colore="sky" righe={data.da_lavorare} testid="col-da-lavorare" ricordi={ricordi}
                              onOpen={setDetail} onChanged={load} onAgenda={setAgendaFor} />
-            <ColonnaPratiche titolo="Lavorate (ultimi 60 gg)" colore="emerald" righe={data.lavorate} testid="col-lavorate"
+            <ColonnaPratiche titolo="Lavorate (ultimi 60 gg)" colore="emerald" righe={data.lavorate} testid="col-lavorate" ricordi={ricordi}
                              onOpen={setDetail} onChanged={load} onAgenda={setAgendaFor} lavorate />
-            <ColonnaPratiche titolo="Da reinserire" colore="rose" righe={data.da_reinserire} testid="col-da-reinserire"
+            <ColonnaPratiche titolo="Da reinserire" colore="rose" righe={data.da_reinserire} testid="col-da-reinserire" ricordi={ricordi}
                              onOpen={setDetail} onChanged={load} onAgenda={setAgendaFor} reinserire />
           </div>
           <StoricoSettimanale />

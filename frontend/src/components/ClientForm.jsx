@@ -19,7 +19,7 @@ const EMPTY = {
   costo_kwh_attuale: "", spese_fisse_attuale: "", costo_smc_attuale: "",
   data_contratto: "", data_verifica: "", data_cambio: "", tipo_contratto: "fisso",
   nuovo_fornitore: "", costo_kwh_nuovo: "", spese_fisse_nuovo: "", costo_smc_nuovo: "",
-  privacy_firmata: false, note: "", lavorazione: "da_quotare", venditore_id: "", operatore_id: "",
+  privacy_firmata: false, note: "", data_nascita: "", lavorazione: "da_quotare", venditore_id: "", operatore_id: "",
 };
 
 const NUM_FIELDS = ["kw_potenza", "costo_kwh_attuale", "spese_fisse_attuale", "costo_smc_attuale",
@@ -446,6 +446,9 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
             <div className="mt-4">
               <Field label="Note" testid="note">
                 <Textarea rows={3} value={form.note} onChange={(e) => set("note", e.target.value)} data-testid="input-note" />
+              </Field>
+              <Field label="Data di nascita (per gli auguri; se vuota si usa il codice fiscale)" testid="data-nascita">
+                <Input type="date" value={form.data_nascita || ""} onChange={(e) => set("data_nascita", e.target.value)} data-testid="input-data-nascita" />
               </Field>
             </div>
             <div className="mt-4"><DocumentiPicker files={nuoviDoc} onChange={setNuoviDoc} testid="client-form-documenti" label="Allega documenti (carta d'identità, bollette, ecc.)" /></div>

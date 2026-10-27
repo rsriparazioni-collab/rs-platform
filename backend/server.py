@@ -656,6 +656,7 @@ class StoreCreate(BaseModel):
     msg_rinnovo_energia: str = ""
     msg_truffe: str = ""
     msg_bollette: str = ""
+    msg_compleanno: str = ""
 
 class StoreUpdate(BaseModel):
     nome: Optional[str] = None
@@ -674,8 +675,10 @@ class StoreUpdate(BaseModel):
     msg_rinnovo_energia: Optional[str] = None
     msg_truffe: Optional[str] = None
     msg_bollette: Optional[str] = None
+    msg_compleanno: Optional[str] = None
 
 MSG_DEFAULTS = {
+    "msg_compleanno": "Buon compleanno {nome}! 🎂\nTanti auguri da tutto lo staff di RS Riparazioni {negozio}. Passa a trovarci quando vuoi!",
     "msg_privacy": """RS Group – Grazie per averci scelto!
 Ciao {nome}
 per procedere con la tua richiesta e completare l'attivazione del servizio, è necessario firmare l'autorizzazione privacy.
@@ -836,6 +839,7 @@ class ClientInput(BaseModel):
     costo_smc_nuovo: Optional[float] = None
     privacy_firmata: bool = False
     note: str = ""
+    data_nascita: str = ""
     lavorazione: str = "da_quotare"
     origine: str = ""
     venditore_id: str = ""
@@ -6191,6 +6195,19 @@ import lavorazioni as lavorazioni_module
 lavorazioni_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, client_scope_filter=client_scope_filter,
                          log_lavorazione=log_lavorazione, cliente_energia=cliente_energia)
 api_router.include_router(lavorazioni_module.router)
+import ricordi as ricordi_module
+ricordi_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, client_scope_filter=client_scope_filter, store_msg=store_msg)
+api_router.include_router(ricordi_module.router)
+
+@api_router.post("/cron/auguri-compleanno")
+async def cron_auguri_compleanno(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(ricordi_module.invia_auguri)
+    return {"status": "accepted"}
 
 @api_router.post("/cron/riepilogo-lavorazioni")
 async def cron_riepilogo_lavorazioni(request: Request, background_tasks: BackgroundTasks):

@@ -14,6 +14,7 @@ const CAMPI = [
   { key: "msg_rinnovo_energia", label: "Rinnovo contratto luce/gas (60 gg prima)", hint: "Inviato al 10° mese dall'attivazione del contratto energia" },
   { key: "msg_truffe", label: "Attenzione alle truffe (10 gg dopo attivazione)", hint: "Inviato una volta, 10 giorni dopo l'attivazione del contratto energia. *testo* = grassetto, _testo_ = corsivo" },
   { key: "msg_bollette", label: "Invito a inviare le bollette (20 gg in Centro Alert)", hint: "Inviato una volta ai clienti in alert rinnovo da 20 giorni e non ancora lavorati" },
+  { key: "msg_compleanno", label: "Auguri di compleanno (ore 9:00)", hint: "Inviato una volta l'anno il giorno del compleanno (data di nascita o codice fiscale) dal numero del negozio. Variabili: {nome} {cognome} {negozio}" },
 ];
 
 export default function StoreMessaggiEditor({ form, setForm }) {
