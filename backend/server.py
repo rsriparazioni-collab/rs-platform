@@ -6228,6 +6228,16 @@ switcho_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, 
                      get_object=get_object, WA_SERVICE=WA_SERVICE, wa_headers=wa_headers, is_addetto=lavorazioni_module._is_addetto)
 api_router.include_router(switcho_module.router)
 
+@api_router.post("/cron/switcho-48h")
+async def cron_switcho_48h(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(switcho_module.promemoria_conferma_link)
+    return {"status": "accepted"}
+
 @api_router.post("/cron/auguri-compleanno")
 async def cron_auguri_compleanno(request: Request, background_tasks: BackgroundTasks):
     auth = request.headers.get("Authorization", "")

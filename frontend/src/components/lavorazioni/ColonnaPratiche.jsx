@@ -52,6 +52,8 @@ const Riga = ({ r, lavorate, reinserire, onOpen, onChanged, onAgenda, ricordi })
             <span>{lavorate ? "lavorata" : "ferma"} da {r.giorni_fermo} gg</span>
             {r.verifica_esito && <span className="flex items-center gap-1 text-orange-600 font-medium" data-testid="verifica-esito"><AlertTriangle className="h-3 w-3" /> verifica esito</span>}
             {r.presa_in_carico_nome && <span className="text-sky-700">in carico a {r.presa_in_carico_nome}</span>}
+            {!lavorate && r.gestione !== "enel" && r.documenti === 0 && <span className="rounded bg-rose-50 px-1 text-rose-700" data-testid={`senza-doc-${r.id}`}>senza documenti</span>}
+            {r.documenti > 0 && <span className="text-slate-400">{r.documenti} doc</span>}
           </div>
           <RicordiLine testi={ricordi?.[r.id]} />
           {r.ultima_nota && (

@@ -136,7 +136,10 @@ async def riepilogo(store_id: str = "", giorni_lavorate: int = 60, user: dict = 
     lavorate_docs = await _clienti_energia(scope, {"lavorazione": {"$in": LAVORATE}, "updated_at": {"$gte": limite}})
     tutti = aperti + lavorate_docs
     ultimo = await _ultimo_cambio([c["id"] for c in tutti])
-    righe = [_riga(c, nomi_store, ultimo) for c in tutti]
+    n_doc = {}
+    async for r in db.attachments.aggregate([{"$match": {"client_id": {"$in": [c["id"] for c in tutti]}, "is_deleted": False}}, {"$group": {"_id": "$client_id", "n": {"$sum": 1}}}]):
+        n_doc[r["_id"]] = r["n"]
+    righe = [{**_riga(c, nomi_store, ultimo), "documenti": n_doc.get(c["id"], 0)} for c in tutti]
     da_lavorare = sorted([r for r in righe if r["lavorazione"] in DA_LAVORARE], key=lambda r: -r["giorni_fermo"])
     da_reinserire = sorted([r for r in righe if r["lavorazione"] in DA_REINSERIRE], key=lambda r: -r["giorni_fermo"])
     lavorate = sorted([r for r in righe if r["lavorazione"] in LAVORATE], key=lambda r: r["ultimo_cambio"] or "", reverse=True)

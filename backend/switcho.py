@@ -402,6 +402,41 @@ async def rispondi(seg_id: str, input: RispondiInput, user: dict = Depends(requi
     return {"status": "ok", "allegati": len(media)}
 
 
+# ---------- promemoria 48 ore ----------
+async def promemoria_conferma_link() -> dict:
+    """Segnalazioni 'conferma_link' aperte da oltre 48h: agenda + WhatsApp agli addetti, una volta sola."""
+    db = _d["db"]
+    limite = (_now() - timedelta(hours=48)).isoformat()
+    segs = await db.switcho_segnalazioni.find({"stato": "aperta", "categoria": "conferma_link", "client_id": {"$ne": None},
+                                               "at": {"$lte": limite}, "promemoria_48h_at": {"$in": [None]}}, {"_id": 0}).to_list(200)
+    if not segs:
+        return {"promemoria": 0}
+    cfg_lav = await db.settings.find_one({"key": "lavorazioni_cfg"}, {"_id": 0})
+    addetti = await db.users.find({"id": {"$in": ((cfg_lav or {}).get("value") or {}).get("addetti", [])}, "attivo": {"$ne": False}}, {"_id": 0}).to_list(50)
+    oggi = _now().date().isoformat()
+    righe = []
+    for s in segs:
+        c = await db.clients.find_one({"id": s["client_id"]}, {"_id": 0, "lavorazione": 1})
+        if not c or c.get("lavorazione") in ("cambio_effettuato", "rinnovato", "annullato"):
+            await db.switcho_segnalazioni.update_one({"id": s["id"]}, {"$set": {"promemoria_48h_at": _now().isoformat(), "promemoria_skip": True}})
+            continue
+        righe.append(f"• {s['client_name']} ({s.get('negozio', '-')}, {s.get('fornitore') or 'fornitore'})")
+        for u in addetti:
+            await db.agenda_lavorazioni.insert_one({"id": str(uuid.uuid4()), "user_id": u["id"], "client_id": s["client_id"], "client_name": s["client_name"], "data": oggi,
+                                                    "nota": f"Switcho: conferma link {s.get('fornitore') or ''} richiesta da oltre 48h e non chiusa — ricontattare il cliente", "fatto": False,
+                                                    "origine": "switcho_48h", "created_at": _now().isoformat()})
+        await db.switcho_segnalazioni.update_one({"id": s["id"]}, {"$set": {"promemoria_48h_at": _now().isoformat()}, "$push": {"azioni": "promemoria 48h agli addetti"}})
+    if righe:
+        testo = "⏰ Switcho: pratiche in attesa di conferma link da oltre 48 ore e non ancora chiuse:\n" + "\n".join(righe) + "\nRicontatta i clienti: le trovi in agenda nel Riepilogo Lavorazioni."
+        for u in addetti:
+            if u.get("telefono"):
+                try:
+                    await _d["wa_send"](u["telefono"], testo, session=(u.get("store_ids") or ["default"])[0], tipo="switcho_48h")
+                except Exception as e:
+                    logger.warning(f"promemoria 48h a {u['name']} fallito: {e}")
+    return {"promemoria": len(righe)}
+
+
 # ---------- configurazione (admin) ----------
 class CfgInput(BaseModel):
     gruppo_jid: str = ""

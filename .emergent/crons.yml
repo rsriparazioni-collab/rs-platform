@@ -123,3 +123,11 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/auguri-compleanno"
     method: POST
     enabled: true
+  - name: switcho-48h
+    description: "Alle 9:30 (lun-sab): pratiche con richiesta Switcho 'conferma link' aperta da oltre 48h → agenda + WhatsApp agli addetti lavorazioni"
+    cron: "30 9 * * 1-6"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/switcho-48h"
+    method: POST
+    enabled: true
