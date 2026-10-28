@@ -767,3 +767,6 @@ Vedi /app/memory/test_credentials.md
 - Estere: upload/download/rimozione allegato (object storage path estere/{id}/…), elimina fattura rimuove l'oggetto.
 - Frontend: tab "Banche & commercialisti" (Banche.jsx), colonna Allegato in FattureEstere.
 - NOTA: il parser estratti è generico; con i file reali Intesa/Nexi/myPOS potrebbe servire un aggiustamento colonne. Email commercialisti: da inserire dall'utente.
+- 2026-10-28 (bis): parser PDF myPOS (Payment +, Fee −, Request money saltato) — settembre 769,10/12,28 ok. Riconciliazione mostra "di cui myPOS" per giorno/totale: le chiusure POS NON includono myPOS (diff = esattamente myPOS) → chiedere all'utente come registrano myPOS. 29/09 chiusure 3.002 vs 302 da verificare.
+- Scadenze affitto mensili inserite (giorno 5): Morbegno 700, Gravedona 600 (centro morbegno+gravedona), Sondrio 518,13, dal 11/2026.
+- `chiusura_mese.py` + `ChiusuraMese.jsx` (tab admin "Chiusura mese"): 7 voci (corrispettivi giorni mancanti no domenica, fatture AdE, estratti per conto via estratti_caricati, riconciliazione POS, estere inviate, scadenze pagate, report commercialista inviato – opzionale a mese in corso); "Vai →" porta alla tab giusta.

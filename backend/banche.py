@@ -176,15 +176,46 @@ def _parse_pdf_nexi(text: str) -> list:
     return out
 
 
+def _parse_pdf_mypos(text: str) -> list:
+    """Monthly statement myPOS: Payment = incasso lordo (+), Fee = commissione (−); 'Request money' (giroconto verso banca) saltato."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    out = []
+    i = 0
+    while i < len(lines):
+        if _RE_DATA_IT.match(lines[i]) and i + 1 < len(lines) and re.match(r"^\d{2}:\d{2}$", lines[i + 1]):
+            j = i + 2
+            while j < len(lines) and not (_RE_DATA_IT.match(lines[j]) and j + 1 < len(lines) and re.match(r"^\d{2}:\d{2}$", lines[j + 1])) and not lines[j].startswith("myPOS Payments Ltd"):
+                j += 1
+            blk = lines[i:j]
+            nums = [x for x in blk if re.match(r"^\d+\.\d{2}$", x)]
+            d = _data(blk[0])
+            if d and len(nums) >= 2:
+                debit, credit = float(nums[-2]), float(nums[-1])
+                testo = " ".join(blk[2:])
+                if "Request money" in testo or "Request" in blk[2:6]:
+                    pass
+                elif credit > 0:
+                    m = re.search(r"TID\s*(\d+)", testo)
+                    out.append({"data": d, "importo": round(credit, 2), "descrizione": f"myPOS Payment{' TID ' + m.group(1) if m else ''} {blk[1]}"[:200]})
+                elif debit > 0 and "Fee" in blk[2:5]:
+                    out.append({"data": d, "importo": round(-debit, 2), "descrizione": f"myPOS commissione {blk[1]}"[:200]})
+            i = j
+            continue
+        i += 1
+    return out
+
+
 def _parse_pdf(content: bytes) -> list:
     import pymupdf
     doc = pymupdf.open(stream=content, filetype="pdf")
     text = "\n".join(p.get_text() for p in doc)
+    if "myPOS" in text and "Monthly statement" in text:
+        return _parse_pdf_mypos(text)
     if "SERVIZIO DI INCASSO CARTE" in text or "MOVIMENTI LIQUIDATI" in text:
         return _parse_pdf_nexi(text)
     if "Dettaglio movimenti del conto corrente" in text or "INTESA" in text.upper():
         return _parse_pdf_intesa(doc)
-    raise ValueError("PDF non riconosciuto (supportati: estratto Intesa Sanpaolo, estratto Nexi/Setefi)")
+    raise ValueError("PDF non riconosciuto (supportati: estratto Intesa Sanpaolo, Nexi/Setefi, myPOS)")
 
 
 def parse_estratto(content: bytes, filename: str) -> list:
@@ -303,10 +334,12 @@ async def riconciliazione(entita: str, anno: int, mese: int, user: dict = Depend
     async for c in db.corrispettivi.find({"store_id": {"$in": centro["store_ids"]}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "pos": 1}):
         g = giorni.setdefault(c["data"], {"data": c["data"], "pos_chiusure": 0.0, "pos_transazioni": 0.0, "accrediti_banca": 0.0})
         g["pos_chiusure"] = round(g["pos_chiusure"] + float(c.get("pos") or 0), 2)
-    async for m in db.movimenti_banca.find({"conto_id": {"$in": pos_ids}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "importo": 1}):
+    async for m in db.movimenti_banca.find({"conto_id": {"$in": pos_ids}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "importo": 1, "conto_id": 1}):
         if m["importo"] > 0:
             g = giorni.setdefault(m["data"], {"data": m["data"], "pos_chiusure": 0.0, "pos_transazioni": 0.0, "accrediti_banca": 0.0})
             g["pos_transazioni"] = round(g["pos_transazioni"] + m["importo"], 2)
+            g.setdefault("per_pos", {})
+            g["per_pos"][m["conto_id"]] = round(g["per_pos"].get(m["conto_id"], 0) + m["importo"], 2)
     uscite_banca = []
     async for m in db.movimenti_banca.find({"conto_id": {"$in": [b["id"] for b in banche]}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "hash": 0}):
         if m["importo"] > 0 and _is_pos_accredito(m.get("descrizione", "")):
@@ -319,6 +352,7 @@ async def riconciliazione(entita: str, anno: int, mese: int, user: dict = Depend
         g["diff_transazioni"] = round(g["pos_transazioni"] - g["pos_chiusure"], 2)
         g["ok"] = abs(g["diff_transazioni"]) < 1.0 if g["pos_transazioni"] else None  # None = transazioni POS non caricate
     tot = {k: round(sum(g[k] for g in righe), 2) for k in ("pos_chiusure", "pos_transazioni", "accrediti_banca")}
+    tot["per_pos"] = {p: round(sum((g.get("per_pos") or {}).get(p, 0) for g in righe), 2) for p in pos_ids}
     tot["commissioni_stimate"] = round(tot["pos_transazioni"] - tot["accrediti_banca"], 2) if tot["accrediti_banca"] else None
     # uscite banca ↔ fatture ricevute AdE (stesso importo, tolleranza 1 cent)
     fatture = await db.fatture_ade.find({"centro_id": centro["id"], "anno": anno, "mese": mese, "direzione": "ricevute"}, {"_id": 0, "id": 1, "controparte": 1, "totale": 1, "data": 1}).to_list(2000)

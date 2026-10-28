@@ -6354,6 +6354,10 @@ import scadenzario as scadenzario_module
 scadenzario_module.setup(db=db, user=contabilita_module._user, centri=contabilita_module._centri, centro=contabilita_module._centro, piano=fiscale_module.piano,
                          wa_send=wa_send, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE)
 api_router.include_router(scadenzario_module.router)
+import chiusura_mese as chiusura_module
+chiusura_module.setup(db=db, centri_tutti=_centri_tutti, riconciliazione=lambda entita, anno, mese: banche_module.riconciliazione(entita, anno, mese, user={"role": "admin"}),
+                      scadenze=lambda centro_id, anno, mese: scadenzario_module.scadenze_centro(centro_id, anno, mese))
+api_router.include_router(chiusura_module.router)
 import corrispettivi_ade as corrispettivi_ade_module
 corrispettivi_ade_module.setup(db=db, get_current_user=get_current_user)
 api_router.include_router(corrispettivi_ade_module.router)

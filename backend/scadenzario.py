@@ -65,6 +65,10 @@ async def _docs(db, centro_ids: list) -> list:
     return await db.scadenze_f24.find({"centro_id": {"$in": centro_ids}}, {"_id": 0}).to_list(2000)
 
 
+async def scadenze_centro(centro_id: str, anno: int, mese: int) -> list:
+    return _istanze(await _docs(_d["db"], [centro_id]), anno, mese)
+
+
 @router.get("")
 async def lista(anno: int, mese: int, request: Request):
     user = await _d["user"](request)

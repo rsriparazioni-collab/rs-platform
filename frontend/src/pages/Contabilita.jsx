@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Receipt, Scale, TrendingUp, Settings2, Activity, Landmark, Calculator, Globe, CalendarClock } from "lucide-react";
+import { Receipt, Scale, TrendingUp, Settings2, Activity, Landmark, Calculator, Globe, CalendarClock, ClipboardCheck } from "lucide-react";
 import api from "../lib/api";
 import { FattureEstere } from "../components/contabilita/FattureEstere";
 import { Banche } from "../components/contabilita/Banche";
 import { Scadenzario } from "../components/contabilita/Scadenzario";
+import { ChiusuraMese } from "../components/contabilita/ChiusuraMese";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Corrispettivi } from "../components/contabilita/Corrispettivi";
 import { IvaDashboard } from "../components/contabilita/IvaDashboard";
@@ -20,6 +21,7 @@ export default function Contabilita() {
   const [storeId, setStoreId] = useState("");
   const [anno, setAnno] = useState(oggi.getFullYear());
   const [mese, setMese] = useState(oggi.getMonth() + 1);
+  const [tab, setTab] = useState("corrispettivi");
   const loadMeta = useCallback(() => api.get("/contabilita/meta").then((r) => {
     setMeta(r.data);
     setStoreId((cur) => cur || (r.data.stores.find((s) => s.completo) || {}).id || "");
@@ -59,7 +61,7 @@ export default function Contabilita() {
         </div>
       )}
       {!storeId ? <p className="text-sm text-slate-500" data-testid="contabilita-nessun-negozio">Nessun negozio con corrispettivi condivisi.</p> : (
-        <Tabs defaultValue="corrispettivi">
+        <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="corrispettivi" className="gap-1.5" data-testid="contabilita-tab-corrispettivi"><Receipt className="h-4 w-4" /> Corrispettivi</TabsTrigger>
             <TabsTrigger value="pdp" className="gap-1.5" data-testid="contabilita-tab-pdp"><Scale className="h-4 w-4" /> Punto di pareggio</TabsTrigger>
@@ -67,6 +69,7 @@ export default function Contabilita() {
             {meta.is_admin && <TabsTrigger value="estere" className="gap-1.5" data-testid="contabilita-tab-estere"><Globe className="h-4 w-4" /> Fatture estere</TabsTrigger>}
             {meta.is_admin && <TabsTrigger value="banche" className="gap-1.5" data-testid="contabilita-tab-banche"><Landmark className="h-4 w-4" /> Banche & commercialisti</TabsTrigger>}
             <TabsTrigger value="scadenzario" className="gap-1.5" data-testid="contabilita-tab-scadenzario"><CalendarClock className="h-4 w-4" /> Scadenzario</TabsTrigger>
+            {meta.is_admin && <TabsTrigger value="chiusura" className="gap-1.5" data-testid="contabilita-tab-chiusura"><ClipboardCheck className="h-4 w-4" /> Chiusura mese</TabsTrigger>}
             <TabsTrigger value="fiscale" className="gap-1.5" data-testid="contabilita-tab-fiscale"><Calculator className="h-4 w-4" /> Pianificazione fiscale</TabsTrigger>
             <TabsTrigger value="report" className="gap-1.5" data-testid="contabilita-tab-report"><TrendingUp className="h-4 w-4" /> Report fatturato</TabsTrigger>
             <TabsTrigger value="impostazioni" className="gap-1.5" data-testid="contabilita-tab-impostazioni"><Settings2 className="h-4 w-4" /> Invii e impostazioni</TabsTrigger>
@@ -77,6 +80,7 @@ export default function Contabilita() {
           {meta.is_admin && <TabsContent value="estere"><FattureEstere anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} /></TabsContent>}
           {meta.is_admin && <TabsContent value="banche"><Banche anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} /></TabsContent>}
           <TabsContent value="scadenzario"><Scadenzario anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} isAdmin={meta.is_admin} /></TabsContent>
+          {meta.is_admin && <TabsContent value="chiusura"><ChiusuraMese anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} goTab={setTab} /></TabsContent>}
           <TabsContent value="fiscale"><PianoFiscale anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="report"><ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="impostazioni"><ContabilitaImpostazioni meta={meta} storeId={storeId} reload={loadMeta} /></TabsContent>
