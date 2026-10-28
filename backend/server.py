@@ -3553,7 +3553,7 @@ LAB_SESSION = "laboratorio"
 LAB_STORE_NAME = "Morbegno"
 
 async def wa_session_servizio(svc: dict) -> str:
-    """Riparazioni del negozio Morbegno → WhatsApp del laboratorio (Bruno); altrimenti numero del negozio.
+    """Riparazioni/telefonia: sempre il numero del negozio che ha inserito (il laboratorio avvisa solo i negozi).
     Se il servizio non ha negozio, usa quello del cliente (mai la sessione inesistente 'default')."""
     sid = svc.get("venditore_id")
     if not sid:
@@ -3563,9 +3563,10 @@ async def wa_session_servizio(svc: dict) -> str:
             await db.servizi.update_one({"id": svc["id"]}, {"$set": {"venditore_id": sid}})
             logger.warning(f"Servizio {svc.get('id')} senza negozio: sessione WhatsApp presa dal cliente ({sid})")
     sid = sid or "default"
-    if svc.get("tipo") == "riparazione" and sid == await store_id_by_name(LAB_STORE_NAME):
-        return LAB_SESSION
-    return sid
+    if sid == "default":
+        return sid
+    store = await db.stores.find_one({"id": sid}, {"_id": 0, "id": 1, "nome": 1})
+    return await wa_sessione_negozio(store) if store else sid
 
 ENEL_MSG_KEYS = {"recensione_deborah": ENEL_REVIEW_MSG[ENEL_SESSION_DEBORAH],
                  "recensione_gravedona": ENEL_REVIEW_MSG["gravedona"], "truffe": ENEL_TRUFFE_MSG}
@@ -3606,15 +3607,16 @@ async def whatsapp_coda_stato(user: dict = Depends(get_current_user)):
 
 async def wa_session_cliente(c: dict) -> str:
     """Sessione WhatsApp per i messaggi di un cliente: CambiaOra → numero dedicato Sondrio; ENEL → Deborah o Gravedona;
-    riparazioni/telefonia (nessuna pratica energia) → numero del negozio (laboratorio per le riparazioni Morbegno)."""
+    riparazioni/telefonia (nessuna pratica energia) → numero del negozio che ha inserito."""
     if is_enel(c):
         grav = await store_id_by_name(ENEL_GRAVEDONA_STORE_NAME)
         return grav if grav and c.get("venditore_id") == grav else ENEL_SESSION_DEBORAH
     if not cliente_energia(c):
         sid = c.get("venditore_id") or "default"
-        if c.get("gestione") == "riparazioni" and sid == await store_id_by_name(LAB_STORE_NAME):
-            return LAB_SESSION
-        return sid
+        if sid == "default":
+            return sid
+        store = await db.stores.find_one({"id": sid}, {"_id": 0, "id": 1, "nome": 1})
+        return await wa_sessione_negozio(store) if store else sid
     return await store_id_by_name(CAMBIAORA_STORE_NAME) or c.get("venditore_id") or "default"
 
 async def review_msg_cliente(c: dict) -> str:
@@ -3774,7 +3776,6 @@ async def whatsapp_mappa_invii(user: dict = Depends(get_current_user)):
     msgs_enel = await messaggi_enel()
     sondrio = await store_id_by_name(CAMBIAORA_STORE_NAME)
     grav = await store_id_by_name(ENEL_GRAVEDONA_STORE_NAME)
-    lab_store = await store_id_by_name(LAB_STORE_NAME)
 
     def sess(sid: str) -> dict:
         info = connessi.get(sid, {})
@@ -3784,7 +3785,7 @@ async def whatsapp_mappa_invii(user: dict = Depends(get_current_user)):
     for s in stores:
         if allowed is not None and s["id"] not in allowed:
             continue
-        rip_sess = LAB_SESSION if s["id"] == lab_store else s["id"]
+        rip_sess = s["id"]
         enel_sess = grav if s["id"] == grav else ENEL_SESSION_DEBORAH
         righe = [
             {"flusso": "CambiaOra – privacy (nuovo cliente luce/gas)", "da": sess(sondrio), "a": "cliente", "testo": store_msg(s, "msg_privacy", nome="Mario")},
@@ -5464,6 +5465,7 @@ async def invia_avviso_pronto_negozio(svc: dict) -> None:
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_error": "Negozio senza telefono avvisi (impostalo in Gestione Negozi)"}})
         return
     sessione = LAB_SESSION if await wa_sessione_connessa(LAB_SESSION) else await wa_session_servizio(svc)
+    # Unico messaggio che parte dal laboratorio (Bruno): l'avviso "pronta in laboratorio" ai negozi.
     try:
         await wa_send(telefono, msg, session=sessione, tipo="avviso_negozio", client_id=svc["client_id"], servizio_id=svc["id"])
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_negozio_sent_at": datetime.now(timezone.utc).isoformat(), "pronto_negozio_error": None}})
