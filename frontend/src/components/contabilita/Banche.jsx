@@ -44,7 +44,11 @@ export const Banche = ({ anno, mese, setAnno, setMese, centri = [] }) => {
     try { await api.post("/report-commercialista/invia", { centro_id: cid, anno, mese, to: cfg.destinatari[cid] || "" }); toast.success("Email inviata"); loadCfg(); } catch (e) { toast.error(apiError(e)); }
   };
   const delEstratto = async (id) => { if (!window.confirm("Eliminare questo caricamento e i suoi movimenti?")) return; try { await api.delete(`/banche/estratti/${id}`); loadConti(); loadRic(); } catch (e) { toast.error(apiError(e)); } };
-  const segnaPag = async (f, modo) => { try { await api.post(`/banche/fatture/${f.id}/pagamento`, { modo, spesa_cassa_id: modo === "contanti" && f.suggerimento_contanti ? f.suggerimento_contanti.id : "" }); toast.success(`Fattura ${f.controparte} segnata pagata in ${modo}`); loadRic(); } catch (e) { toast.error(apiError(e)); } };
+  const segnaPag = async (f, modo) => {
+    let nota = "";
+    if (modo === "altro") { nota = window.prompt("Come è stata pagata? (es. bonifico cumulativo 975,17 dell'11/09, compensazione, carta personale)", f.indizio_banca ? `bonifico ${f.indizio_banca.data} ${eur(f.indizio_banca.importo)}` : ""); if (nota === null) return; }
+    try { await api.post(`/banche/fatture/${f.id}/pagamento`, { modo, nota, spesa_cassa_id: modo === "contanti" && f.suggerimento_contanti ? f.suggerimento_contanti.id : "" }); toast.success(`Fattura ${f.controparte} segnata pagata in ${modo}`); loadRic(); } catch (e) { toast.error(apiError(e)); }
+  };
   const annullaPag = async (f) => { try { await api.delete(`/banche/fatture/${f.id}/pagamento`); loadRic(); } catch (e) { toast.error(apiError(e)); } };
   return (
     <div className="space-y-4" data-testid="banche-page">
@@ -82,14 +86,15 @@ export const Banche = ({ anno, mese, setAnno, setMese, centri = [] }) => {
                 <div className="max-h-64 overflow-y-auto px-3 py-1 text-xs">
                   {ric.fatture_non_trovate_in_banca.map((f) => (
                     <div key={f.id} className="flex items-center justify-between gap-2 border-t bg-amber-50/50 py-1" data-testid={`fatt-aperta-${f.id}`}>
-                      <span className="truncate">{f.controparte} <span className="text-slate-400">n.{f.numero || "-"}</span>{f.suggerimento_contanti && <span className="ml-1 rounded bg-sky-100 px-1 text-[10px] text-sky-800">spesa contanti {f.suggerimento_contanti.data.slice(5)} «{f.suggerimento_contanti.motivo}»</span>}</span>
+                      <span className="truncate">{f.controparte} <span className="text-slate-400">n.{f.numero || "-"}</span>{f.suggerimento_contanti && <span className="ml-1 rounded bg-sky-100 px-1 text-[10px] text-sky-800">spesa contanti {f.suggerimento_contanti.data.slice(5)} «{f.suggerimento_contanti.motivo}»{f.suggerimento_contanti.approssimato && ` ≈ ${eur(f.suggerimento_contanti.importo)}`}</span>}{f.indizio_banca && <span className="ml-1 rounded bg-slate-100 px-1 text-[10px] text-slate-600" title={f.indizio_banca.descrizione}>in banca {f.indizio_banca.data.slice(5)} {eur(f.indizio_banca.importo)}</span>}</span>
                       <span className="flex shrink-0 items-center gap-1"><b>{eur(f.totale)}</b>
                         <button type="button" onClick={() => segnaPag(f, "contanti")} className="rounded bg-sky-600 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-sky-700" data-testid={`fatt-contanti-${f.id}`}>{f.suggerimento_contanti ? "Conferma contanti" : "Contanti"}</button>
-                        <button type="button" onClick={() => segnaPag(f, "carta")} className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] hover:bg-slate-100" data-testid={`fatt-carta-${f.id}`}>Carta</button></span>
+                        <button type="button" onClick={() => segnaPag(f, "carta")} className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] hover:bg-slate-100" data-testid={`fatt-carta-${f.id}`}>Carta</button>
+                        <button type="button" onClick={() => segnaPag(f, "altro")} className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] hover:bg-slate-100" title="Bonifico cumulativo / compensazione / altro" data-testid={`fatt-altro-btn-${f.id}`}>Altro</button></span>
                     </div>
                   ))}
-                  {(ric.fatture_pagate_altro || []).map((p) => <div key={p.fattura.id} className="flex items-center justify-between border-t py-1 text-sky-800" data-testid={`fatt-altro-${p.fattura.id}`}><span>{p.fattura.controparte} <span className="text-[10px] uppercase">{p.pagamento.modo}</span>{p.pagamento.spesa && <span className="text-slate-400"> · cassa {p.pagamento.spesa.data.slice(5)}</span>}</span><span>{eur(p.fattura.totale)} <button type="button" onClick={() => annullaPag(p.fattura)} className="ml-1 text-slate-400 hover:text-rose-600" title="Annulla" data-testid={`fatt-annulla-${p.fattura.id}`}>✕</button></span></div>)}
-                  {ric.fatture_pagate.map((p, i) => <div key={i} className="flex justify-between border-t py-1 text-emerald-800"><span>{p.fattura.controparte}</span><span>{eur(p.fattura.totale)} · banca {p.movimento.data.slice(5)}</span></div>)}
+                  {(ric.fatture_pagate_altro || []).map((p) => <div key={p.fattura.id} className="flex items-center justify-between border-t py-1 text-sky-800" data-testid={`fatt-altro-${p.fattura.id}`}><span>{p.fattura.controparte} <span className="text-[10px] uppercase">{p.pagamento.modo}</span>{p.pagamento.spesa && <span className="text-slate-400"> · cassa {p.pagamento.spesa.data.slice(5)}</span>}{p.pagamento.nota && <span className="text-slate-400"> · {p.pagamento.nota}</span>}</span><span>{eur(p.fattura.totale)} <button type="button" onClick={() => annullaPag(p.fattura)} className="ml-1 text-slate-400 hover:text-rose-600" title="Annulla" data-testid={`fatt-annulla-${p.fattura.id}`}>✕</button></span></div>)}
+                  {ric.fatture_pagate.map((p, i) => <div key={i} className="flex justify-between border-t py-1 text-emerald-800"><span>{p.fattura.controparte}</span><span>{eur(p.fattura.totale)} · banca {p.movimento.data.slice(5)}{p.mese_dopo && <span className="ml-1 rounded bg-emerald-100 px-1 text-[10px]">mese dopo</span>}</span></div>)}
                   {!ric.fatture_pagate.length && !ric.fatture_non_trovate_in_banca.length && <p className="py-2 text-slate-400">Nessuna fattura ricevuta nel mese.</p>}
                 </div></div>
               <div className="rounded-xl border border-slate-200 bg-white"><div className="border-b px-3 py-2 text-sm font-semibold">Caricamenti del mese</div>

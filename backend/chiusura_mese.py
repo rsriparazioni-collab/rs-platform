@@ -1,3 +1,8 @@
+import logging
+import uuid
+from datetime import datetime, timezone
+
+
 """Checklist di chiusura mese per entità (ditta/srls): corrispettivi, fatture AdE, estratti conto, fatture estere, scadenze F24.
 Solo lettura/controllo: stato verde quando tutto è completo."""
 from calendar import monthrange
@@ -83,3 +88,36 @@ async def calcola(entita: str, anno: int, mese: int) -> dict:
 
     completo = all(v["ok"] for v in voci if not v.get("opzionale"))
     return {"entita": entita, "centro": centro["nome"], "anno": anno, "mese": mese, "mese_chiuso": chiuso, "voci": voci, "completo": completo, "completate": sum(1 for v in voci if v["ok"]), "totale": len(voci)}
+
+
+logger = logging.getLogger("chiusura")
+
+
+async def promemoria_mese_precedente() -> dict:
+    """Cron del 2 del mese: WhatsApp all'amministrazione con le voci ancora rosse della chiusura del mese precedente (ditta + SRLS)."""
+    oggi = date.today()
+    anno, mese = (oggi.year, oggi.month - 1) if oggi.month > 1 else (oggi.year - 1, 12)
+    key = f"chiusura-promemoria-{anno}-{mese:02d}"
+    db = _d["db"]
+    if await db.scadenze_alert_log.find_one({"key": key}):
+        return {"inviati": 0, "motivo": "già inviato"}
+    blocchi = []
+    for ent in ENTITA_CENTRO:
+        try:
+            r = await calcola(ent, anno, mese)
+        except Exception as e:
+            logger.warning(f"chiusura {ent}: {e}")
+            continue
+        rosse = [v for v in r["voci"] if not v["ok"]]
+        if rosse:
+            blocchi.append(f"*{r['centro']}* — {r['completate']}/{r['totale']} ok\n" + "\n".join(f"  ✗ {v['titolo']}: {v['dettaglio'][:90]}" for v in rosse))
+        else:
+            blocchi.append(f"*{r['centro']}* — ✅ tutto verde")
+    mesi = ["", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+    testo = f"🧾 *Chiusura {mesi[mese]} {anno}* — cosa manca\n" + "\n\n".join(blocchi) + "\n\nContabilità → Chiusura mese."
+    try:
+        await _d["wa_send"](_d["numero_amministrazione"], testo, session=await _d["store_id_by_name"]("Sondrio") or "default", tipo="chiusura_mese")
+    except HTTPException as e:
+        return {"inviati": 0, "errore": e.detail}
+    await db.scadenze_alert_log.insert_one({"id": str(uuid.uuid4()), "key": key, "sent_at": datetime.now(timezone.utc).isoformat()})
+    return {"inviati": 1}

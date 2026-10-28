@@ -356,16 +356,31 @@ async def riconciliazione(entita: str, anno: int, mese: int, user: dict = Depend
     tot = {k: round(sum(g[k] for g in righe), 2) for k in ("pos_chiusure", "pos_transazioni", "accrediti_banca")}
     tot["per_pos"] = {p: round(sum((g.get("per_pos") or {}).get(p, 0) for g in righe), 2) for p in pos_ids}
     tot["commissioni_stimate"] = round(tot["pos_transazioni"] - tot["accrediti_banca"], 2) if tot["accrediti_banca"] else None
-    # uscite banca ↔ fatture ricevute AdE (stesso importo, tolleranza 1 cent)
-    fatture = await db.fatture_ade.find({"centro_id": centro["id"], "anno": anno, "mese": mese, "direzione": "ricevute"}, {"_id": 0, "id": 1, "controparte": 1, "totale": 1, "data": 1}).to_list(2000)
+    # uscite banca ↔ fatture ricevute AdE (stesso importo, tolleranza 1 cent); si cerca anche nei 2 mesi successivi (pagamenti a 30/60 gg)
+    fatture = await db.fatture_ade.find({"centro_id": centro["id"], "anno": anno, "mese": mese, "direzione": "ricevute"}, {"_id": 0, "id": 1, "controparte": 1, "totale": 1, "data": 1, "numero": 1}).to_list(2000)
+    banca_ids = [b["id"] for b in banche]
+    mesi_succ = [((anno + (mese + k - 1) // 12), (mese + k - 1) % 12 + 1) for k in (1, 2)]
+    candidati = list(uscite_banca)
+    riservati = set()
+    for a2, m2 in mesi_succ:
+        pref2 = f"{a2:04d}-{m2:02d}"
+        usc2 = [m async for m in db.movimenti_banca.find({"conto_id": {"$in": banca_ids}, "data": {"$regex": f"^{pref2}"}, "importo": {"$lt": 0}}, {"_id": 0, "hash": 0})]
+        # i movimenti che coincidono con una fattura del loro stesso mese restano a quel mese
+        fatt2 = await db.fatture_ade.find({"centro_id": centro["id"], "anno": a2, "mese": m2, "direzione": "ricevute"}, {"_id": 0, "totale": 1}).to_list(2000)
+        for f2 in fatt2:
+            t2 = float(f2.get("totale") or 0)
+            m2x = next((u for u in usc2 if u["id"] not in riservati and abs(abs(u["importo"]) - t2) < 0.01), None)
+            if m2x:
+                riservati.add(m2x["id"])
+        candidati += [u for u in usc2 if u["id"] not in riservati]
     pagate, non_trovate = [], []
     usate = set()
     for f in fatture:
         tot_f = float(f.get("totale") or 0)
-        m = next((u for u in uscite_banca if u["id"] not in usate and abs(abs(u["importo"]) - tot_f) < 0.01), None)
+        m = next((u for u in candidati if u["id"] not in usate and abs(abs(u["importo"]) - tot_f) < 0.01), None)
         if m:
             usate.add(m["id"])
-            pagate.append({"fattura": f, "movimento": m})
+            pagate.append({"fattura": f, "movimento": m, "mese_dopo": m["data"][:7] != pref})
         else:
             non_trovate.append(f)
     altre_uscite = [u for u in uscite_banca if u["id"] not in usate]
@@ -380,9 +395,17 @@ async def riconciliazione(entita: str, anno: int, mese: int, user: dict = Depend
             pagate_altro.append({"fattura": f, "pagamento": p})
             continue
         sug = next((s for s in spese if s["id"] not in spese_usate and abs(float(s.get("importo") or 0) - float(f.get("totale") or 0)) < 0.01), None)
+        if not sug:  # spesa contanti arrotondata (es. 284,14 → 284,00) entro 1 € e stesso fornitore nel motivo
+            parole0 = [w for w in re.split(r"[^A-Za-z]+", (f.get("controparte") or "").upper()) if len(w) >= 4]
+            sug = next((s for s in spese if s["id"] not in spese_usate and abs(float(s.get("importo") or 0) - float(f.get("totale") or 0)) <= 1.0 and parole0 and any(w in (s.get("motivo") or "").upper() for w in parole0[:2])), None)
+            if sug:
+                sug = {**sug, "approssimato": True}
         if sug:
             spese_usate.add(sug["id"])
-        ancora_aperte.append({**f, "suggerimento_contanti": sug})
+        # indizio: movimento banca che cita il fornitore (importo diverso: pagamento cumulativo/parziale)
+        parole = [w for w in re.split(r"[^A-Za-z]+", (f.get("controparte") or "").upper()) if len(w) >= 4 and w not in ("SRLS", "S.R.L", "SPA", "SNC", "GROUP", "ITALIA", "DIGITAL", "SOLUTIONS")]
+        indizio = next((u for u in candidati if u["id"] not in usate and parole and any(w in u.get("descrizione", "").upper() for w in parole[:2])), None)
+        ancora_aperte.append({**f, "suggerimento_contanti": sug, "indizio_banca": {"data": indizio["data"], "importo": indizio["importo"], "descrizione": indizio["descrizione"][:80]} if indizio else None})
     non_trovate = ancora_aperte
     # myPOS = POS di proprietà DHL: non sono incassi nostri (fatturiamo a DHL). Controllo: incassi = trasferiti a DHL + commissioni
     dhl = None
