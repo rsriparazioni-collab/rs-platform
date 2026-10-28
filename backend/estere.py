@@ -106,6 +106,12 @@ async def modifica(fid: str, body: EsteraInput, user: dict = Depends(require_adm
 
 @router.delete("/fattura/{fid}")
 async def elimina(fid: str, user: dict = Depends(require_admin)):
+    f = await _d["db"].fatture_estere.find_one({"id": fid}, {"_id": 0, "allegato_path": 1})
+    if f and f.get("allegato_path") and _d.get("delete_object"):
+        try:
+            _d["delete_object"](f["allegato_path"])
+        except Exception:
+            pass
     res = await _d["db"].fatture_estere.delete_one({"id": fid})
     if not res.deleted_count:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
@@ -147,6 +153,20 @@ async def scarica_allegato(fid: str, user: dict = Depends(require_admin)):
         raise HTTPException(status_code=404, detail="Nessun allegato")
     data, ct = _d["get_object"](f["allegato_path"])
     return Response(content=data, media_type=f.get("allegato_tipo") or ct, headers={"Content-Disposition": f"inline; filename=\"{f.get('allegato_nome') or 'fattura.pdf'}\""})
+
+
+@router.delete("/fattura/{fid}/allegato")
+async def rimuovi_allegato(fid: str, user: dict = Depends(require_admin)):
+    f = await _d["db"].fatture_estere.find_one({"id": fid}, {"_id": 0, "allegato_path": 1})
+    if not f or not f.get("allegato_path"):
+        raise HTTPException(status_code=404, detail="Nessun allegato")
+    if _d.get("delete_object"):
+        try:
+            _d["delete_object"](f["allegato_path"])
+        except Exception:
+            pass
+    await _d["db"].fatture_estere.update_one({"id": fid}, {"$unset": {"allegato_path": "", "allegato_nome": "", "allegato_tipo": ""}})
+    return {"status": "ok"}
 
 
 async def totale_pdp(centro_id: str, anno: int, mese: int) -> float:

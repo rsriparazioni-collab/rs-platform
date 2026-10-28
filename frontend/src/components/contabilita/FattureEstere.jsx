@@ -27,6 +27,7 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
     } catch (e) { toast.error(apiError(e)); }
   };
   const inviata = async (f) => { try { await api.post(`/estere/fattura/${f.id}/inviata`, { inviata: !f.inviata_at }); load(); } catch (e) { toast.error(apiError(e)); } };
+  const rimuoviAllegato = async (f) => { if (!window.confirm("Rimuovere l'allegato?")) return; try { await api.delete(`/estere/fattura/${f.id}/allegato`); load(); } catch (e) { toast.error(apiError(e)); } };
   const allegato = async (f, e) => {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file) return;
@@ -91,7 +92,7 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
                     <td className="px-3 py-2 text-xs">{nomeCentro(f.centro_id)}</td>
                     <td className="px-3 py-2 text-center"><button type="button" onClick={() => inviata(f)} className={`rounded-full px-2 py-0.5 text-[11px] ${f.inviata_at ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`} data-testid={`estera-inviata-${f.id}`}>{f.inviata_at ? <><Check className="inline h-3 w-3" /> inviata</> : <><Send className="inline h-3 w-3" /> da inviare</>}</button></td>
                     <td className="px-3 py-2 text-center text-xs">
-                      {f.allegato_path ? <a href={`${process.env.REACT_APP_BACKEND_URL}/api/estere/fattura/${f.id}/allegato`} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline" data-testid={`estera-allegato-${f.id}`}><Paperclip className="inline h-3 w-3" /> {f.allegato_nome?.slice(0, 18)}</a>
+                      {f.allegato_path ? <span><a href={`${process.env.REACT_APP_BACKEND_URL}/api/estere/fattura/${f.id}/allegato`} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline" data-testid={`estera-allegato-${f.id}`}><Paperclip className="inline h-3 w-3" /> {f.allegato_nome?.slice(0, 18)}</a> <button type="button" className="ml-1 text-slate-400 hover:text-rose-600" title="Rimuovi allegato" onClick={() => rimuoviAllegato(f)} data-testid={`estera-allegato-del-${f.id}`}>✕</button></span>
                         : <label className="cursor-pointer text-slate-500 hover:text-sky-700" data-testid={`estera-allegato-up-${f.id}`}><Paperclip className="inline h-3 w-3" /> carica PDF<input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => allegato(f, e)} /></label>}
                     </td>
                     <td className="px-3 py-2 text-right"><button type="button" onClick={() => del(f)} className="text-slate-300 hover:text-rose-600" data-testid={`estera-del-${f.id}`}><Trash2 className="h-4 w-4" /></button></td>

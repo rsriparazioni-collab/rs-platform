@@ -6311,7 +6311,7 @@ api_router.include_router(contabilita_module.router)
 import estere as estere_module
 async def _centri_tutti():
     return await contabilita_module._centri({"role": "admin", "store_ids": []})
-estere_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, store_id_by_name=store_id_by_name, centri_tutti=_centri_tutti, put_object=put_object, get_object=get_object)
+estere_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, store_id_by_name=store_id_by_name, centri_tutti=_centri_tutti, put_object=put_object, get_object=get_object, delete_object=delete_object)
 api_router.include_router(estere_module.router)
 import banche as banche_module
 banche_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti)

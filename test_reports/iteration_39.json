@@ -1,0 +1,45 @@
+{
+  "summary": "Iter39: Banche & commercialisti + allegati fatture estere. Backend 15 pytest: 13 pass, 2 fail. Both failures are real bugs in banche.py. All the flows you listed work: 6 conti, Intesa CSV upload (righe 3 / nuovi 3, then gia_presenti 3 on re-upload), invalid conto and file without columns -> 400, Nexi upload, movimenti entrate/uscite, riconciliazione (2026-09-01 has chiusure 140 = transazioni 140, ok true; accrediti 138.50), entita non valida -> 400, srls has 2 conti, DELETE estratto, report anteprima (TOTALE ENTRATE € 26.737,52, Risultato € -557,02), config GET/PUT, invia without email -> 400, invia to test@example.com -> 200 (email really sent, contabilita_invii log written), cron without auth -> 401, non-admin -> 403, estere allegato upload/download (application/pdf, a non-ASCII filename also works, no allegato -> 404). Frontend tested with Playwright, admin logged in with TOTP: Banche tab shows 4 ditta cards and 2 for SRLS; Nexi CSV upload from the UI shows a toast and updates the totals and the 09-01 row; the delete-estratto button works; Anteprima shows the HTML with the right totals; Salva shows the 'Commercialisti salvati' toast; the Fatture estere tab has the Allegato column, 'carica PDF' upload, and a download link that works with the cookie.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "DELETE /api/banche/estratti/{id}", "issue": "Deletes movimenti by conto_id + file name + date range, not by upload id. Deleting the record of a re-upload (nuovi 0, gia_presenti 3) wipes the 3 movements of the FIRST upload. Two different uploads with the same file name (e.g. 'estratto.csv' every month) also delete each other's overlapping rows. Fix: save estratto_id on each movimento at insert and delete_many({estratto_id}). Also skip or merge estratti_caricati records that have nuovi == 0.", "priority": "HIGH"},
+      {"endpoint": "POST /api/banche/upload", "issue": "The dedup hash is conto|data|importo|descrizione. Two real POS transactions on the same day with the same amount and merchant (very common in Nexi/myPOS exports, e.g. two 20,00 € with esercente 'RS') are merged into one inside the SAME file: nuovi is 1 instead of 2. This undercounts pos_transazioni and triggers false 'diff' alarms. Fix: add the row's position within the same date/amount group (or the time/transaction id column if present) to the hash, and dedup only against movements from previous uploads.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "PUT /api/report-commercialista/config", "issue": "destinatari is a plain dict: values are not checked to be strings or emails. A non-string value causes a 500 on v.strip(), and an invalid email is saved as-is."},
+      {"endpoint": "POST /api/report-commercialista/invia", "issue": "body.to is not validated as an email (use EmailStr)."},
+      {"endpoint": "DELETE /api/estere/fattura/{id}", "issue": "The allegato object is not removed from storage (orphan file). There is also no endpoint to replace or remove an allegato."},
+      {"endpoint": "GET /api/banche/riconciliazione", "issue": "ok=true whenever pos_transazioni == 0, so days whose POS export was never loaded look OK. Accrediti are matched to the same day although the bank credits T+1, so per-day 'In banca' is always offset (the totals are fine)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Banche report-commercialisti", "issue": "'Invia ora' becomes enabled as soon as an email is typed, but the backend uses the SAVED config. Typing an email and clicking Invia without Salva returns 400 'Email non impostata'. Either save first automatically or pass `to` in the body.", "selector": "[data-testid^='comm-invia-']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Banche - Caricamenti del mese", "issues": ["The delete trash icon is text-slate-300 on white: very low contrast, hard to see.", "The invio_automatico checkbox has no data-testid."]},
+      {"screen": "Fatture estere form", "issues": ["Uses the native <input type=date> picker instead of the shadcn calendar.", "After upload, the allegato link has no replace or remove action."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter39_banche_commercialisti.py", "/app/test_reports/pytest/pytest_iter39.xml"],
+  "action_items": [
+    "Fix DELETE /api/banche/estratti to delete by estratto_id stored on each movimento (currently deleting a re-upload record wipes the original movements)",
+    "Fix upload dedup so identical transactions inside the same file are not collapsed (only dedup against previous uploads)",
+    "Banche UI: make 'Invia ora' use the typed email (send `to`) or require saving first",
+    "Validate destinatari and to as emails (Pydantic EmailStr)",
+    "Delete the storage object when a fattura estera is deleted; allow replacing an allegato"
+  ],
+  "critical_code_review_comments": [
+    "banche.py elimina_estratto: deletion is keyed on file name, which is not unique, so data from another upload can be lost",
+    "banche.py upload: the hash dedup also applies inside the same file and merges legitimate repeated transactions",
+    "banche.py riconciliazione: 'ok' is true by default when no transactions were loaded, which can hide missing exports",
+    "report_commercialista invia: when the external email service fails, send_email raises 502 and no log is written. Acceptable, but the UI only shows a generic error"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter39_banche_commercialisti.py"],
+  "success_rate": {"backend": "87% (13/15; 2 failures are real bugs)", "frontend": "100% of the listed flows"},
+  "seed_data_creation": "None kept. Cleaned up: movimenti_banca and estratti_caricati rows with file TEST_iter39*, fatture_estere 'Test Estero', contabilita_invii to *@example.com; commercialisti_cfg reset to {destinatari:{}, invio_automatico:true}. All these collections had 0 docs before testing and have 0 after.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest /app/backend/tests/test_iter39_banche_commercialisti.py (it cleans up after itself). TOTP codes cannot be reused within the same 30s window: wait for the next window if API and UI logins are back to back. In preview, a real email to test@example.com went out with 200."
+}

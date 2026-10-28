@@ -41,7 +41,7 @@ export const Banche = ({ anno, mese, setAnno, setMese, centri = [] }) => {
   const vedi = async (cid) => { try { const r = await api.get("/report-commercialista", { params: { centro_id: cid, anno, mese } }); setAnteprima(r.data); } catch (e) { toast.error(apiError(e)); } };
   const invia = async (cid) => {
     if (!window.confirm(`Inviare il riepilogo di ${mese}/${anno} al commercialista di ${centri.find((c) => c.id === cid)?.nome}?`)) return;
-    try { await api.post("/report-commercialista/invia", { centro_id: cid, anno, mese }); toast.success("Email inviata"); loadCfg(); } catch (e) { toast.error(apiError(e)); }
+    try { await api.post("/report-commercialista/invia", { centro_id: cid, anno, mese, to: cfg.destinatari[cid] || "" }); toast.success("Email inviata"); loadCfg(); } catch (e) { toast.error(apiError(e)); }
   };
   const delEstratto = async (id) => { if (!window.confirm("Eliminare questo caricamento e i suoi movimenti?")) return; try { await api.delete(`/banche/estratti/${id}`); loadConti(); loadRic(); } catch (e) { toast.error(apiError(e)); } };
   return (
@@ -65,12 +65,12 @@ export const Banche = ({ anno, mese, setAnno, setMese, centri = [] }) => {
           <div className="grid gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-white"><div className="border-b px-3 py-2 text-sm font-semibold">POS per giorno</div>
               <div className="max-h-80 overflow-y-auto"><table className="w-full text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-2 py-1 text-left">Giorno</th><th className="px-2 py-1 text-right">Chiusure</th><th className="px-2 py-1 text-right">Transazioni</th><th className="px-2 py-1 text-right">In banca</th><th className="px-2 py-1 text-right">Diff</th></tr></thead>
-                <tbody>{ric.giorni.map((g) => <tr key={g.data} className={`border-t ${g.ok ? "" : "bg-rose-50"}`} data-testid={`ric-giorno-${g.data}`}><td className="px-2 py-1 font-mono">{g.data.slice(5)}</td><td className="px-2 py-1 text-right">{eur(g.pos_chiusure)}</td><td className="px-2 py-1 text-right">{g.pos_transazioni ? eur(g.pos_transazioni) : "—"}</td><td className="px-2 py-1 text-right">{g.accrediti_banca ? eur(g.accrediti_banca) : "—"}</td><td className={`px-2 py-1 text-right ${g.ok ? "text-slate-400" : "font-semibold text-rose-700"}`}>{g.pos_transazioni ? eur(g.diff_transazioni) : ""}</td></tr>)}</tbody></table></div></div>
+                <tbody>{ric.giorni.map((g) => <tr key={g.data} className={`border-t ${g.ok === false ? "bg-rose-50" : ""}`} data-testid={`ric-giorno-${g.data}`}><td className="px-2 py-1 font-mono">{g.data.slice(5)}</td><td className="px-2 py-1 text-right">{eur(g.pos_chiusure)}</td><td className="px-2 py-1 text-right">{g.pos_transazioni ? eur(g.pos_transazioni) : "—"}</td><td className="px-2 py-1 text-right">{g.accrediti_banca ? eur(g.accrediti_banca) : "—"}</td><td className={`px-2 py-1 text-right ${g.ok === false ? "font-semibold text-rose-700" : "text-slate-400"}`}>{g.ok === null ? "n.d." : eur(g.diff_transazioni)}</td></tr>)}</tbody></table></div></div>
             <div className="space-y-3">
               <div className="rounded-xl border border-slate-200 bg-white"><div className="border-b px-3 py-2 text-sm font-semibold">Fatture ricevute AdE pagate in banca <span className="text-emerald-700">{ric.fatture_pagate.length}</span> · non trovate <span className="text-amber-700">{ric.fatture_non_trovate_in_banca.length}</span></div>
                 <div className="max-h-40 overflow-y-auto px-3 py-1 text-xs">{ric.fatture_pagate.map((p, i) => <div key={i} className="flex justify-between border-t py-1"><span>{p.fattura.controparte}</span><span>{eur(p.fattura.totale)} · {p.movimento.data}</span></div>)}{!ric.fatture_pagate.length && <p className="py-2 text-slate-400">Nessun abbinamento (carica gli estratti del conto banca).</p>}</div></div>
               <div className="rounded-xl border border-slate-200 bg-white"><div className="border-b px-3 py-2 text-sm font-semibold">Caricamenti del mese</div>
-                <div className="px-3 py-1 text-xs">{ric.estratti_caricati.map((e) => <div key={e.id} className="flex items-center justify-between border-t py-1"><span>{conti.find((c) => c.id === e.conto_id)?.nome} · {e.file} · {e.righe} righe ({e.dal} → {e.al})</span><button type="button" onClick={() => delEstratto(e.id)} className="text-slate-300 hover:text-rose-600" data-testid={`estratto-del-${e.id}`}><Trash2 className="h-3.5 w-3.5" /></button></div>)}{!ric.estratti_caricati.length && <p className="py-2 text-slate-400">Nessun estratto caricato per questo mese.</p>}</div></div>
+                <div className="px-3 py-1 text-xs">{ric.estratti_caricati.map((e) => <div key={e.id} className="flex items-center justify-between border-t py-1"><span>{conti.find((c) => c.id === e.conto_id)?.nome} · {e.file} · {e.righe} righe ({e.dal} → {e.al})</span><button type="button" onClick={() => delEstratto(e.id)} className="text-rose-500 hover:text-rose-700" title="Elimina caricamento" data-testid={`estratto-del-${e.id}`}><Trash2 className="h-3.5 w-3.5" /></button></div>)}{!ric.estratti_caricati.length && <p className="py-2 text-slate-400">Nessun estratto caricato per questo mese.</p>}</div></div>
             </div>
           </div>
         </>
@@ -89,7 +89,7 @@ export const Banche = ({ anno, mese, setAnno, setMese, centri = [] }) => {
             ))}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
-            <label className="flex items-center gap-2"><Checkbox checked={cfg.invio_automatico} onCheckedChange={(v) => setCfg((x) => ({ ...x, invio_automatico: !!v }))} /> Invio automatico il 1° del mese</label>
+            <label className="flex items-center gap-2"><Checkbox data-testid="comm-auto" checked={cfg.invio_automatico} onCheckedChange={(v) => setCfg((x) => ({ ...x, invio_automatico: !!v }))} /> Invio automatico il 1° del mese</label>
             <Button size="sm" className="h-7 text-xs" onClick={salvaCfg} data-testid="comm-save">Salva</Button>
             {cfg.ultimi_invii?.[0] && <span className="text-slate-500">Ultimo invio: {cfg.ultimi_invii[0].at.slice(0, 16).replace("T", " ")} → {cfg.ultimi_invii[0].to}</span>}
           </div>

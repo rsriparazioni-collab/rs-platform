@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime, timezone, date
 from html import escape
@@ -71,7 +72,7 @@ async def costruisci_report(centro: dict, anno: int, mese: int) -> dict:
     if banca and banca["giorni"]:
         t = banca["totali"]
         sez.append(("Riconciliazione POS", [("POS dichiarato nelle chiusure", _eur(t["pos_chiusure"])), ("Transazioni Nexi/myPOS caricate", _eur(t["pos_transazioni"])), ("Accrediti POS in banca", _eur(t["accrediti_banca"])),
-                                            ("Giorni con differenza > 1 €", str(sum(1 for g in banca["giorni"] if not g["ok"]))), ("Fatture ricevute trovate pagate in banca", str(len(banca["fatture_pagate"])))]))
+                                            ("Giorni con differenza > 1 €", str(sum(1 for g in banca["giorni"] if g["ok"] is False))), ("Giorni senza transazioni POS caricate", str(sum(1 for g in banca["giorni"] if g["ok"] is None))), ("Fatture ricevute trovate pagate in banca", str(len(banca["fatture_pagate"])))]))
     else:
         sez.append(("Riconciliazione POS / banca", [("Estratti conto", "non caricati per questo mese")]))
     gm = pdp["foglio"].get("giorni_mancanti") if isinstance(pdp.get("foglio"), dict) else None
@@ -122,6 +123,9 @@ async def _invia(centro: dict, anno: int, mese: int, to: str, da: str) -> dict:
     return log
 
 
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 class InviaInput(BaseModel):
     centro_id: str
     anno: int
@@ -137,6 +141,8 @@ async def invia(body: InviaInput, user: dict = Depends(require_admin)):
     to = body.to.strip() or (await _cfg())["destinatari"].get(body.centro_id, "")
     if not to:
         raise HTTPException(status_code=400, detail="Email del commercialista non impostata per questa entità")
+    if not EMAIL_RE.match(to):
+        raise HTTPException(status_code=400, detail="Email non valida")
     return await _invia(centro, body.anno, body.mese, to, user["name"])
 
 
@@ -176,5 +182,9 @@ async def get_cfg(user: dict = Depends(require_admin)):
 
 @router.put("/config")
 async def put_cfg(body: CfgInput, user: dict = Depends(require_admin)):
-    await _d["db"].settings.update_one({"key": "commercialisti_cfg"}, {"$set": {"value": {"destinatari": {k: v.strip() for k, v in body.destinatari.items() if v.strip()}, "invio_automatico": body.invio_automatico}}}, upsert=True)
+    dest = {k: v.strip() for k, v in body.destinatari.items() if v.strip()}
+    for v in dest.values():
+        if not EMAIL_RE.match(v):
+            raise HTTPException(status_code=400, detail=f"Email non valida: {v}")
+    await _d["db"].settings.update_one({"key": "commercialisti_cfg"}, {"$set": {"value": {"destinatari": dest, "invio_automatico": body.invio_automatico}}}, upsert=True)
     return await _cfg()

@@ -160,15 +160,20 @@ async def upload(conto_id: str = Form(...), file: UploadFile = File(...), user: 
         raise HTTPException(status_code=400, detail="Nessun movimento trovato: controlla che il file abbia colonne data e importo (o entrate/uscite)")
     db = _d["db"]
     nuovi, doppi = 0, 0
+    estratto_id = str(uuid.uuid4())
+    # Stessa transazione ripetuta nello stesso file (es. due scontrini uguali) è legittima: il progressivo la distingue; il dedup vale solo contro i caricamenti precedenti
+    visti: dict = {}
     for r in righe:
-        h = hashlib.sha1(f"{conto_id}|{r['data']}|{r['importo']}|{r['descrizione'].lower()}".encode()).hexdigest()
+        base = f"{conto_id}|{r['data']}|{r['importo']}|{r['descrizione'].lower()}"
+        visti[base] = visti.get(base, 0) + 1
+        h = hashlib.sha1(f"{base}|{visti[base]}".encode()).hexdigest()
         if await db.movimenti_banca.find_one({"hash": h}):
             doppi += 1
             continue
-        await db.movimenti_banca.insert_one({"id": str(uuid.uuid4()), "hash": h, "conto_id": conto_id, **r, "file": file.filename, "caricato_da": user["name"], "created_at": _now().isoformat()})
+        await db.movimenti_banca.insert_one({"id": str(uuid.uuid4()), "hash": h, "conto_id": conto_id, **r, "file": file.filename, "estratto_id": estratto_id, "caricato_da": user["name"], "created_at": _now().isoformat()})
         nuovi += 1
     date_ = sorted(r["data"] for r in righe)
-    await db.estratti_caricati.insert_one({"id": str(uuid.uuid4()), "conto_id": conto_id, "file": file.filename, "righe": len(righe), "nuovi": nuovi, "doppi": doppi,
+    await db.estratti_caricati.insert_one({"id": estratto_id, "conto_id": conto_id, "file": file.filename, "righe": len(righe), "nuovi": nuovi, "doppi": doppi,
                                            "dal": date_[0], "al": date_[-1], "da": user["name"], "at": _now().isoformat()})
     return {"righe": len(righe), "nuovi": nuovi, "gia_presenti": doppi, "dal": date_[0], "al": date_[-1]}
 
@@ -214,7 +219,7 @@ async def riconciliazione(entita: str, anno: int, mese: int, user: dict = Depend
     righe = sorted(giorni.values(), key=lambda g: g["data"])
     for g in righe:
         g["diff_transazioni"] = round(g["pos_transazioni"] - g["pos_chiusure"], 2)
-        g["ok"] = abs(g["diff_transazioni"]) < 1.0 or g["pos_transazioni"] == 0
+        g["ok"] = abs(g["diff_transazioni"]) < 1.0 if g["pos_transazioni"] else None  # None = transazioni POS non caricate
     tot = {k: round(sum(g[k] for g in righe), 2) for k in ("pos_chiusure", "pos_transazioni", "accrediti_banca")}
     tot["commissioni_stimate"] = round(tot["pos_transazioni"] - tot["accrediti_banca"], 2) if tot["accrediti_banca"] else None
     # uscite banca ↔ fatture ricevute AdE (stesso importo, tolleranza 1 cent)
@@ -242,6 +247,6 @@ async def elimina_estratto(estratto_id: str, user: dict = Depends(require_admin)
     e = await db.estratti_caricati.find_one({"id": estratto_id}, {"_id": 0})
     if not e:
         raise HTTPException(status_code=404, detail="Caricamento non trovato")
-    res = await db.movimenti_banca.delete_many({"conto_id": e["conto_id"], "file": e["file"], "data": {"$gte": e["dal"], "$lte": e["al"]}})
+    res = await db.movimenti_banca.delete_many({"estratto_id": estratto_id})
     await db.estratti_caricati.delete_one({"id": estratto_id})
     return {"eliminati": res.deleted_count}
