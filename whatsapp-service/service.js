@@ -18,6 +18,8 @@ app.use((req, res, next) => {
 });
 
 const AUTH_DIR = process.env.AUTH_INFO_PATH || path.join(__dirname, 'auth_info');
+const CRM_URL = (process.env.CRM_URL || '').replace(/\/$/, '');
+const CRM_WEBHOOK_SECRET = process.env.CRM_WEBHOOK_SECRET || '';
 const logger = pino({ level: 'silent' });
 const sessions = {};
 
@@ -64,6 +66,27 @@ async function initSession(sessionId) {
     }
   });
   sock.ev.on('creds.update', saveCreds);
+  // Inoltro al gestionale dei messaggi ricevuti nei gruppi (es. gruppo Switcho)
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify' || !CRM_URL || !CRM_WEBHOOK_SECRET) return;
+    for (const m of messages) {
+      const jid = m.key?.remoteJid || '';
+      if (!jid.endsWith('@g.us') || m.key?.fromMe) continue;
+      const msg = m.message || {};
+      const text = msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || msg.documentMessage?.caption || '';
+      if (!text) continue;
+      const sender = String(m.key?.participant || '').split('@')[0].split(':')[0];
+      try {
+        const r = await fetch(`${CRM_URL}/api/whatsapp/inbox`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': CRM_WEBHOOK_SECRET },
+          body: JSON.stringify({ text, sender, group_id: jid, message_id: m.key.id, session: sessionId,
+                                 timestamp: new Date((Number(m.messageTimestamp) || Date.now() / 1000) * 1000).toISOString() }),
+        });
+        console.log(`[${sessionId}] gruppo ${jid} → gestionale: ${r.status}`);
+      } catch (e) { console.error(`[${sessionId}] inbox gestionale:`, e.message); }
+    }
+  });
   // WhatsApp (da fine luglio 2026) ritira il segreto ADV dopo la scansione: va ruotato e il QR ridisegnato (Baileys PR #2765)
   sock.ws.on('CB:notification,type:companion_reg_refresh', () => {
     if (state.creds.me || state.creds.registered) return;
@@ -129,19 +152,32 @@ app.post('/reset', async (req, res) => {
 });
 
 app.post('/send', async (req, res) => {
-  const { phone, message, session } = req.body || {};
-  if (!phone || !message) return res.status(400).json({ success: false, error: 'phone e message obbligatori' });
-  let num = String(phone).replace(/[^\d+]/g, '');
-  if (num.startsWith('+')) num = num.slice(1);
-  if (num.length === 10 && num.startsWith('3')) num = '39' + num;
-  const jid = `${num}@s.whatsapp.net`;
+  const { phone, message, session, media } = req.body || {};
+  if (!phone || (!message && !(Array.isArray(media) && media.length))) return res.status(400).json({ success: false, error: 'phone e message obbligatori' });
+  let jid, num;
+  if (String(phone).endsWith('@g.us')) {
+    jid = String(phone); num = jid;
+  } else {
+    num = String(phone).replace(/[^\d+]/g, '');
+    if (num.startsWith('+')) num = num.slice(1);
+    if (num.length === 10 && num.startsWith('3')) num = '39' + num;
+    jid = `${num}@s.whatsapp.net`;
+  }
   const wanted = sanitizeId(session);
   const candidates = [...new Set([wanted, 'default'])];
   for (const id of candidates) {
     const sess = sessions[id];
     if (sess && sess.connected && sess.sock) {
       try {
-        await sess.sock.sendMessage(jid, { text: message });
+        let caption = message || '';
+        for (const f of (Array.isArray(media) ? media : [])) {
+          const buf = Buffer.from(f.base64 || '', 'base64');
+          if (!buf.length) continue;
+          const isImg = String(f.mimetype || '').startsWith('image/');
+          await sess.sock.sendMessage(jid, isImg ? { image: buf, caption } : { document: buf, mimetype: f.mimetype || 'application/octet-stream', fileName: f.filename || 'documento', caption });
+          caption = '';
+        }
+        if (caption) await sess.sock.sendMessage(jid, { text: caption });
         return res.json({ success: true, to: num, session: id });
       } catch (e) {
         console.error(`[${id}] Send error:`, e.message);
@@ -149,6 +185,19 @@ app.post('/send', async (req, res) => {
     }
   }
   res.status(503).json({ success: false, error: 'Nessuna sessione WhatsApp connessa' });
+});
+
+// Elenco dei gruppi di cui fa parte una sessione (per trovare l'ID del gruppo Switcho)
+app.get('/groups', async (req, res) => {
+  const id = sanitizeId(req.query.session);
+  const sess = sessions[id];
+  if (!sess || !sess.connected || !sess.sock) return res.status(503).json({ error: 'Sessione non connessa' });
+  try {
+    const groups = await sess.sock.groupFetchAllParticipating();
+    res.json({ session: id, groups: Object.values(groups).map((g) => ({ id: g.id, nome: g.subject, partecipanti: (g.participants || []).length })) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 const PORT = process.env.PORT || 3001;

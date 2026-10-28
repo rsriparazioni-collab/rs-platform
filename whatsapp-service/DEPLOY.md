@@ -31,5 +31,6 @@ In locale/anteprima il servizio continua a girare su `http://127.0.0.1:3001` sen
 
 ## Note
 
-- Il servizio espone `/status`, `/qr`, `/send`. Con `WA_API_KEY` impostata, tutte le chiamate senza header `X-API-Key` corretto ricevono 401
+- Il servizio espone `/status`, `/qr`, `/send` (anche verso gruppi `…@g.us` e con `media` in base64), `/groups?session=…`. Con `WA_API_KEY` impostata, tutte le chiamate senza header `X-API-Key` corretto ricevono 401
+- Integrazione Switcho: con `CRM_URL` (URL del gestionale, senza slash finale) e `CRM_WEBHOOK_SECRET` (= `WEBHOOK_CRON_SECRET` del backend) i messaggi ricevuti nei gruppi vengono inoltrati a `POST {CRM_URL}/api/whatsapp/inbox`
 - Alternative a Railway: Render (con disk persistente), VPS Hetzner/Contabo con Docker

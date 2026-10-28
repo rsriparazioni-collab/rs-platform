@@ -494,10 +494,28 @@ async def put_config(input: CfgInput, user: dict = Depends(require_addetto)):
     return await cfg()
 
 
+@router.get("/switcho/gruppi")
+async def gruppi(user: dict = Depends(require_addetto)):
+    """Gruppi WhatsApp della sessione di risposta (Sondrio): serve a trovare l'ID del gruppo Switcho."""
+    c = await cfg()
+    sess = c.get("session_risposta") or await _d["store_id_by_name"]("Sondrio") or "default"
+    try:
+        async with httpx.AsyncClient(timeout=30) as http_client:
+            resp = await http_client.get(f"{_d['WA_SERVICE']}/groups", params={"session": sess}, headers=_d["wa_headers"]())
+        data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Servizio WhatsApp non raggiungibile: {e}")
+    if resp.status_code == 404:
+        raise HTTPException(status_code=502, detail="Il microservizio WhatsApp non è ancora aggiornato (manca /groups): ridistribuiscilo su Railway")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=data.get("error", "Errore servizio WhatsApp"))
+    return data
+
+
 @router.get("/switcho/snippet")
 async def snippet(user: dict = Depends(require_addetto)):
     """Codice da aggiungere al microservizio WhatsApp (Baileys) per inoltrare i messaggi del gruppo."""
-    return {"istruzioni": "Aggiungi nel microservizio Baileys, dopo la creazione del socket di ogni sessione. Imposta le variabili CRM_URL (URL del gestionale) e CRM_WEBHOOK_SECRET (= WEBHOOK_CRON_SECRET del backend).",
+    return {"istruzioni": "Il file whatsapp-service/service.js del progetto è già aggiornato. Su Railway: 1) 'Save to GitHub' dal gestionale così il repo si aggiorna; 2) nel servizio tranquil-clarity → Variables aggiungi CRM_URL (indirizzo del gestionale pubblicato, senza / finale) e CRM_WEBHOOK_SECRET (uguale a WEBHOOK_CRON_SECRET del backend); 3) Deploy. Poi qui sopra premi 'Trova gruppi' e scegli il gruppo Switcho.",
             "codice": """// --- Inoltro messaggi dei gruppi al gestionale (Switcho) ---
 sock.ev.on('messages.upsert', async ({ messages, type }) => {
   if (type !== 'notify') return;
