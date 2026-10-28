@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Plus, X } from "lucide-react";
 import api, { apiError } from "../../lib/api";
@@ -28,9 +28,11 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
     setCentroId((cur) => (r.data.some((c) => c.id === cur) ? cur : (r.data.find((c) => c.store_ids.includes(storeId)) || r.data[0] || {}).id || ""));
   }).catch((e) => toast.error(apiError(e))), [storeId]);
   useEffect(() => { loadCentri(); }, [loadCentri]);
+  const reqId = useRef(0);
   const load = useCallback(() => {
     if (!centroId) return;
-    api.get("/contabilita/pdp", { params: { centro_id: centroId, anno, mese } }).then((r) => { setD(r.data); setValori(r.data.valori); setVoci(r.data.voci); }).catch((e) => toast.error(apiError(e)));
+    const id = ++reqId.current;
+    api.get("/contabilita/pdp", { params: { centro_id: centroId, anno, mese } }).then((r) => { if (id !== reqId.current) return; setD(r.data); setValori(r.data.valori); setVoci(r.data.voci); }).catch((e) => toast.error(apiError(e)));
   }, [centroId, anno, mese]);
   useEffect(() => { load(); }, [load]);
   const salva = async () => { try { const r = await api.put(`/contabilita/pdp/${centroId}/${anno}/${mese}`, { valori, note: d.note || "" }); setD(r.data); toast.success("Punto di pareggio salvato"); } catch (e) { toast.error(apiError(e)); } };

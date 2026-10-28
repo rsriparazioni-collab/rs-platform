@@ -1,0 +1,48 @@
+{
+  "summary": "Read-only test of Contabilità for Aug, Sep and Oct 2026, centres Morbegno+Gravedona and Sondrio. Backend: 17 of 18 pytest pass. The one failure is a data anomaly: Sondrio's Report fatturato shows company-wide figures. All PDP totals add up: tot_entrate = sum(entrate), tot_uscite = sum(tot_spese), risultato = entrate - uscite, no negative fornitori. The spese_cassa_in_fattura and possibili_doppi fields are present. The trend points match the single-month PDPs, and the confronto September values match the PDP. PDP for M+G in August shows: entrate 34.814,49 = 13.052 + 21.762,49, spese fisse 14.340, 'Possibile doppio conteggio' Phoneclik 689 = DISTRO', and 'Escluse perché già in fattura AdE' MIWO 236,32 and sifar 187,05. September excludes FRATE ELETT. 7,50 and Radio station one 634,40. October shows corrispettivi 0, the foglio box (corrispettivi 8.904,90, diff -8.584,89), 34 red 'manca nel gestionale' days, and the 'Compila dal foglio i giorni rossi' button visible (not pressed). Corrispettivi for Morbegno in September = 10.471 and matches the PDP. All 6 tabs load with no red toasts, NaN or Invalid Date, except an 'undefined' text in Invii e impostazioni. Found one race condition and several cross-screen anomalies.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/contabilita/report/annuale?store_id=abbe8ad2 (Sondrio) and /report/confronto", "issue": "ANOMALY: Sondrio shows Jul 31.755, Aug 35.224,54 and Sep 17.119,21, while Sondrio corrispettivi are 1.357,99 (Aug) and 1.524,90 (Sep). These numbers are the M+G or company totals. RCA: FOGLI_STORICO['sondrio'] reads gid=0 in 'tot' mode, i.e. the column '2026'. On that sheet the real Sondrio values are in the far-right column 'sondrio corr' (565, 817, 1547, 2334, 2518...; May 2518 matches the Sondrio PDP). _parse_storico imports the wrong column into fatturato_storico for Sondrio, and the storico wins over live data (because it is larger). So Report fatturato and Confronto negozi overstate Sondrio by about 25x."},
+      {"endpoint": "GET /api/contabilita/pdp (M+G Oct)", "issue": "ANOMALY: iva.ricavi_netti = 16.400,39 (from RT AdE) is larger than the gross fatturato of 10.498,47. This is because the gestionale has 0 corrispettivi for October while the RT AdE data exists. The dashboard shows 'Ricavi netti IVA € 16.400,39' under 'Fatturato lordo € 10.498,47'. BEP 177.321,89 and 'Mancano 1589%' are also misleading while corrispettivi are missing."},
+      {"endpoint": "GET /api/contabilita/pdp (M+G Sep)", "issue": "ANOMALY: incassato (contanti+POS) is 17.136, above the corrispettivi totale of 14.255 for Morbegno+Gravedona. On days with fatture paid by POS, the POS amount includes the fattura on top of the total (for example 15/09: totale 805, contanti 255 + POS 940). Check whether invoices paid by POS are counted twice in incassato."},
+      {"endpoint": "GET /api/contabilita/pdp (Sondrio Sep/Oct)", "issue": "The pdp_foglio_totali docs for Sondrio are all 0, so the PDP shows an amber 'Foglio Google ... +1524,90' warning. Sondrio is not in that sheet, so this is a false alarm. Hide the comparison when the foglio has no data for the centre."},
+      {"endpoint": "_pdp_calcolo possibili_doppi", "issue": "The comparison uses the AdE total grouped by controparte, not each invoice. If DISTRO' has several invoices in a month (Oct: 3.042,49), a manual voce equal to one single invoice is not flagged. Matches are not consumed either, so one invoice can flag several voci. Grouping is case-sensitive: 'associazione station one' and 'Associazione Station One' end up as two groups."},
+      {"endpoint": "fatture_ade import", "issue": "Mojibake in the controparte 'Mi.LÃ¹. di Deriu Sebastiano Mario' (Oct ricevute). This is a UTF-8/latin-1 decoding problem in the AdE import."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Corrispettivi / PuntoPareggio / IvaDashboard / ReportAnnuale load()", "issue": "Race condition: there is no stale-response guard (AbortController or request id). Reproduced 1 time in 3: Morbegno Oct, then switch to Gravedona and pick Aug quickly. The panel stays on 'Totale € 0,00' (the stale Oct response) instead of 3.107,00. The same pattern exists in PuntoPareggio.load and IvaDashboard.load, so wrong totals can show for the selected month.", "selector": "[data-testid='corrispettivi-totali']", "priority": "HIGH"},
+      {"component": "ContabilitaImpostazioni 'Ultimi invii'", "issue": "Log entries of type import_pdp or import_storico fall into the email branch and render 'Email undefined/undefined → undefined'. Filter the log to send types or add a branch for each tipo.", "selector": "Invii e impostazioni tab", "priority": "MEDIUM"},
+      {"component": "ConfrontoNegozi", "issue": "React warning 'Each child in a list should have a unique key': the centri map returns a <>…</> fragment with no key (line 42). Use <Fragment key={c.id}>.", "selector": "[data-testid^='confronto-pdp-']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All contabilità amounts", "issues": ["eur() uses it-IT toLocaleString, which leaves out the thousands separator for 4-digit numbers ('€ 5542,49' next to '€ 13.052,00'). Add useGrouping: 'always' (or minimumGroupingDigits) for consistent formatting."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter38_contabilita_pdp.py", "/app/test_reports/pytest/pytest_iter38.xml"],
+  "action_items": [
+    "Fix the Sondrio storico import: read the 'sondrio corr' column, not the '2026' column of gid=0, then clean up the wrong fatturato_storico Sondrio docs for 2026 (Jan-Sep).",
+    "Add a stale-response guard (AbortController or a request counter) to load() in Corrispettivi, PuntoPareggio, IvaDashboard and ReportAnnuale.",
+    "ContabilitaImpostazioni log: handle import_pdp/import_storico tipi (no 'Email undefined/undefined → undefined').",
+    "ConfrontoNegozi: keyed Fragment for centri rows.",
+    "PDP: when corrispettivi are missing (giorni_inseriti=0 but foglio/RT exist), show a banner and do not show BEP / ricavi netti that are bigger than lordo, or mark them as unreliable.",
+    "Hide the foglio comparison for Sondrio when the foglio totals are all 0.",
+    "possibili_doppi: compare against each single AdE invoice, consume matches, and normalise the case of controparte when grouping."
+  ],
+  "critical_code_review_comments": [
+    "contabilita.py is 1319 lines; split the PDP, report and import code into separate modules.",
+    "_pdp_calcolo calls _mese_dati twice per store (corrispettivi loop and incasso loop) and queries fatture_ade ricevute twice. /report/confronto runs _pdp_calcolo 12 times per centre (24 full calculations, plus IVA each time). This is slow; cache or reuse.",
+    "_stessa_ditta matches on any shared token of 3+ chars (e.g. 'one', 'ritiro'). It could exclude cash spese wrongly when the amount also matches. Consider requiring a token of 4+ chars, or 2 shared tokens.",
+    "The frontend recomputes the totals (somma/autoVal) instead of using the backend tot_spese/tot_entrate. They match today, but incentivi spese_pdp overrides in sezioni.fornitori are not mirrored in the frontend somma(), which uses the manual valori. Use the backend totals."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter38_contabilita_pdp.py"],
+  "success_rate": {"backend": "94% (17/18; the 1 failure is a data anomaly)", "frontend": "85%"},
+  "seed_data_creation": "None. Read-only testing; no write buttons pressed (Allinea/Compila, Importa, Salva, Invia).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Admin login with TOTP via pyotp works in browser_automation (import pyotp). Centres: 'morbegno+gravedona' (stores 0916114d Gravedona, 348642fd Morbegno) and 'store:abbe8ad2...' Sondrio. Today in preview is 2026-10-28, so October is in_corso. Expected PDP values are asserted in test_iter38_contabilita_pdp.py. Auth checked: bcrypt $2b$, gu_token cookie is HttpOnly/Secure/SameSite=None, CORS uses explicit origin with credentials. Brute-force lockout was NOT tested, to avoid locking the admin.",
+  "rca of the issue": "Race: each load() does api.get(...).then(setDati) with no cancellation. When the store and month change quickly, the older request can resolve last and overwrite state. Sondrio report: the FOGLI_STORICO mapping points at the aggregate column of the 'sondrio' tab (the header 'sondrio corr' is in col 12)."
+}

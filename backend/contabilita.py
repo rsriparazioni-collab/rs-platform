@@ -1098,7 +1098,7 @@ async def report_annuale(store_id: str, anno: int, request: Request):
     return {"store": {"id": store["id"], "nome": store["nome"]}, "anno": anno, "mesi": mesi, "totali": tot}
 
 
-FOGLI_STORICO = {"sondrio": ("1CkU75t1-IR4qibi_Elst24LJJzVhGlLZK4yoAYqNOMc", "0", "tot"),
+FOGLI_STORICO = {"sondrio": ("1CkU75t1-IR4qibi_Elst24LJJzVhGlLZK4yoAYqNOMc", "0", "colonna:sondrio corr"),
                  "morbegno": ("1CkU75t1-IR4qibi_Elst24LJJzVhGlLZK4yoAYqNOMc", "1406738088", "split"),
                  "gravedona": ("1CkU75t1-IR4qibi_Elst24LJJzVhGlLZK4yoAYqNOMc", "1680449865", "tot")}
 MESI_UP = [m.upper() for m in MESI_IT]
@@ -1116,6 +1116,19 @@ def _parse_storico(csv_text: str, modo: str) -> list:
     import csv
     import io
     rows = list(csv.reader(io.StringIO(csv_text)))
+    if modo.startswith("colonna:"):
+        # Colonna dedicata (es. "sondrio corr") nel foglio dei totali aziendali: solo l'anno in corso, senza intestazione anno
+        titolo = modo.split(":", 1)[1].strip().lower()
+        idx = next((i for r in rows[:5] for i, h in enumerate(r) if h.strip().lower() == titolo), None)
+        if idx is None:
+            return []
+        anno = date.today().year
+        out = []
+        for r in rows:
+            nome = (r[0] if r else "").strip().upper()
+            if nome in MESI_UP and nome and idx < len(r) and _num_it(r[idx]):
+                out.append({"anno": anno, "mese": MESI_UP.index(nome), "enel": 0.0, "altro": _num_it(r[idx])})
+        return out
     header = next((r for r in rows if r and r[0].strip().lower() == "fatturato"), None)
     if not header:
         return []

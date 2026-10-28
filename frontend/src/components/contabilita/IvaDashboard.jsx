@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, FileDown, HelpCircle, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
@@ -38,7 +38,8 @@ export const IvaDashboard = ({ anno, mese, setAnno, setMese, isAdmin, centroId: 
   const [credito, setCredito] = useState("");
   const [rett, setRett] = useState("");
   useEffect(() => { if (centroFisso) { setCentroId(centroFisso); return; } api.get("/contabilita/pdp/centri").then((r) => { setCentri(r.data); setCentroId((c) => c || r.data[0]?.id || ""); }).catch(() => {}); }, [centroFisso]);
-  const load = useCallback(() => { if (!centroId) return; api.get("/contabilita/iva", { params: { centro_id: centroId, anno, mese } }).then((r) => { setD(r.data); setCredito(r.data.credito_fonte === "manuale" ? String(r.data.credito_precedente) : ""); setRett(r.data.rettifiche ? String(r.data.rettifiche) : ""); }).catch((e) => toast.error(apiError(e))); }, [centroId, anno, mese]);
+  const reqId = useRef(0);
+  const load = useCallback(() => { if (!centroId) return; const id = ++reqId.current; api.get("/contabilita/iva", { params: { centro_id: centroId, anno, mese } }).then((r) => { if (id !== reqId.current) return; setD(r.data); setCredito(r.data.credito_fonte === "manuale" ? String(r.data.credito_precedente) : ""); setRett(r.data.rettifiche ? String(r.data.rettifiche) : ""); }).catch((e) => toast.error(apiError(e))); }, [centroId, anno, mese]);
   useEffect(() => { load(); }, [load]);
   if (!d) return <p className="text-sm text-slate-500" data-testid="iva-loading">Caricamento IVA…</p>;
   const v = d.vendite, a = d.acquisti, corr = v.corrispettivi;

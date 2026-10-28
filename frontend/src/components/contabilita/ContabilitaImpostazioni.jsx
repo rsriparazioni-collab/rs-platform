@@ -40,7 +40,7 @@ export const ContabilitaImpostazioni = ({ meta, storeId, reload }) => {
         <ul className="max-h-96 divide-y divide-slate-100 overflow-y-auto text-xs">
           {log.map((l) => (
             <li key={l.id} className="px-4 py-2">
-              <p className="font-medium text-slate-700">{l.tipo === "wa_giornaliero" ? `WhatsApp ${l.giorno}` : l.tipo === "wa_fine_mese" ? `Avviso fine mese ${l.giorno}` : `Email ${l.mese}/${l.anno} → ${l.to}`}</p>
+              <p className="font-medium text-slate-700">{l.tipo === "wa_giornaliero" ? `WhatsApp ${l.giorno}` : l.tipo === "wa_fine_mese" ? `Avviso fine mese ${l.giorno}` : l.tipo === "email_mensile" || l.to ? `Email ${l.mese}/${l.anno} → ${l.to}` : `${(l.tipo || "operazione").replace(/_/g, " ")}${l.mese ? ` ${l.mese}/${l.anno}` : ""}`}</p>
               <p className="text-slate-500">{l.tipo === "wa_giornaliero" ? (l.esiti || []).map((e) => `${e.negozi.join("+")} → ${e.numero} ${e.ok ? "✓" : "✗ " + (e.error || "")}`).join(" | ") || "nessun negozio configurato" : l.tipo === "wa_fine_mese" ? (l.esiti || []).map((e) => e.skip || `${e.negozio} ${e.da_versare}€ ${e.ok ? "✓" : "✗ " + (e.error || "")}`).join(" | ") || "nessun negozio con non versato" : `da ${l.from || "-"} · ${new Date(l.at).toLocaleString("it-IT")}`}</p>
             </li>
           ))}

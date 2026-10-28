@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
@@ -16,7 +16,8 @@ export const ReportAnnuale = ({ storeId, anno, setAnno, isAdmin }) => {
     catch (e) { toast.error(apiError(e)); } finally { setImporting(false); }
   };
   const [edit, setEdit] = useState(null);
-  const load = useCallback(() => api.get("/contabilita/report/annuale", { params: { store_id: storeId, anno } }).then((x) => setR(x.data)).catch((e) => toast.error(apiError(e))), [storeId, anno]);
+  const reqId = useRef(0);
+  const load = useCallback(() => { const id = ++reqId.current; return api.get("/contabilita/report/annuale", { params: { store_id: storeId, anno } }).then((x) => { if (id === reqId.current) setR(x.data); }).catch((e) => toast.error(apiError(e))); }, [storeId, anno]);
   useEffect(() => { load(); }, [load]);
   const salvaStorico = async () => {
     try { await api.put(`/contabilita/report/storico/${storeId}/${edit.anno}/${edit.mese}`, { enel: parseFloat(edit.enel) || 0, altro: parseFloat(edit.altro) || 0 }); setEdit(null); toast.success("Storico salvato"); load(); }

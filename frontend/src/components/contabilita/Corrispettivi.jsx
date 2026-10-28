@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Download, Mail, MessageCircle } from "lucide-react";
 import api, { apiError, downloadBlob } from "../../lib/api";
@@ -18,7 +18,8 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin, 
     try { const r = await api.post("/contabilita/corrispettivi/importa-fogli"); toast.success(`Importati ${r.data.giorni} giorni e ${r.data.spese} spese${r.data.errori.length ? ` (${r.data.errori.length} schede con errori)` : ""}`); load(); }
     catch (e) { toast.error(apiError(e)); } finally { setImporting(false); }
   };
-  const load = useCallback(() => api.get("/contabilita/corrispettivi", { params: { store_id: storeId, anno, mese } }).then((r) => setDati(r.data)).catch((e) => toast.error(apiError(e))), [storeId, anno, mese]);
+  const reqId = useRef(0);
+  const load = useCallback(() => { const id = ++reqId.current; return api.get("/contabilita/corrispettivi", { params: { store_id: storeId, anno, mese } }).then((r) => { if (id === reqId.current) setDati(r.data); }).catch((e) => toast.error(apiError(e))); }, [storeId, anno, mese]);
   useEffect(() => { load(); }, [load]);
 
   const inviaEmail = async () => {
