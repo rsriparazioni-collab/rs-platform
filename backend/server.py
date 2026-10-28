@@ -657,6 +657,7 @@ class StoreCreate(BaseModel):
     msg_truffe: str = ""
     msg_bollette: str = ""
     msg_compleanno: str = ""
+    msg_conferma_link: str = ""
 
 class StoreUpdate(BaseModel):
     nome: Optional[str] = None
@@ -676,9 +677,11 @@ class StoreUpdate(BaseModel):
     msg_truffe: Optional[str] = None
     msg_bollette: Optional[str] = None
     msg_compleanno: Optional[str] = None
+    msg_conferma_link: Optional[str] = None
 
 MSG_DEFAULTS = {
     "msg_compleanno": "Buon compleanno {nome}! 🎂\nTanti auguri da tutto lo staff di RS Riparazioni {negozio}. Passa a trovarci quando vuoi!",
+    "msg_conferma_link": "Ciao {nome}, ti scriviamo da RS Riparazioni {negozio}.\nPer completare la tua pratica luce/gas devi CONFERMARE il link (o la mail/plico) che ti ha inviato {fornitore}: hai tempo 48 ore, poi l'offerta scade.\nAprilo dal tuo telefono e con la tua connessione. Se hai dubbi passa in negozio o rispondi qui. Grazie!",
     "msg_privacy": """RS Group – Grazie per averci scelto!
 Ciao {nome}
 per procedere con la tua richiesta e completare l'attivazione del servizio, è necessario firmare l'autorizzazione privacy.
@@ -2645,8 +2648,10 @@ async def get_scoped_client(client_id: str, user: dict) -> dict:
     return c
 
 @api_router.post("/clients/{client_id}/attachments")
-async def upload_attachment(client_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+async def upload_attachment(client_id: str, file: UploadFile = File(...), tipo: str = Form(""), user: dict = Depends(get_current_user)):
     await get_scoped_client(client_id, user)
+    if tipo not in ("", "bolletta", "documento", "altro"):
+        raise HTTPException(status_code=400, detail="Tipo allegato non valido")
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
     if ext not in ("pdf", "jpg", "jpeg", "png", "webp"):
         raise HTTPException(status_code=400, detail="Formato non supportato (PDF, JPG, PNG, WEBP)")
@@ -6217,6 +6222,11 @@ api_router.include_router(lavorazioni_module.router)
 import ricordi as ricordi_module
 ricordi_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, client_scope_filter=client_scope_filter, store_msg=store_msg)
 api_router.include_router(ricordi_module.router)
+import switcho as switcho_module
+switcho_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, store_msg=store_msg, log_lavorazione=log_lavorazione,
+                     cliente_energia=cliente_energia, wa_sessione_negozio=wa_sessione_negozio, store_id_by_name=store_id_by_name,
+                     get_object=get_object, WA_SERVICE=WA_SERVICE, wa_headers=wa_headers, is_addetto=lavorazioni_module._is_addetto)
+api_router.include_router(switcho_module.router)
 
 @api_router.post("/cron/auguri-compleanno")
 async def cron_auguri_compleanno(request: Request, background_tasks: BackgroundTasks):

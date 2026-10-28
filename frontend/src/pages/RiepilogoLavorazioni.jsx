@@ -11,6 +11,7 @@ import { AgendaGiorno, AgendaNuovo } from "../components/lavorazioni/AgendaGiorn
 import { AddettiDialog } from "../components/lavorazioni/AddettiDialog";
 import { StoricoSettimanale } from "../components/lavorazioni/StoricoSettimanale";
 import { useRicordiPreview } from "../components/Ricordi";
+import { SwitchoBox } from "../components/lavorazioni/SwitchoBox";
 
 export default function RiepilogoLavorazioni() {
   const { user } = useAuth();
@@ -52,6 +53,7 @@ export default function RiepilogoLavorazioni() {
       {data && (
         <>
           <RiepilogoNegozi negozi={data.negozi} totali={data.totali} storeId={storeId} onSelect={setStoreId} />
+          <SwitchoBox onOpen={setDetail} onChanged={load} />
           <AgendaGiorno scadute={data.agenda_scadute} oggi={data.oggi} onChanged={load} />
           <div className="grid gap-4 lg:grid-cols-3">
             <ColonnaPratiche titolo="Da lavorare" colore="sky" righe={data.da_lavorare} testid="col-da-lavorare" ricordi={ricordi}
