@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone, date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -122,6 +122,31 @@ async def segna_inviata(fid: str, body: InviataInput, user: dict = Depends(requi
     if not res.matched_count:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
     return {"status": "ok"}
+
+
+@router.post("/fattura/{fid}/allegato")
+async def carica_allegato(fid: str, file: UploadFile = File(...), user: dict = Depends(require_admin)):
+    f = await _d["db"].fatture_estere.find_one({"id": fid}, {"_id": 0})
+    if not f:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File troppo grande (max 10 MB)")
+    ext = os.path.splitext(file.filename or "")[1].lower() or ".pdf"
+    path = f"estere/{fid}/{uuid.uuid4().hex}{ext}"
+    _d["put_object"](path, content, file.content_type or "application/pdf")
+    await _d["db"].fatture_estere.update_one({"id": fid}, {"$set": {"allegato_path": path, "allegato_nome": file.filename, "allegato_tipo": file.content_type or "application/pdf"}})
+    return {"status": "ok", "allegato_nome": file.filename}
+
+
+@router.get("/fattura/{fid}/allegato")
+async def scarica_allegato(fid: str, user: dict = Depends(require_admin)):
+    from fastapi.responses import Response
+    f = await _d["db"].fatture_estere.find_one({"id": fid}, {"_id": 0})
+    if not f or not f.get("allegato_path"):
+        raise HTTPException(status_code=404, detail="Nessun allegato")
+    data, ct = _d["get_object"](f["allegato_path"])
+    return Response(content=data, media_type=f.get("allegato_tipo") or ct, headers={"Content-Disposition": f"inline; filename=\"{f.get('allegato_nome') or 'fattura.pdf'}\""})
 
 
 async def totale_pdp(centro_id: str, anno: int, mese: int) -> float:

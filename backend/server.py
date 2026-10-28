@@ -6311,8 +6311,25 @@ api_router.include_router(contabilita_module.router)
 import estere as estere_module
 async def _centri_tutti():
     return await contabilita_module._centri({"role": "admin", "store_ids": []})
-estere_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, store_id_by_name=store_id_by_name, centri_tutti=_centri_tutti)
+estere_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, store_id_by_name=store_id_by_name, centri_tutti=_centri_tutti, put_object=put_object, get_object=get_object)
 api_router.include_router(estere_module.router)
+import banche as banche_module
+banche_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti)
+api_router.include_router(banche_module.router)
+import report_commercialista as report_comm_module
+report_comm_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, pdp_calcolo=contabilita_module._pdp_calcolo,
+                         riconciliazione=lambda entita, anno, mese: banche_module.riconciliazione(entita, anno, mese, user={"role": "admin"}), send_email=send_email)
+api_router.include_router(report_comm_module.router)
+
+@api_router.post("/cron/report-commercialisti")
+async def cron_report_commercialisti(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(report_comm_module.invio_mensile)
+    return {"status": "accepted"}
 
 @api_router.post("/cron/promemoria-estere")
 async def cron_promemoria_estere(request: Request, background_tasks: BackgroundTasks, giorno: int = 1):

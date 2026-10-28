@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Receipt, Scale, TrendingUp, Settings2, Activity, Landmark, Calculator, Globe } from "lucide-react";
 import api from "../lib/api";
 import { FattureEstere } from "../components/contabilita/FattureEstere";
+import { Banche } from "../components/contabilita/Banche";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Corrispettivi } from "../components/contabilita/Corrispettivi";
 import { IvaDashboard } from "../components/contabilita/IvaDashboard";
@@ -63,6 +64,7 @@ export default function Contabilita() {
             <TabsTrigger value="pdp" className="gap-1.5" data-testid="contabilita-tab-pdp"><Scale className="h-4 w-4" /> Punto di pareggio</TabsTrigger>
             <TabsTrigger value="iva" className="gap-1.5" data-testid="contabilita-tab-iva"><Landmark className="h-4 w-4" /> IVA</TabsTrigger>
             {meta.is_admin && <TabsTrigger value="estere" className="gap-1.5" data-testid="contabilita-tab-estere"><Globe className="h-4 w-4" /> Fatture estere</TabsTrigger>}
+            {meta.is_admin && <TabsTrigger value="banche" className="gap-1.5" data-testid="contabilita-tab-banche"><Landmark className="h-4 w-4" /> Banche & commercialisti</TabsTrigger>}
             <TabsTrigger value="fiscale" className="gap-1.5" data-testid="contabilita-tab-fiscale"><Calculator className="h-4 w-4" /> Pianificazione fiscale</TabsTrigger>
             <TabsTrigger value="report" className="gap-1.5" data-testid="contabilita-tab-report"><TrendingUp className="h-4 w-4" /> Report fatturato</TabsTrigger>
             <TabsTrigger value="impostazioni" className="gap-1.5" data-testid="contabilita-tab-impostazioni"><Settings2 className="h-4 w-4" /> Invii e impostazioni</TabsTrigger>
@@ -71,6 +73,7 @@ export default function Contabilita() {
           <TabsContent value="pdp"><PuntoPareggio {...periodo} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="iva"><IvaDashboard {...periodo} isAdmin={meta.is_admin} /></TabsContent>
           {meta.is_admin && <TabsContent value="estere"><FattureEstere anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} /></TabsContent>}
+          {meta.is_admin && <TabsContent value="banche"><Banche anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} /></TabsContent>}
           <TabsContent value="fiscale"><PianoFiscale anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="report"><ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="impostazioni"><ContabilitaImpostazioni meta={meta} storeId={storeId} reload={loadMeta} /></TabsContent>

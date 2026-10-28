@@ -155,3 +155,11 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/promemoria-estere?giorno=28"
     method: POST
     enabled: true
+  - name: report-commercialisti
+    description: "Il 1° del mese 08:00: email del riepilogo contabile del mese precedente a ciascun commercialista (ditta / SRLS)"
+    cron: "0 8 1 * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/report-commercialisti"
+    method: POST
+    enabled: true

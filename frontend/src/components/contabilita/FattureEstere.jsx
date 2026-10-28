@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Globe, Plus, Trash2, Check, Copy, Send } from "lucide-react";
+import { Globe, Plus, Trash2, Check, Copy, Send, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
@@ -27,6 +27,12 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
     } catch (e) { toast.error(apiError(e)); }
   };
   const inviata = async (f) => { try { await api.post(`/estere/fattura/${f.id}/inviata`, { inviata: !f.inviata_at }); load(); } catch (e) { toast.error(apiError(e)); } };
+  const allegato = async (f, e) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    const fd = new FormData(); fd.append("file", file);
+    try { await api.post(`/estere/fattura/${f.id}/allegato`, fd); toast.success("Allegato caricato"); load(); } catch (err) { toast.error(apiError(err)); }
+  };
   const del = async (f) => { if (!window.confirm(`Eliminare la fattura ${f.fornitore} ${eur(f.imponibile)}?`)) return; try { await api.delete(`/estere/fattura/${f.id}`); load(); } catch (e) { toast.error(apiError(e)); } };
   const copia = async () => { try { const r = await api.get("/estere/riepilogo-commercialista", { params: { anno, mese } }); await navigator.clipboard.writeText(r.data.testo); toast.success("Testo copiato: incollalo nella mail al commercialista"); } catch (e) { toast.error(apiError(e)); } };
   const salvaTel = async () => { try { await api.put("/estere/config", { telefono: tel }); toast.success("Numero promemoria salvato"); } catch (e) { toast.error(apiError(e)); } };
@@ -73,7 +79,7 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
           </div>
           {d.items.length === 0 ? <p className="px-4 py-6 text-center text-sm text-slate-400">Nessuna fattura estera nel mese.</p> : (
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-3 py-2 text-left">Data</th><th className="px-3 py-2 text-left">Fornitore</th><th className="px-3 py-2 text-left">Tipo</th><th className="px-3 py-2 text-right">Imponibile</th><th className="px-3 py-2 text-right">IVA</th><th className="px-3 py-2 text-left">Entità</th><th className="px-3 py-2">Inviata</th><th /></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-3 py-2 text-left">Data</th><th className="px-3 py-2 text-left">Fornitore</th><th className="px-3 py-2 text-left">Tipo</th><th className="px-3 py-2 text-right">Imponibile</th><th className="px-3 py-2 text-right">IVA</th><th className="px-3 py-2 text-left">Entità</th><th className="px-3 py-2">Inviata</th><th className="px-3 py-2">Allegato</th><th /></tr></thead>
               <tbody>
                 {d.items.map((f) => (
                   <tr key={f.id} className="border-t border-slate-100" data-testid={`estera-${f.id}`}>
@@ -84,6 +90,10 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
                     <td className="px-3 py-2 text-right tabular-nums text-slate-500">{f.iva_integrata ? `${eur(f.iva_integrata)} RC` : `${eur(f.iva_dogana || 0)} dogana`}</td>
                     <td className="px-3 py-2 text-xs">{nomeCentro(f.centro_id)}</td>
                     <td className="px-3 py-2 text-center"><button type="button" onClick={() => inviata(f)} className={`rounded-full px-2 py-0.5 text-[11px] ${f.inviata_at ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`} data-testid={`estera-inviata-${f.id}`}>{f.inviata_at ? <><Check className="inline h-3 w-3" /> inviata</> : <><Send className="inline h-3 w-3" /> da inviare</>}</button></td>
+                    <td className="px-3 py-2 text-center text-xs">
+                      {f.allegato_path ? <a href={`${process.env.REACT_APP_BACKEND_URL}/api/estere/fattura/${f.id}/allegato`} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline" data-testid={`estera-allegato-${f.id}`}><Paperclip className="inline h-3 w-3" /> {f.allegato_nome?.slice(0, 18)}</a>
+                        : <label className="cursor-pointer text-slate-500 hover:text-sky-700" data-testid={`estera-allegato-up-${f.id}`}><Paperclip className="inline h-3 w-3" /> carica PDF<input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => allegato(f, e)} /></label>}
+                    </td>
                     <td className="px-3 py-2 text-right"><button type="button" onClick={() => del(f)} className="text-slate-300 hover:text-rose-600" data-testid={`estera-del-${f.id}`}><Trash2 className="h-4 w-4" /></button></td>
                   </tr>
                 ))}
