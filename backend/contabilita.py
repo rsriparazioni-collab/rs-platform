@@ -939,9 +939,31 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     # Spese contanti da prima nota (incluse quelle importate dai fogli Google), raggruppate per motivo
     pref = f"{anno:04d}-{mese:02d}"
     spese_cassa: dict = {}
-    async for s in db.spese_cassa.find({"store_id": {"$in": centro["store_ids"]}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "motivo": 1, "importo": 1}):
+    importi_ade = [(_f(f.get("totale")), f.get("controparte") or "") async for f in db.fatture_ade.find({"centro_id": centro["id"], "anno": anno, "mese": mese, "direzione": "ricevute"}, {"_id": 0, "totale": 1, "controparte": 1})]
+    spese_cassa_in_fattura = []
+
+    def _stessa_ditta(motivo: str, controparte: str) -> bool:
+        a, b = _tokens(motivo), _tokens(controparte)
+        return any(x == y or (len(x) >= 4 and len(y) >= 4 and (x.startswith(y) or y.startswith(x))) for x in a for y in b)
+
+    async for s in db.spese_cassa.find({"store_id": {"$in": centro["store_ids"]}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "motivo": 1, "importo": 1, "data": 1}):
+        imp = _f(s.get("importo"))
+        # Spesa contanti con stesso importo E stessa ditta di una fattura ricevuta AdE del mese: già tra i fornitori, NON sommare due volte
+        match = next((x for x in importi_ade if abs(imp - x[0]) < 0.01 and _stessa_ditta(s.get("motivo") or "", x[1])), None) if imp else None
+        if match:
+            importi_ade.remove(match)
+            spese_cassa_in_fattura.append({"data": s.get("data"), "motivo": s.get("motivo"), "importo": imp, "controparte_ade": match[1]})
+            continue
         k = re.sub(r"\s+", " ", (s.get("motivo") or "Varie").strip()).title()[:40] or "Varie"
-        spese_cassa[k] = round(spese_cassa.get(k, 0.0) + _f(s.get("importo")), 2)
+        spese_cassa[k] = round(spese_cassa.get(k, 0.0) + imp, 2)
+    # Voce fornitore inserita a mano con lo stesso importo di una fattura AdE non abbinata: probabile doppio conteggio (solo segnalato)
+    possibili_doppi = []
+    for v, imp in sezioni["fornitori"].items():
+        if v in ade_fornitori or not imp or v.startswith("Fatture ricevute"):
+            continue
+        for na in non_abbinate:
+            if abs(_f(na["totale"]) - imp) < 0.01:
+                possibili_doppi.append({"voce": v, "importo": imp, "controparte_ade": na["controparte"]})
     tot_spese_cassa = round(sum(spese_cassa.values()), 2)
     tot_spese["spese_cassa"] = tot_spese_cassa
     tot_uscite = round(sum(tot_spese.values()), 2)
@@ -980,7 +1002,7 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
                   "proiezione_risultato": round(proiezione - costi_variabili * (proiezione / tot_entrate if tot_entrate else 1) - costi_fissi, 2) if in_corso else round(tot_entrate - tot_uscite, 2)}
     return {"centro": {"id": centro["id"], "nome": centro["nome"], "negozi": centro["negozi"]}, "anno": anno, "mese": mese, "voci": voci, "valori": valori,
             "entrate": entrate, "entrate_info": entrate_info, "corrispettivi_per_negozio": per_negozio, "ade": ade, "ade_fornitori": ade_fornitori, "ade_non_abbinate": non_abbinate, "sezioni": sezioni, "tot_entrate": tot_entrate, "tot_spese": tot_spese, "tot_uscite": tot_uscite,
-            "spese_cassa": spese_cassa, "tot_spese_cassa": tot_spese_cassa,
+            "spese_cassa": spese_cassa, "tot_spese_cassa": tot_spese_cassa, "spese_cassa_in_fattura": spese_cassa_in_fattura, "possibili_doppi": possibili_doppi,
             "incasso": {"incassato": incassato, "contanti": round(contanti, 2), "pos": round(pos, 2), "non_riscosso": round(non_riscosso, 2), "fatturato": tot_entrate,
                         "da_incassare": round(tot_entrate - incassato, 2)},
             "iva": {"determinabile": iva_mese["vendite"]["determinabile"], "ricavi_netti": ricavi_netti, "iva_debito": iva_mese["vendite"]["iva_debito"],
