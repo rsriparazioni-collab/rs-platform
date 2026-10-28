@@ -14,7 +14,7 @@ _d: dict = {}
 CONTI_DEFAULT = [
     {"id": "ditta-intesa-pos", "nome": "Intesa Sanpaolo – conto POS", "entita": "ditta", "tipo": "banca", "pos_di": ["ditta-nexi", "ditta-mypos"]},
     {"id": "ditta-intesa-2", "nome": "Intesa Sanpaolo – conto 2", "entita": "ditta", "tipo": "banca", "pos_di": []},
-    {"id": "ditta-mypos", "nome": "myPOS (ditta)", "entita": "ditta", "tipo": "pos", "pos_di": []},
+    {"id": "ditta-mypos", "nome": "myPOS (DHL)", "entita": "ditta", "tipo": "pos", "pos_di": [], "dhl": True},
     {"id": "ditta-nexi", "nome": "Nexi (ditta)", "entita": "ditta", "tipo": "pos", "pos_di": []},
     {"id": "srls-intesa", "nome": "Intesa Sanpaolo – RS Riparazioni SRLS", "entita": "srls", "tipo": "banca", "pos_di": ["srls-nexi"]},
     {"id": "srls-nexi", "nome": "Nexi (SRLS)", "entita": "srls", "tipo": "pos", "pos_di": []},
@@ -177,7 +177,7 @@ def _parse_pdf_nexi(text: str) -> list:
 
 
 def _parse_pdf_mypos(text: str) -> list:
-    """Monthly statement myPOS: Payment = incasso lordo (+), Fee = commissione (−); 'Request money' (giroconto verso banca) saltato."""
+    """Monthly statement myPOS (POS di DHL): Payment = incasso (+), Fee = commissione (−), 'Request money' = trasferimento a DHL (−)."""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     out = []
     i = 0
@@ -192,8 +192,8 @@ def _parse_pdf_mypos(text: str) -> list:
             if d and len(nums) >= 2:
                 debit, credit = float(nums[-2]), float(nums[-1])
                 testo = " ".join(blk[2:])
-                if "Request money" in testo or "Request" in blk[2:6]:
-                    pass
+                if "Request" in blk[2:6] or "Request money" in testo:
+                    out.append({"data": d, "importo": round(-debit, 2), "descrizione": f"myPOS trasferimento a DHL {blk[1]}"[:200]})
                 elif credit > 0:
                     m = re.search(r"TID\s*(\d+)", testo)
                     out.append({"data": d, "importo": round(credit, 2), "descrizione": f"myPOS Payment{' TID ' + m.group(1) if m else ''} {blk[1]}"[:200]})
@@ -328,7 +328,8 @@ async def riconciliazione(entita: str, anno: int, mese: int, user: dict = Depend
     pref = f"{anno:04d}-{mese:02d}"
     conti = [c for c in CONTI_DEFAULT if c["entita"] == entita]
     banche = [c for c in conti if c["tipo"] == "banca"]
-    pos_ids = [c["id"] for c in conti if c["tipo"] == "pos"]
+    pos_ids = [c["id"] for c in conti if c["tipo"] == "pos" and not c.get("dhl")]
+    dhl_ids = [c["id"] for c in conti if c.get("dhl")]
     centro = next(c for c in await _d["centri_tutti"]() if c["id"] == ENTITA_CENTRO[entita])
     giorni: dict = {}
     async for c in db.corrispettivi.find({"store_id": {"$in": centro["store_ids"]}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "pos": 1}):
@@ -367,9 +368,18 @@ async def riconciliazione(entita: str, anno: int, mese: int, user: dict = Depend
         else:
             non_trovate.append(f)
     altre_uscite = [u for u in uscite_banca if u["id"] not in usate]
+    # myPOS = POS di proprietà DHL: non sono incassi nostri (fatturiamo a DHL). Controllo: incassi = trasferiti a DHL + commissioni
+    dhl = None
+    if dhl_ids:
+        mv = await db.movimenti_banca.find({"conto_id": {"$in": dhl_ids}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "importo": 1, "descrizione": 1}).to_list(5000)
+        inc = round(sum(m["importo"] for m in mv if m["importo"] > 0), 2)
+        tra = round(-sum(m["importo"] for m in mv if m["importo"] < 0 and "trasferimento" in m["descrizione"].lower()), 2)
+        com = round(-sum(m["importo"] for m in mv if m["importo"] < 0 and "commissione" in m["descrizione"].lower()), 2)
+        dhl = {"incassato": inc, "trasferito_dhl": tra, "commissioni": com, "saldo": round(inc - tra - com, 2), "operazioni": sum(1 for m in mv if m["importo"] > 0), "ok": abs(inc - tra - com) < 1.0 if mv else None,
+               "nota": "POS DHL: incassi non contabilizzati (si fattura a DHL). Deve tornare: incassato = trasferito a DHL + commissioni."}
     caricati = await db.estratti_caricati.find({"conto_id": {"$in": [c["id"] for c in conti]}, "al": {"$gte": f"{pref}-01"}, "dal": {"$lte": f"{pref}-31"}}, {"_id": 0}).sort("at", -1).to_list(50)
     return {"entita": entita, "centro": centro["nome"], "conti": conti, "giorni": righe, "totali": tot, "fatture_pagate": pagate, "fatture_non_trovate_in_banca": non_trovate,
-            "altre_uscite_banca": sorted(altre_uscite, key=lambda u: u["data"]), "estratti_caricati": caricati,
+            "altre_uscite_banca": sorted(altre_uscite, key=lambda u: u["data"]), "estratti_caricati": caricati, "dhl": dhl,
             "nota": "I POS si contano UNA sola volta (dal dichiarato nelle chiusure); transazioni Nexi/myPOS e accrediti in banca servono solo da controllo."}
 
 
