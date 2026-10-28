@@ -8,6 +8,7 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/banche")
 _d: dict = {}
@@ -368,6 +369,21 @@ async def riconciliazione(entita: str, anno: int, mese: int, user: dict = Depend
         else:
             non_trovate.append(f)
     altre_uscite = [u for u in uscite_banca if u["id"] not in usate]
+    # fatture non in banca: pagamenti segnati a mano (contanti/carta/altro) + suggerimenti dalle spese contanti delle chiusure (stesso importo)
+    pag_manuali = {p["fattura_id"]: p async for p in db.fatture_pagamenti.find({"fattura_id": {"$in": [f["id"] for f in non_trovate]}}, {"_id": 0})}
+    spese = await db.spese_cassa.find({"store_id": {"$in": centro["store_ids"]}, "data": {"$regex": f"^{pref}"}}, {"_id": 0}).to_list(2000)
+    spese_usate = {p["spesa_cassa_id"] for p in pag_manuali.values() if p.get("spesa_cassa_id")}
+    pagate_altro, ancora_aperte = [], []
+    for f in non_trovate:
+        p = pag_manuali.get(f["id"])
+        if p:
+            pagate_altro.append({"fattura": f, "pagamento": p})
+            continue
+        sug = next((s for s in spese if s["id"] not in spese_usate and abs(float(s.get("importo") or 0) - float(f.get("totale") or 0)) < 0.01), None)
+        if sug:
+            spese_usate.add(sug["id"])
+        ancora_aperte.append({**f, "suggerimento_contanti": sug})
+    non_trovate = ancora_aperte
     # myPOS = POS di proprietà DHL: non sono incassi nostri (fatturiamo a DHL). Controllo: incassi = trasferiti a DHL + commissioni
     dhl = None
     if dhl_ids:
@@ -378,7 +394,7 @@ async def riconciliazione(entita: str, anno: int, mese: int, user: dict = Depend
         dhl = {"incassato": inc, "trasferito_dhl": tra, "commissioni": com, "saldo": round(inc - tra - com, 2), "operazioni": sum(1 for m in mv if m["importo"] > 0), "ok": abs(inc - tra - com) < 1.0 if mv else None,
                "nota": "POS DHL: incassi non contabilizzati (si fattura a DHL). Deve tornare: incassato = trasferito a DHL + commissioni."}
     caricati = await db.estratti_caricati.find({"conto_id": {"$in": [c["id"] for c in conti]}, "al": {"$gte": f"{pref}-01"}, "dal": {"$lte": f"{pref}-31"}}, {"_id": 0}).sort("at", -1).to_list(50)
-    return {"entita": entita, "centro": centro["nome"], "conti": conti, "giorni": righe, "totali": tot, "fatture_pagate": pagate, "fatture_non_trovate_in_banca": non_trovate,
+    return {"entita": entita, "centro": centro["nome"], "conti": conti, "giorni": righe, "totali": tot, "fatture_pagate": pagate, "fatture_non_trovate_in_banca": non_trovate, "fatture_pagate_altro": pagate_altro,
             "altre_uscite_banca": sorted(altre_uscite, key=lambda u: u["data"]), "estratti_caricati": caricati, "dhl": dhl,
             "nota": "I POS si contano UNA sola volta (dal dichiarato nelle chiusure); transazioni Nexi/myPOS e accrediti in banca servono solo da controllo."}
 
@@ -392,3 +408,37 @@ async def elimina_estratto(estratto_id: str, user: dict = Depends(require_admin)
     res = await db.movimenti_banca.delete_many({"estratto_id": estratto_id})
     await db.estratti_caricati.delete_one({"id": estratto_id})
     return {"eliminati": res.deleted_count}
+
+
+
+class PagamentoInput(BaseModel):
+    modo: str = "contanti"  # contanti | carta | altro
+    spesa_cassa_id: str = ""
+    nota: str = ""
+
+
+@router.post("/fatture/{fattura_id}/pagamento")
+async def segna_pagamento(fattura_id: str, body: PagamentoInput, user: dict = Depends(require_admin)):
+    """Segna una fattura ricevuta AdE come pagata fuori banca (contanti/carta/altro), opzionalmente agganciata a una spesa contanti delle chiusure."""
+    db = _d["db"]
+    if body.modo not in ("contanti", "carta", "altro"):
+        raise HTTPException(status_code=400, detail="Modo non valido")
+    f = await db.fatture_ade.find_one({"id": fattura_id}, {"_id": 0, "controparte": 1, "totale": 1})
+    if not f:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    doc = {"fattura_id": fattura_id, "modo": body.modo, "spesa_cassa_id": body.spesa_cassa_id or None, "nota": body.nota, "importo": f.get("totale"), "controparte": f.get("controparte"), "by": user["name"], "at": _now().isoformat()}
+    if body.spesa_cassa_id:
+        sp = await db.spese_cassa.find_one({"id": body.spesa_cassa_id}, {"_id": 0, "data": 1, "motivo": 1, "importo": 1})
+        if not sp:
+            raise HTTPException(status_code=404, detail="Spesa contanti non trovata")
+        doc["spesa"] = sp
+    await db.fatture_pagamenti.update_one({"fattura_id": fattura_id}, {"$set": doc}, upsert=True)
+    return {"ok": True, **doc}
+
+
+@router.delete("/fatture/{fattura_id}/pagamento")
+async def annulla_pagamento(fattura_id: str, user: dict = Depends(require_admin)):
+    res = await _d["db"].fatture_pagamenti.delete_one({"fattura_id": fattura_id})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Nessun pagamento segnato")
+    return {"ok": True}

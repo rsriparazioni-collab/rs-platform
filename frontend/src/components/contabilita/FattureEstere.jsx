@@ -1,18 +1,34 @@
 import { useCallback, useEffect, useState } from "react";
-import { Globe, Plus, Trash2, Check, Copy, Send, Paperclip } from "lucide-react";
+import { Globe, Plus, Trash2, Check, Copy, Send, Paperclip, FileSearch } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { PeriodoPicker, eur } from "./shared";
 
-const EMPTY = { centro_id: "", data: new Date().toISOString().slice(0, 10), fornitore: "", paese: "", tipo: "ue_rc", numero: "", imponibile: "", iva_pct: 22, iva_dogana: "", note: "" };
+const EMPTY = { centro_id: "", data: new Date().toISOString().slice(0, 10), fornitore: "", paese: "", tipo: "ue_rc", numero: "", imponibile: "", iva_pct: 22, iva_dogana: "", note: "", attachment_id: "" };
 const TIPO_CLS = { ue_rc: "bg-sky-100 text-sky-800", extra_ue: "bg-amber-100 text-amber-900", ebay: "bg-violet-100 text-violet-800" };
 
 export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => {
   const [d, setD] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [tel, setTel] = useState("");
+  const [lettura, setLettura] = useState(false);
+  const [pdfNome, setPdfNome] = useState("");
+  const leggiPdf = async (e) => {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    const fd = new FormData(); fd.append("file", file);
+    setLettura(true);
+    try {
+      const r = await api.post("/estere/leggi-pdf", fd);
+      const a = r.data.anteprima || {};
+      setForm((f) => ({ ...f, fornitore: a.fornitore || f.fornitore, paese: (a.paese || f.paese || "").toUpperCase(), data: a.data || f.data, numero: a.numero || f.numero, imponibile: a.imponibile ?? f.imponibile, tipo: a.tipo || f.tipo,
+        iva_dogana: a.tipo === "extra_ue" && a.iva ? a.iva : f.iva_dogana, note: [f.note, a.valuta && a.valuta !== "EUR" ? `valuta ${a.valuta}` : "", a.piva_fornitore ? `P.IVA ${a.piva_fornitore}` : ""].filter(Boolean).join(" · "), attachment_id: r.data.attachment_id }));
+      setPdfNome(file.name);
+      toast.success("Dati letti dal PDF: controlla e poi Registra");
+    } catch (err) { toast.error(apiError(err)); } finally { setLettura(false); }
+  };
   const load = useCallback(() => api.get("/estere", { params: { anno, mese } }).then((r) => setD(r.data)).catch((e) => toast.error(apiError(e))), [anno, mese]);
   useEffect(() => { load(); api.get("/estere/config").then((r) => setTel(r.data.telefono || "")).catch(() => {}); }, [load]);
   useEffect(() => { if (!form.centro_id && centri[0]) setForm((f) => ({ ...f, centro_id: centri[0].id })); }, [centri, form.centro_id]);
@@ -23,7 +39,7 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
   const salva = async () => {
     try {
       await api.post("/estere", { ...form, imponibile: imp, iva_pct: Number(form.iva_pct) || 0, iva_dogana: Number(form.iva_dogana) || 0 });
-      toast.success("Fattura estera registrata"); setForm({ ...EMPTY, centro_id: form.centro_id, tipo: form.tipo }); load();
+      toast.success("Fattura estera registrata"); setForm({ ...EMPTY, centro_id: form.centro_id, tipo: form.tipo }); setPdfNome(""); load();
     } catch (e) { toast.error(apiError(e)); }
   };
   const inviata = async (f) => { try { await api.post(`/estere/fattura/${f.id}/inviata`, { inviata: !f.inviata_at }); load(); } catch (e) { toast.error(apiError(e)); } };
@@ -53,6 +69,10 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
         </div>
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-3" data-testid="estere-form">
+        <label className={`mb-2 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm ${lettura ? "border-slate-300 text-slate-400" : "border-sky-300 bg-sky-50/50 text-sky-800 hover:bg-sky-50"}`} data-testid="estere-leggi-pdf">
+          <FileSearch className="h-4 w-4" /> {lettura ? "Lettura della fattura in corso…" : pdfNome ? `PDF letto: ${pdfNome} — controlla i campi e Registra (il PDF verrà allegato)` : "Carica il PDF della fattura: l'AI compila i campi e il file viene allegato"}
+          <input type="file" accept=".pdf,image/*" className="hidden" disabled={lettura} onChange={leggiPdf} />
+        </label>
         <div className="grid gap-2 md:grid-cols-4">
           <select value={form.centro_id} onChange={(e) => set("centro_id", e.target.value)} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" data-testid="estere-centro">
             {centri.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}

@@ -88,6 +88,10 @@ async def crea(body: EsteraInput, user: dict = Depends(require_admin)):
         raise HTTPException(status_code=400, detail="Imponibile obbligatorio")
     doc = _calcola({**body.model_dump(), "id": str(uuid.uuid4()), "anno": d.year, "mese": d.month, "inviata_at": None,
                     "created_at": _now().isoformat(), "created_by": user["name"]})
+    if body.attachment_id:
+        pend = await _d["db"].estere_allegati_pending.find_one_and_delete({"id": body.attachment_id})
+        if pend:
+            doc.update({"allegato_path": pend["path"], "allegato_nome": pend["nome"], "allegato_tipo": pend["tipo"]})
     await _d["db"].fatture_estere.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -128,6 +132,56 @@ async def segna_inviata(fid: str, body: InviataInput, user: dict = Depends(requi
     if not res.matched_count:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
     return {"status": "ok"}
+
+
+@router.post("/leggi-pdf")
+async def leggi_pdf(file: UploadFile = File(...), user: dict = Depends(require_admin)):
+    """Legge il PDF della fattura estera con l'AI e propone i campi; il file resta in attesa (attachment_id) e si aggancia alla fattura al salvataggio."""
+    import base64
+    import json
+    import re
+    from emergentintegrations.llm.chat import ImageContent, LlmChat, UserMessage
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY mancante")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File troppo grande (max 10 MB)")
+    is_pdf = content[:4] == b"%PDF" or (file.filename or "").lower().endswith(".pdf")
+    testo, img_b64 = "", None
+    if is_pdf:
+        import pymupdf
+        doc = pymupdf.open(stream=content, filetype="pdf")
+        testo = "\n".join(p.get_text() for p in doc)[:12000]
+        if len(testo.strip()) < 80:  # scansione senza testo → immagine della prima pagina
+            img_b64 = base64.b64encode(doc[0].get_pixmap(dpi=110).tobytes("png")).decode()
+    else:
+        img_b64 = base64.b64encode(content).decode()
+    prompt = ("Estrai dalla fattura i dati in JSON con chiavi: fornitore, paese (codice ISO2 del venditore), data (YYYY-MM-DD), numero, imponibile (numero, totale senza IVA), "
+              "iva (numero, IVA indicata in fattura, 0 se assente), totale (numero), valuta (ISO 4217), piva_fornitore, tipo: 'ebay' se il venditore è eBay/marketplace, "
+              "'ue_rc' se il fornitore è in un paese UE diverso dall'Italia, 'extra_ue' altrimenti. Se un dato manca usa null. Rispondi SOLO con il JSON.")
+    chat = LlmChat(api_key=key, session_id=f"estera-{uuid.uuid4().hex[:8]}", system_message="Sei un contabile che legge fatture. Rispondi solo con JSON.").with_model("openai", "gpt-5.4")
+    try:
+        msg = UserMessage(text=prompt + ("\n\nTESTO FATTURA:\n" + testo if testo.strip() else ""), file_contents=[ImageContent(image_base64=img_b64)] if img_b64 else None)
+        risposta = str(await chat.send_message(msg))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Lettura non riuscita: {e}")
+    m = re.search(r"\{.*\}", risposta, re.S)
+    try:
+        dati = json.loads(m.group(0) if m else risposta)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Risposta AI non interpretabile: compila i campi a mano")
+    ext = os.path.splitext(file.filename or "")[1].lower() or ".pdf"
+    att_id = uuid.uuid4().hex
+    path = f"estere/pending/{att_id}{ext}"
+    _d["put_object"](path, content, file.content_type or "application/pdf")
+    await _d["db"].estere_allegati_pending.insert_one({"id": att_id, "path": path, "nome": file.filename, "tipo": file.content_type or "application/pdf", "at": _now().isoformat()})
+    if dati.get("tipo") not in TIPI:
+        dati["tipo"] = "ue_rc" if (dati.get("paese") or "").upper() in UE else "extra_ue"
+    return {"anteprima": dati, "attachment_id": att_id, "nota": "Controlla i dati proposti prima di salvare."}
+
+
+UE = {"AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"}
 
 
 @router.post("/fattura/{fid}/allegato")

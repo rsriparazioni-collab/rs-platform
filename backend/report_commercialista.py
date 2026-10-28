@@ -72,7 +72,12 @@ async def costruisci_report(centro: dict, anno: int, mese: int) -> dict:
     if banca and banca["giorni"]:
         t = banca["totali"]
         sez.append(("Riconciliazione POS", [("POS dichiarato nelle chiusure", _eur(t["pos_chiusure"])), ("Transazioni Nexi/myPOS caricate", _eur(t["pos_transazioni"])), ("Accrediti POS in banca", _eur(t["accrediti_banca"])),
-                                            ("Giorni con differenza > 1 €", str(sum(1 for g in banca["giorni"] if g["ok"] is False))), ("Giorni senza transazioni POS caricate", str(sum(1 for g in banca["giorni"] if g["ok"] is None))), ("Fatture ricevute trovate pagate in banca", str(len(banca["fatture_pagate"])))]))
+                                            ("Giorni con differenza > 1 €", str(sum(1 for g in banca["giorni"] if g["ok"] is False))), ("Giorni senza transazioni POS caricate", str(sum(1 for g in banca["giorni"] if g["ok"] is None))), ("Fatture ricevute trovate pagate in banca", str(len(banca["fatture_pagate"]))),
+                                            ("Fatture ricevute pagate in contanti/carta (segnate)", str(len(banca.get("fatture_pagate_altro") or []))), ("Fatture ricevute senza pagamento individuato", str(len(banca["fatture_non_trovate_in_banca"])))]))
+        if banca.get("fatture_pagate_altro"):
+            sez.append(("Fatture ricevute pagate fuori banca (quadratura con prima nota contanti)", [(f"{p['fattura'].get('controparte')} n. {p['fattura'].get('numero') or '-'} — {p['pagamento']['modo']}" + (f" (spesa cassa {p['pagamento']['spesa']['data']} {p['pagamento']['spesa']['motivo']})" if p['pagamento'].get('spesa') else ""), _eur(p['fattura'].get('totale') or 0)) for p in banca["fatture_pagate_altro"]]))
+        if banca["fatture_non_trovate_in_banca"]:
+            sez.append(("Fatture ricevute SENZA pagamento individuato (da verificare)", [(f"{f.get('controparte')} n. {f.get('numero') or '-'}", _eur(f.get('totale') or 0)) for f in banca["fatture_non_trovate_in_banca"]]))
     else:
         sez.append(("Riconciliazione POS / banca", [("Estratti conto", "non caricati per questo mese")]))
     gm = pdp["foglio"].get("giorni_mancanti") if isinstance(pdp.get("foglio"), dict) else None
