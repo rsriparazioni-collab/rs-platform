@@ -5478,6 +5478,23 @@ async def wa_sessione_connessa(session: str) -> bool:
     except Exception:
         return False
 
+async def wa_sessione_negozio(store: dict | None) -> str:
+    """Sessione del negozio: il suo id se connesso, altrimenti la sessione connessa il cui nome WhatsApp contiene il nome del negozio."""
+    sid = (store or {}).get("id") or "default"
+    try:
+        async with httpx.AsyncClient(timeout=10) as http_client:
+            resp = await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())
+        sessions = [s for s in (resp.json() or {}).get("sessions", []) if s.get("connected")]
+    except Exception:
+        return sid
+    if any(s.get("session") == sid for s in sessions):
+        return sid
+    nome = ((store or {}).get("nome") or "").strip().lower()
+    for s in sessions:
+        if nome and nome in ((s.get("user") or {}).get("name") or "").lower():
+            return s["session"]
+    return sid
+
 async def invia_avviso_pronto(svc: dict) -> None:
     client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "telefono": 1})
     if not client_doc or not client_doc.get("telefono"):
@@ -5487,13 +5504,13 @@ async def invia_avviso_pronto(svc: dict) -> None:
     if not svc.get("venditore_id"):
         svc = await db.servizi.find_one({"id": svc["id"]}, {"_id": 0}) or svc
     store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
-    sessione = svc.get("venditore_id") or "default"
+    sessione = await wa_sessione_negozio(store)
     msg = store_msg(store, "msg_pronto", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo", "dispositivo"),
                     numero=svc.get("numero_riparazione", "-"))
     try:
         await wa_send(client_doc["telefono"], msg, session=sessione, tipo="pronto", client_id=svc["client_id"], servizio_id=svc["id"])
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_sent_at": datetime.now(timezone.utc).isoformat(),
-                                                                 "pronto_msg_error": None}})
+                                                                 "pronto_msg_session": sessione, "pronto_msg_error": None}})
     except HTTPException as e:
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"pronto_msg_error": str(e.detail)}})
 
