@@ -6350,6 +6350,10 @@ import fiscale as fiscale_module
 fiscale_module.setup(db=db, user=contabilita_module._user, centro=contabilita_module._centro, centri=contabilita_module._centri, pdp_calcolo=contabilita_module._pdp_calcolo,
                      calcolo_iva=iva_module.calcolo_iva, mese_dati=contabilita_module._mese_dati, wa_send=wa_send, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE)
 api_router.include_router(fiscale_module.router)
+import scadenzario as scadenzario_module
+scadenzario_module.setup(db=db, user=contabilita_module._user, centri=contabilita_module._centri, centro=contabilita_module._centro, piano=fiscale_module.piano,
+                         wa_send=wa_send, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE)
+api_router.include_router(scadenzario_module.router)
 import corrispettivi_ade as corrispettivi_ade_module
 corrispettivi_ade_module.setup(db=db, get_current_user=get_current_user)
 api_router.include_router(corrispettivi_ade_module.router)
@@ -6386,6 +6390,7 @@ async def cron_scadenze_fiscali(request: Request, background_tasks: BackgroundTa
     if not token or not secret or not hmac.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(fiscale_module.alert_scadenze)
+    background_tasks.add_task(scadenzario_module.alert_scadenze)
     return {"status": "accepted"}
 
 @api_router.post("/cron/pdp-fogli-notte")

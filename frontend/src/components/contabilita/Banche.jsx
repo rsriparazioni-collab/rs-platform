@@ -20,8 +20,8 @@ const ContoCard = ({ c, onUploaded }) => {
     <label className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-sky-50 ${c.tipo === "pos" ? "border-violet-200 bg-violet-50/40" : "border-slate-200 bg-white"}`} data-testid={`conto-${c.id}`}>
       <span><b>{c.nome}</b><span className="ml-1 text-xs text-slate-500">{c.tipo === "pos" ? "· POS (solo controllo)" : "· banca"}</span>
         <div className="text-[11px] text-slate-400">{c.movimenti} movimenti{c.ultimo_movimento ? ` · ultimo ${c.ultimo_movimento}` : ""}</div></span>
-      <span className="flex items-center gap-1 text-xs text-sky-700"><Upload className="h-3.5 w-3.5" /> {busy ? "…" : "Carica CSV/XLSX"}</span>
-      <input type="file" accept=".csv,.xlsx,.xls,text/csv" className="hidden" onChange={up} disabled={busy} data-testid={`conto-file-${c.id}`} />
+      <span className="flex items-center gap-1 text-xs text-sky-700"><Upload className="h-3.5 w-3.5" /> {busy ? "…" : "Carica PDF/CSV/XLSX"}</span>
+      <input type="file" accept=".pdf,.csv,.xlsx,.xls,application/pdf,text/csv" className="hidden" onChange={up} disabled={busy} data-testid={`conto-file-${c.id}`} />
     </label>
   );
 };
