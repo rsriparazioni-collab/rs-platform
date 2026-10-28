@@ -844,22 +844,37 @@ def _tokens(s: str) -> set:
     return {t for t in re.split(r"[^a-z0-9]+", (s or "").lower()) if len(t) >= 3 and t not in STOP_WORDS}
 
 
+async def _alias_fornitori() -> dict:
+    doc = await _d["db"].settings.find_one({"key": "fornitori_alias"}, {"_id": 0})
+    return {k.lower(): v for k, v in ((doc or {}).get("value") or {}).items()}
+
+
+def _applica_alias(controparte: str, alias: dict) -> str:
+    c = (controparte or "").lower()
+    for k, v in alias.items():
+        if k and k in c:
+            return v
+    return controparte
+
+
 async def _ricevute_per_fornitore(centro_id: str, anno: int, mese: int, voci_fornitori: list) -> tuple:
-    """Raggruppa le fatture ricevute AdE per controparte e le abbina alle voci fornitori del PDP."""
+    """Raggruppa le fatture ricevute AdE per controparte (con alias) e le abbina alle voci fornitori del PDP."""
+    alias = await _alias_fornitori()
     gruppi: dict = {}
     async for f in _d["db"].fatture_ade.find({"centro_id": centro_id, "anno": anno, "mese": mese, "direzione": "ricevute"}, {"_id": 0, "controparte": 1, "totale": 1}):
-        k = (f.get("controparte") or "Sconosciuto").strip()
+        k = _applica_alias((f.get("controparte") or "Sconosciuto").strip(), alias)
         gruppi[k] = round(gruppi.get(k, 0.0) + _f(f.get("totale")), 2)
     abbinati: dict = {}
     non_abbinate = []
     voci_tok = [(v, _tokens(v)) for v in voci_fornitori]
     for contro, tot in sorted(gruppi.items(), key=lambda x: -abs(x[1])):
         ct = _tokens(contro)
-        match = None
+        match = contro if contro in voci_fornitori else None
         for v, vt in voci_tok:
+            if match:
+                break
             if vt and (vt <= ct or any(any(a.startswith(b) or b.startswith(a) for a in ct) for b in vt if len(b) >= 4)):
                 match = v
-                break
         if match:
             abbinati[match] = round(abbinati.get(match, 0.0) + tot, 2)
         else:
@@ -932,6 +947,10 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     import incentivi as incentivi_module
     for v, imp in (await incentivi_module.spese_pdp(centro, anno, mese)).items():
         sezioni["fornitori"][v] = imp
+    import estere as estere_module
+    tot_estere = await estere_module.totale_pdp(centro["id"], anno, mese)
+    if tot_estere:
+        sezioni["fornitori"]["Fatture estere (reverse charge / dogana)"] = tot_estere
     foglio_tot = await db.pdp_foglio_totali.find_one({"centro_id": centro["id"], "anno": anno, "mese": mese}, {"_id": 0})
     sezioni["fornitori"] = {"Fatture ricevute non abbinate (AdE)": tot_non_abb, **sezioni["fornitori"]}
     tot_entrate = round(sum(entrate.values()), 2)
@@ -941,8 +960,10 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
     spese_cassa: dict = {}
     importi_ade = [(_f(f.get("totale")), f.get("controparte") or "") async for f in db.fatture_ade.find({"centro_id": centro["id"], "anno": anno, "mese": mese, "direzione": "ricevute"}, {"_id": 0, "totale": 1, "controparte": 1})]
     spese_cassa_in_fattura = []
+    alias_f = await _alias_fornitori()
 
     def _stessa_ditta(motivo: str, controparte: str) -> bool:
+        controparte = _applica_alias(controparte, alias_f) + " " + controparte
         a, b = _tokens(motivo), _tokens(controparte)
         return any(x == y or (len(x) >= 4 and len(y) >= 4 and (x.startswith(y) or y.startswith(x))) for x in a for y in b)
 
@@ -1023,6 +1044,37 @@ async def _pdp_calcolo(centro: dict, anno: int, mese: int) -> dict:
 async def get_pdp(centro_id: str, anno: int, mese: int, request: Request):
     user = await _user(request)
     return await _pdp_calcolo(await _centro(user, centro_id), anno, mese)
+
+
+@router.get("/alias-fornitori")
+async def get_alias(request: Request):
+    await _user(request)
+    doc = await _d["db"].settings.find_one({"key": "fornitori_alias"}, {"_id": 0})
+    return (doc or {}).get("value") or {}
+
+
+class AliasInput(BaseModel):
+    controparte: str
+    voce: str
+
+
+@router.put("/alias-fornitori")
+async def put_alias(body: AliasInput, request: Request):
+    """Collega un nome che compare nelle fatture AdE (es. DISTRO') a una voce del PDP (es. Phoneclik). Voce vuota = rimuove."""
+    user = await _user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    k = body.controparte.strip().lower()
+    if not k:
+        raise HTTPException(status_code=400, detail="Controparte obbligatoria")
+    doc = await _d["db"].settings.find_one({"key": "fornitori_alias"}, {"_id": 0})
+    alias = (doc or {}).get("value") or {}
+    if body.voce.strip():
+        alias[k] = body.voce.strip()
+    else:
+        alias.pop(k, None)
+    await _d["db"].settings.update_one({"key": "fornitori_alias"}, {"$set": {"value": alias}}, upsert=True)
+    return alias
 
 
 @router.get("/pdp/trend")

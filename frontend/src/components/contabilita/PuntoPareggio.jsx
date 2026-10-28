@@ -94,7 +94,11 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
                   {Object.keys(d.spese_cassa || {}).length > 0 && <p className="mt-0.5 text-[11px] text-slate-400">{Object.entries(d.spese_cassa).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${k} ${eur(v)}`).join(" · ")}</p>}
                   {speseCassa > 0 && <p className="mt-0.5 text-[11px] text-amber-600">Non reinserire a mano sotto le stesse spese (es. Ritiri) per evitare il doppio conteggio.</p>}
                   {(d.spese_cassa_in_fattura || []).length > 0 && <p className="mt-0.5 text-[11px] text-emerald-700" data-testid="pdp-spese-cassa-in-fattura">Escluse perché già in fattura AdE: {d.spese_cassa_in_fattura.map((x) => `${x.motivo} ${eur(x.importo)} (${x.controparte_ade})`).join(" · ")}</p>}
-                  {(d.possibili_doppi || []).length > 0 && <p className="mt-0.5 text-[11px] font-medium text-rose-700" data-testid="pdp-possibili-doppi">⚠ Possibile doppio conteggio: {d.possibili_doppi.map((x) => `voce "${x.voce}" ${eur(x.importo)} = fattura AdE ${x.controparte_ade}`).join(" · ")} — se è la stessa fattura azzera la voce manuale.</p>}
+                  {(d.possibili_doppi || []).length > 0 && <div className="mt-0.5 text-[11px] font-medium text-rose-700" data-testid="pdp-possibili-doppi">⚠ Possibile doppio conteggio: {d.possibili_doppi.map((x) => (
+                    <span key={x.voce} className="mr-2">voce "{x.voce}" {eur(x.importo)} = fattura AdE {x.controparte_ade}
+                      {isAdmin && <button type="button" className="ml-1 rounded border border-rose-300 bg-white px-1.5 py-0.5 text-[10px] text-rose-800 hover:bg-rose-50" data-testid={`pdp-alias-${x.voce}`}
+                        onClick={async () => { try { await api.put("/contabilita/alias-fornitori", { controparte: x.controparte_ade, voce: x.voce }); toast.success(`Da ora "${x.controparte_ade}" viene letto come "${x.voce}"`); load(); } catch (e) { toast.error(apiError(e)); } }}>È la stessa ditta: collega</button>}
+                    </span>))} — se è la stessa fattura azzera la voce manuale.</div>}
                 </div>
               )}
               {cat === "entrate" && <div className="flex items-center justify-between py-1.5 text-sm"><span className="text-slate-600">Corrispettivi negozi (scontrini) <span className="text-xs text-slate-400">(automatico: {d.centro.negozi.join(" + ")})</span></span><span className="tabular-nums font-medium" data-testid="pdp-corrispettivi-auto">{eur(d.entrate["Corrispettivi negozi (scontrini)"])}</span></div>}

@@ -131,3 +131,27 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/switcho-48h"
     method: POST
     enabled: true
+  - name: promemoria-estere-1
+    description: "Il 1° del mese 08:30: WhatsApp all'amministratore con le fatture estere del mese precedente da trasmettere entro il 15"
+    cron: "30 8 1 * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/promemoria-estere?giorno=1"
+    method: POST
+    enabled: true
+  - name: promemoria-estere-10
+    description: "Il 10 del mese 08:30: ultimo avviso fatture estere non ancora inviate (scadenza 15)"
+    cron: "30 8 10 * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/promemoria-estere?giorno=10"
+    method: POST
+    enabled: true
+  - name: promemoria-estere-28
+    description: "Il 28 del mese 08:30: promemoria verifica fatture eBay/estere del mese"
+    cron: "30 8 28 * *"
+    timezone: "Europe/Rome"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/promemoria-estere?giorno=28"
+    method: POST
+    enabled: true

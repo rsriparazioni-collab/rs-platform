@@ -753,3 +753,10 @@ Vedi /app/memory/test_credentials.md
 - Fix: storico Sondrio leggeva la colonna "2026" (totali aziendali) del foglio gid=0 → ora modo "colonna:sondrio corr" (anno corrente); docs 2026 Sondrio ricreati (gen-lug 565…1600).
 - Fix: race condition (request id) in Corrispettivi/PuntoPareggio/IvaDashboard/ReportAnnuale; log "Email undefined" in Impostazioni.
 - Anomalie dati da sistemare dall'utente: ottobre M+G senza corrispettivi nel gestionale (34 giorni rossi, foglio 8.904,90); Phoneclik 689 manuale = DISTRO' 689 AdE (agosto); 2 fatture in chiusura sett. (1.107 Gravedona 28/09, 870 Morbegno 07/09) senza AdE; Sondrio senza spese fisse/fatture AdE nel PDP; Sondrio non ha un foglio Google proprio (foglio totali = zeri).
+
+## 2026-10-28 (octies) — Contabilità: ottobre compilato, spese fisse Sondrio, alias fornitori, Fatture estere
+- Ottobre M+G: 34 giorni compilati dal foglio (21 Morbegno, 13 Gravedona) → entrate 19.403, risultato -4.586.
+- PDP Sondrio: ott. Affitti 505, Utenze 300, Stipendi 0, "Compenso amministratore" 0; nov. Affitti 518,13 (dicembre eredita).
+- Alias fornitori (settings.fornitori_alias): GET/PUT /api/contabilita/alias-fornitori; usato in _ricevute_per_fornitore e nel dedup spese cassa; tasto "È la stessa ditta: collega" nei possibili doppi del PDP.
+- Fatture estere `/app/backend/estere.py` (collezione fatture_estere): tipi ue_rc/ebay (reverse charge 22% integrata, saldo 0) ed extra_ue (IVA dogana); CRUD /api/estere, /fattura/{id}, /fattura/{id}/inviata, riepilogo-commercialista (testo), config telefono (settings.estere_cfg = 3478190825). Nel PDP voce "Fatture estere (reverse charge / dogana)". Cron promemoria-estere giorno 1, 10, 28 (08:30) → WhatsApp all'amministratore. Tab "Fatture estere" (admin) in Contabilità. Testato via curl + screenshot.
+- Backlog: estratti conto bancari (5 conti: ditta Intesa POS, Intesa 2, myPOS, Nexi; SRLS Intesa, Nexi) con riconciliazione POS senza doppioni e report mensile commercialisti; scadenzario F24; cassa reale vs teorica; magazzino valorizzato; accantonamenti; chiusura mese con checklist; export formato commercialista.

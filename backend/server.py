@@ -6308,6 +6308,21 @@ import contabilita as contabilita_module
 contabilita_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, wa_sessione_connessa=wa_sessione_connessa,
                          send_email=send_email, put_object=put_object, app_name=APP_NAME)
 api_router.include_router(contabilita_module.router)
+import estere as estere_module
+async def _centri_tutti():
+    return await contabilita_module._centri({"role": "admin", "store_ids": []})
+estere_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, store_id_by_name=store_id_by_name, centri_tutti=_centri_tutti)
+api_router.include_router(estere_module.router)
+
+@api_router.post("/cron/promemoria-estere")
+async def cron_promemoria_estere(request: Request, background_tasks: BackgroundTasks, giorno: int = 1):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(estere_module.promemoria, giorno)
+    return {"status": "accepted"}
 import fatture_ade as fatture_ade_module
 fatture_ade_module.setup(db=db, get_current_user=get_current_user, centro=contabilita_module._centro)
 api_router.include_router(fatture_ade_module.router)

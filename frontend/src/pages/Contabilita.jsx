@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Receipt, Scale, TrendingUp, Settings2, Activity, Landmark, Calculator } from "lucide-react";
+import { Receipt, Scale, TrendingUp, Settings2, Activity, Landmark, Calculator, Globe } from "lucide-react";
 import api from "../lib/api";
+import { FattureEstere } from "../components/contabilita/FattureEstere";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Corrispettivi } from "../components/contabilita/Corrispettivi";
 import { IvaDashboard } from "../components/contabilita/IvaDashboard";
@@ -22,6 +23,8 @@ export default function Contabilita() {
     setStoreId((cur) => cur || (r.data.stores.find((s) => s.completo) || {}).id || "");
   }).catch(() => {}), []);
   useEffect(() => { loadMeta(); }, [loadMeta]);
+  const [centriEstere, setCentriEstere] = useState([]);
+  useEffect(() => { if (meta?.is_admin) api.get("/contabilita/pdp/centri").then((r) => setCentriEstere(r.data)).catch(() => {}); }, [meta?.is_admin]);
 
   if (!meta) return <div className="p-6 text-sm text-slate-500" data-testid="contabilita-loading">Caricamento…</div>;
   const completi = meta.stores.filter((s) => s.completo);
@@ -59,6 +62,7 @@ export default function Contabilita() {
             <TabsTrigger value="corrispettivi" className="gap-1.5" data-testid="contabilita-tab-corrispettivi"><Receipt className="h-4 w-4" /> Corrispettivi</TabsTrigger>
             <TabsTrigger value="pdp" className="gap-1.5" data-testid="contabilita-tab-pdp"><Scale className="h-4 w-4" /> Punto di pareggio</TabsTrigger>
             <TabsTrigger value="iva" className="gap-1.5" data-testid="contabilita-tab-iva"><Landmark className="h-4 w-4" /> IVA</TabsTrigger>
+            {meta.is_admin && <TabsTrigger value="estere" className="gap-1.5" data-testid="contabilita-tab-estere"><Globe className="h-4 w-4" /> Fatture estere</TabsTrigger>}
             <TabsTrigger value="fiscale" className="gap-1.5" data-testid="contabilita-tab-fiscale"><Calculator className="h-4 w-4" /> Pianificazione fiscale</TabsTrigger>
             <TabsTrigger value="report" className="gap-1.5" data-testid="contabilita-tab-report"><TrendingUp className="h-4 w-4" /> Report fatturato</TabsTrigger>
             <TabsTrigger value="impostazioni" className="gap-1.5" data-testid="contabilita-tab-impostazioni"><Settings2 className="h-4 w-4" /> Invii e impostazioni</TabsTrigger>
@@ -66,6 +70,7 @@ export default function Contabilita() {
           <TabsContent value="corrispettivi"><Corrispettivi {...periodo} isAdmin={meta.is_admin} stores={meta.stores} /></TabsContent>
           <TabsContent value="pdp"><PuntoPareggio {...periodo} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="iva"><IvaDashboard {...periodo} isAdmin={meta.is_admin} /></TabsContent>
+          {meta.is_admin && <TabsContent value="estere"><FattureEstere anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} /></TabsContent>}
           <TabsContent value="fiscale"><PianoFiscale anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="report"><ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
           <TabsContent value="impostazioni"><ContabilitaImpostazioni meta={meta} storeId={storeId} reload={loadMeta} /></TabsContent>
