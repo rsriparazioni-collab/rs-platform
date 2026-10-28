@@ -1112,6 +1112,7 @@ async def update_client(client_id: str, input: ClientInput, user: dict = Depends
     await db.clients.update_one({"id": client_id}, {"$set": data})
     if data.get("lavorazione") and data["lavorazione"] != old.get("lavorazione"):
         await log_lavorazione({**old, **data}, user, data["lavorazione"], "Cambio stato lavorazione")
+        await switcho_module.chiudi_per_pratica(client_id, data["lavorazione"], user["name"])
     updated = await db.clients.find_one({"id": client_id}, {"_id": 0})
     return compute_dates(updated)
 

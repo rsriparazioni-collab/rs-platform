@@ -745,3 +745,4 @@ Vedi /app/memory/test_credentials.md
 - Frontend: SwitchoBox + SwitchoConfigDialog nel Riepilogo Lavorazioni.
 - DA FARE lato Railway (utente): aggiungere lo snippet al microservizio (inoltro messaggi gruppo + invio a gruppi/allegati), impostare CRM_URL e CRM_WEBHOOK_SECRET, inserire l'ID gruppo nella config.
 - 2026-10-28 (quater): Promemoria 48h Switcho (switcho.promemoria_conferma_link, cron /api/cron/switcho-48h 09:30 lun-sab → agenda addetti + WhatsApp, una volta per segnalazione); hint + conferma "salvare senza documenti?" nel form cliente CambiaOra; badge "senza documenti"/"N doc" nel Riepilogo Lavorazioni. Testati (script + screenshot).
+- 2026-10-28 (quinquies): Switcho — tasto "Chiedi documenti al cliente" (POST /switcho/segnalazioni/{id}/richiedi-documenti, msg_bollette dal negozio del cliente) + chiusura automatica segnalazioni quando la pratica va a cambio_effettuato/rinnovato (switcho.chiudi_per_pratica da update_client). Testati via curl.

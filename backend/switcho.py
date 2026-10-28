@@ -352,6 +352,36 @@ async def avvisa_cliente(seg_id: str, user: dict = Depends(require_addetto)):
     return {"status": "ok"}
 
 
+@router.post("/switcho/segnalazioni/{seg_id}/richiedi-documenti")
+async def richiedi_documenti(seg_id: str, user: dict = Depends(require_addetto)):
+    """Chiede al cliente, dal suo negozio, di inviare bollette/documenti (testo msg_bollette del negozio)."""
+    db = _d["db"]
+    seg = await db.switcho_segnalazioni.find_one({"id": seg_id}, {"_id": 0})
+    if not seg or not seg.get("client_id"):
+        raise HTTPException(status_code=404, detail="Segnalazione senza cliente")
+    c = await db.clients.find_one({"id": seg["client_id"]}, {"_id": 0})
+    if not c or not c.get("telefono"):
+        raise HTTPException(status_code=400, detail="Cliente senza telefono")
+    store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
+    sess = await _d["wa_sessione_negozio"](store)
+    msg = _d["store_msg"](store, "msg_bollette", nome=c.get("nome", ""))
+    await _d["wa_send"](c["telefono"], msg, session=sess, tipo="richiesta_documenti", client_id=c["id"])
+    await db.clients.update_one({"id": c["id"]}, {"$set": {"bollette_msg_sent_at": _now().isoformat()}})
+    await db.switcho_segnalazioni.update_one({"id": seg_id}, {"$set": {"richiesta_documenti": {"at": _now().isoformat(), "da": user["name"], "session": sess}},
+                                                              "$push": {"azioni": f"Richiesta documenti al cliente inviata da {user['name']}"}})
+    return {"status": "ok"}
+
+
+async def chiudi_per_pratica(client_id: str, nuovo_stato: str, da: str = "") -> int:
+    """Quando la pratica va a Cambio effettuato/Rinnovato, chiude le segnalazioni Switcho aperte di quel cliente."""
+    if nuovo_stato not in ("cambio_effettuato", "rinnovato"):
+        return 0
+    res = await _d["db"].switcho_segnalazioni.update_many({"client_id": client_id, "stato": "aperta"},
+                                                           {"$set": {"stato": "chiusa", "chiusa_at": _now().isoformat(), "chiusa_da": f"automatico ({nuovo_stato}{', ' + da if da else ''})"},
+                                                            "$push": {"azioni": f"chiusa automaticamente: pratica → {nuovo_stato}"}})
+    return res.modified_count
+
+
 async def _invia_gruppo(testo: str, media: list | None = None) -> dict:
     c = await cfg()
     if not c.get("gruppo_jid"):

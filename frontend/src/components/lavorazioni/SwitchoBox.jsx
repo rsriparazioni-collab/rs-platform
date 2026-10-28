@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { MessageSquareWarning, ClipboardPaste, Settings2, Check, Send, Link2, UserSearch, Paperclip, Sparkles } from "lucide-react";
+import { MessageSquareWarning, ClipboardPaste, Settings2, Check, Send, Link2, UserSearch, Paperclip, Sparkles, FileQuestion } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
@@ -102,6 +102,7 @@ const Segnalazione = ({ s, onChanged, onOpen }) => {
       <div className="mt-2 flex flex-wrap gap-1.5">
         {!s.client_id && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDlg("abbina")} data-testid={`switcho-abbina-btn-${s.id}`}><UserSearch className="mr-1 h-3 w-3" /> Abbina pratica</Button>}
         {s.client_id && s.categoria === "conferma_link" && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => act("avvisa-cliente", "Avviso inviato al cliente dal suo negozio")} data-testid={`switcho-avvisa-${s.id}`}><Link2 className="mr-1 h-3 w-3" /> {s.avviso_cliente?.ok ? "Rimanda avviso al cliente" : "Avvisa cliente"}</Button>}
+        {s.client_id && s.categoria === "documenti" && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => act("richiedi-documenti", "Richiesta bollette/documenti inviata al cliente dal suo negozio")} data-testid={`switcho-richiedi-doc-${s.id}`}><FileQuestion className="mr-1 h-3 w-3" /> {s.richiesta_documenti ? "Richiedi di nuovo al cliente" : "Chiedi documenti al cliente"}</Button>}
         {s.client_id && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDlg("rispondi")} data-testid={`switcho-rispondi-btn-${s.id}`}><Send className="mr-1 h-3 w-3" /> {s.categoria === "documenti" && docs.length ? "Invia documenti a Switcho" : "Rispondi a Switcho"}</Button>}
         <Button size="sm" variant="ghost" className="h-7 text-xs text-emerald-700" onClick={() => act("chiudi", "Segnalazione chiusa")} data-testid={`switcho-chiudi-${s.id}`}><Check className="mr-1 h-3 w-3" /> Fatto</Button>
       </div>
