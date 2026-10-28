@@ -101,12 +101,14 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
     }
   };
 
+  const [attTipo, setAttTipo] = useState("bolletta");
   const uploadAttachment = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !detail) return;
     const fd = new FormData();
     fd.append("file", file);
+    fd.append("tipo", attTipo);
     try {
       await api.post(`/clients/${detail.id}/attachments`, fd);
       toast.success("Allegato caricato");
@@ -476,6 +478,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                               onClick={() => downloadBlob(`/attachments/${a.id}/download`, a.original_filename)}
                               data-testid={`attachment-download-${a.id}`}>
                         <Paperclip className="h-3.5 w-3.5" /> {a.original_filename}
+                        {a.tipo && a.tipo !== "altro" && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] uppercase text-amber-800" data-testid={`attachment-tipo-${a.id}`}>{a.tipo}</span>}
                       </button>
                       <Button variant="ghost" size="icon" className="h-7 w-7" data-testid={`attachment-delete-${a.id}`}
                               onClick={() => deleteAttachment(a)}>
@@ -485,7 +488,12 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                   ))}
                   {attachments.length === 0 && <p className="text-xs text-slate-400">Nessun allegato</p>}
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <select value={attTipo} onChange={(e) => setAttTipo(e.target.value)} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" data-testid="attachment-tipo-select">
+                    <option value="bolletta">Bolletta</option>
+                    <option value="documento">Documento d'identità / CF</option>
+                    <option value="altro">Altro</option>
+                  </select>
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 transition-colors hover:border-sky-400 hover:text-sky-700"
                          data-testid="attachment-upload-label">
                     <Upload className="h-4 w-4" /> Carica PDF o immagine

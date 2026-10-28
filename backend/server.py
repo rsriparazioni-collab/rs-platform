@@ -2662,7 +2662,7 @@ async def upload_attachment(client_id: str, file: UploadFile = File(...), tipo: 
     result = put_object(path, data, file.content_type or "application/octet-stream")
     doc = {"id": str(uuid.uuid4()), "client_id": client_id, "storage_path": result["path"],
            "original_filename": file.filename, "content_type": file.content_type,
-           "size": result["size"], "is_deleted": False, "uploaded_by": user["id"],
+           "size": result["size"], "tipo": tipo, "is_deleted": False, "uploaded_by": user["id"],
            "created_at": datetime.now(timezone.utc).isoformat()}
     await db.attachments.insert_one(doc)
     doc.pop("_id", None)

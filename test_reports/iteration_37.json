@@ -1,0 +1,37 @@
+{
+  "summary": "Tested the Switcho integration end to end. Backend: 11 pytest tests now pass (incolla, messages from unknown clients with manual abbina, list, change categoria, chiudi, avvisa-cliente, rispondi with no group configured, config GET/PUT plus 403 for non-admin, snippet, webhook inbox with 401/ok/dedup/wrong sender, attachment tipo). Jev AI classification is really in use (ai=true, confidence 1.0), not the rules fallback. One bug found and fixed: the attachment 'tipo' was checked but never saved. Frontend: in the switcho-box, incolla, the cards, the categoria select, the abbina dialog with search and pick, Fatto and the config dialog with save all work. The attachment-tipo-select in the client card is MISSING from the frontend. All test data was removed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/clients/{id}/attachments", "issue": "Form field 'tipo' was validated (bad value -> 400) but never saved in the attachment doc, so the response and DB had no tipo. FIXED by the testing agent: added \"tipo\": tipo to the doc in server.py upload_attachment."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ClientDetail attachments-card", "issue": "No 'tipo' select (bolletta/documento/altro) exists. data-testid attachment-tipo-select is not in the codebase, and uploadAttachment only sends 'file' in the FormData, never 'tipo'. The attachments list also does not show the tipo.", "selector": "[data-testid='attachment-tipo-select']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Lavorazioni > Da Switcho", "issues": ["The 'Rispondi a Switcho' button shows even when gruppo_jid is not set, so it always ends in a 400 toast. Consider disabling it or adding a hint."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter37_switcho.py", "/app/backend/tests/cleanup_iter37.py", "/app/test_reports/pytest/pytest_iter37.xml"],
+  "action_items": [
+    "Add attachment-tipo-select (bolletta/documento/altro) to ClientDetail attachments-card. Append fd.append('tipo', tipo) in uploadAttachment and show a tipo badge in the list.",
+    "Optional: hide or disable 'Rispondi a Switcho' while no gruppo_jid is configured."
+  ],
+  "critical_code_review_comments": [
+    "switcho._clienti_candidati loads every energy client from the last 400 days for every message (full scan plus Python matching). Fine for now, but it will get slow. Consider a cognome index or caching per incolla batch.",
+    "incolla parses '[hh:mm, dd/mm/yyyy]' into a naive local timestamp, while other 'at' values are UTC-aware ISO. Sorting by the 'at' string mixes the two formats, so the order can be slightly off.",
+    "Webhook secret is compared with '!='. Use hmac.compare_digest.",
+    "_classifica_regole: 'confermare' in t or 'conferma' in t and (...) relies on operator precedence. Add parentheses for clarity.",
+    "Name matching needs the whole cognome plus the first nome. Namesakes produce several segnalazioni and actions (WhatsApp) for each match, with no ambiguity flag.",
+    "No indexes on switcho_segnalazioni(id, stato, at) or switcho_messaggi(id)."
+  ],
+  "updated_files": ["/app/backend/server.py (upload_attachment saves tipo)", "/app/backend/tests/test_iter37_switcho.py", "/app/backend/tests/cleanup_iter37.py"],
+  "success_rate": {"backend": "100% (11/11 after fix; 10/11 before)", "frontend": "90% (all Switcho UI flows OK; attachment-tipo-select missing)"},
+  "seed_data_creation": "Created TEST clients Testa Bolletta, Testb Link and TESTc Interfaccia (Morbegno). Removed all of them along with the 4 previous test clients (Lino, Lentini, Melazzi, Ciappa) and all switcho_segnalazioni, switcho_messaggi, wa_log, lavorazioni_log and attachments linked to them. The settings doc switcho_cfg now exists with default values (saved from the UI).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest tests/test_iter37_switcho.py -n 0 (it needs serial order because of shared STATE). Afterwards run python tests/cleanup_iter37.py to remove the data. The conferma_link WhatsApp has a 20h dedup per client. When gruppo_jid is empty, the webhook accepts any group. Remaining item: the frontend attachment-tipo-select."
+}
