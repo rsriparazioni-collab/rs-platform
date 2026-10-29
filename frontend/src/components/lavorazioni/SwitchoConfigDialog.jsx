@@ -20,7 +20,7 @@ export const SwitchoConfigDialog = ({ trigger }) => {
   };
   const save = async () => {
     try {
-      await api.put("/switcho/config", { gruppo_jid: cfg.gruppo_jid, mittente: cfg.mittente, session_risposta: cfg.session_risposta, auto_avviso_cliente: cfg.auto_avviso_cliente, attivo: cfg.attivo, ignora_mittenti: cfg.ignora_mittenti || "" });
+      await api.put("/switcho/config", { gruppo_jid: cfg.gruppo_jid, mittente: cfg.mittente, session_risposta: cfg.session_risposta, auto_avviso_cliente: cfg.auto_avviso_cliente, attivo: cfg.attivo, ignora_mittenti: cfg.ignora_mittenti || "", auto_risposta_gruppo: cfg.auto_risposta_gruppo !== false });
       toast.success("Impostazioni Switcho salvate"); setOpen(false);
     } catch (e) { toast.error(apiError(e)); }
   };
@@ -48,12 +48,13 @@ export const SwitchoConfigDialog = ({ trigger }) => {
             <label className="block"><span className="text-xs font-semibold text-slate-600">Sessione per rispondere (vuoto = negozio Sondrio)</span><Input value={cfg.session_risposta} onChange={(e) => set("session_risposta", e.target.value)} data-testid="switcho-cfg-sessione" /></label>
             <label className="flex items-center gap-2"><Checkbox checked={cfg.auto_avviso_cliente} onCheckedChange={(v) => set("auto_avviso_cliente", !!v)} /> WhatsApp automatico al cliente (dal suo negozio) quando Switcho chiede di confermare il link</label>
             <label className="flex items-center gap-2"><Checkbox checked={cfg.attivo} onCheckedChange={(v) => set("attivo", !!v)} /> Integrazione attiva (ricezione dal gruppo)</label>
+            <label className="flex items-center gap-2"><Checkbox checked={cfg.auto_risposta_gruppo !== false} onCheckedChange={(v) => set("auto_risposta_gruppo", !!v)} data-testid="switcho-cfg-auto-risposta" /> Risposta automatica nel gruppo dal numero Sondrio ("Ricevuto, avvisiamo il cliente…") quando la richiesta è stata gestita</label>
             <Button onClick={save} className="w-full" data-testid="switcho-cfg-save">Salva</Button>
             <div className="rounded-lg border border-slate-200 p-2" data-testid="switcho-inbox-log">
               <div className="text-xs font-semibold text-slate-600">Diagnostica ricezione — ultimi messaggi arrivati dal servizio WhatsApp {log && <span className="font-normal text-slate-400">· {log.totale_ok} elaborati · {log.totale_ignorati} ignorati</span>}</div>
               {!log || log.items.length === 0 ? <p className="mt-1 text-xs text-amber-700">Nessun messaggio è mai arrivato dal servizio WhatsApp: controlla su Railway le variabili CRM_URL e CRM_WEBHOOK_SECRET e che il numero Sondrio sia nel gruppo.</p> : (
                 <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">
-                  {log.items.map((l) => <div key={l.id} className={`rounded px-2 py-1 text-[11px] ${l.esito === "ok" ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}><b>{l.at?.slice(0, 16).replace("T", " ")}</b> · {l.esito === "ok" ? `${l.segnalazioni} segnalazioni${l.azioni?.length ? ` — ${l.azioni.join("; ")}` : ""}` : `ignorato: ${l.motivo}`} <span className="text-slate-500">· da {l.push_name || l.sender_pn || l.sender}{l.lid ? " (LID)" : ""} · gruppo {l.group_id}</span>{l.esito === "ok" && <button type="button" className="ml-1 rounded border border-slate-300 px-1 text-[10px] hover:bg-white" title="Aggiungi questo mittente all'elenco da ignorare" onClick={() => set("ignora_mittenti", [cfg.ignora_mittenti, l.sender_pn || l.sender].filter(Boolean).join(", "))} data-testid="switcho-log-ignora">Ignora</button>}<div className="truncate text-slate-600">{l.testo}</div></div>)}
+                  {log.items.map((l) => <div key={l.id} className={`rounded px-2 py-1 text-[11px] ${l.esito === "ok" ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}><b>{l.at?.slice(0, 16).replace("T", " ")}</b> · {l.esito === "ok" ? `${l.segnalazioni} segnalazioni${l.azioni?.length ? ` — ${l.azioni.join("; ")}` : ""}${l.risposta_gruppo ? (l.risposta_gruppo.ok ? ` — risposto nel gruppo: «${l.risposta_gruppo.testo}»` : ` — risposta al gruppo FALLITA: ${l.risposta_gruppo.errore}`) : ""}` : `ignorato: ${l.motivo}`} <span className="text-slate-500">· da {l.push_name || l.sender_pn || l.sender}{l.lid ? " (LID)" : ""} · gruppo {l.group_id}</span>{l.esito === "ok" && <button type="button" className="ml-1 rounded border border-slate-300 px-1 text-[10px] hover:bg-white" title="Aggiungi questo mittente all'elenco da ignorare" onClick={() => set("ignora_mittenti", [cfg.ignora_mittenti, l.sender_pn || l.sender].filter(Boolean).join(", "))} data-testid="switcho-log-ignora">Ignora</button>}<div className="truncate text-slate-600">{l.testo}</div></div>)}
                 </div>
               )}
             </div>

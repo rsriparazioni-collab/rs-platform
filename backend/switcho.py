@@ -30,7 +30,7 @@ LABEL = {"annullata_ip": "Annullata (IP mandato)", "annullata_firma": "Annullata
 STATO_PRATICA = {"annullata_ip": "annullato", "annullata_firma": "annullato", "conferma_link": "in_attesa_ok", "documenti": "attesa_documenti"}
 FORNITORI = ["LENE", "ENI PLENITUDE", "ENIPLENITUDE", "ENI", "MAGIS", "SEGNOVERDE", "E.ON", "EON", "PULSEE", "OCTOPUS", "EDISON", "ILLUMIA", "IREN",
              "HERA", "A2A", "ACEA", "AGSM", "DOLOMITI", "SORGENIA", "ENEL", "WEKIWI", "ALPERIA", "ENGIE", "PLENITUDE"]
-DEFAULT_CFG = {"gruppo_jid": "", "mittente": "393299899503", "session_risposta": "", "auto_avviso_cliente": True, "attivo": True, "ignora_mittenti": ""}
+DEFAULT_CFG = {"gruppo_jid": "", "mittente": "393299899503", "session_risposta": "", "auto_avviso_cliente": True, "attivo": True, "ignora_mittenti": "", "auto_risposta_gruppo": True}
 
 
 def setup(**deps):
@@ -260,10 +260,48 @@ async def inbox(input: InboxInput, request: Request):
     if atteso and not pn and not c.get("gruppo_jid"):
         return await _scarta(input, "mittente in formato LID non verificabile: imposta l'ID del gruppo Switcho nella configurazione")
     segs = await registra_messaggio(input.text, mitt or input.sender, "gruppo", input.message_id, input.timestamp)
+    risposta = await _risposta_automatica(segs, c) if segs else None
     await _d["db"].switcho_inbox_log.insert_one({"id": str(uuid.uuid4()), "at": _now().isoformat(), "esito": "ok", "segnalazioni": len(segs), "testo": input.text[:300], "sender": input.sender,
                                                  "sender_pn": input.sender_pn, "lid": input.sender_is_lid, "push_name": input.push_name, "group_id": input.group_id, "session": input.session,
-                                                 "azioni": [a for s in segs for a in s.get("azioni", [])]})
-    return {"status": "ok", "segnalazioni": len(segs)}
+                                                 "azioni": [a for s in segs for a in s.get("azioni", [])], "risposta_gruppo": risposta})
+    return {"status": "ok", "segnalazioni": len(segs), "risposta_gruppo": risposta}
+
+
+def _testo_risposta(segs: list) -> str | None:
+    """Testo da scrivere nel gruppo: solo se abbiamo davvero gestito qualcosa (cliente riconosciuto)."""
+    gestite = [s for s in segs if s.get("client_id")]
+    if not gestite:
+        return None
+    righe = []
+    for s in gestite:
+        nome, cat, az = s.get("client_name") or "il cliente", s.get("categoria"), " ".join(s.get("azioni") or [])
+        if cat == "conferma_link":
+            righe.append(f"ricevuto, avvisiamo {nome} di confermare" if "inviato" in az else f"ricevuto, avvisiamo {nome}")
+        elif cat == "documenti":
+            righe.append(f"ricevuto, recuperiamo i documenti di {nome} e ve li mandiamo" if not s.get("documenti_disponibili") else f"ricevuto, vi mandiamo subito i documenti di {nome}")
+        elif cat in ("annullata_ip", "annullata_firma"):
+            righe.append(f"ricevuto, reinseriamo la pratica di {nome}")
+        elif cat == "verifica":
+            righe.append(f"ricevuto, verifichiamo la pratica di {nome} e vi aggiorniamo")
+    if not righe:
+        return None
+    testo = "; ".join(righe)
+    return testo[0].upper() + testo[1:] + "."
+
+
+async def _risposta_automatica(segs: list, c: dict) -> dict | None:
+    if not c.get("auto_risposta_gruppo"):
+        return None
+    testo = _testo_risposta(segs)
+    if not testo:
+        return None
+    try:
+        await _invia_gruppo(testo, [])
+    except HTTPException as e:
+        return {"ok": False, "errore": str(e.detail)}
+    ids = [s["id"] for s in segs if s.get("client_id")]
+    await _d["db"].switcho_segnalazioni.update_many({"id": {"$in": ids}}, {"$set": {"risposta": {"testo": testo, "allegati": 0, "da": "automatica", "at": _now().isoformat()}}, "$push": {"azioni": "Risposta automatica al gruppo"}})
+    return {"ok": True, "testo": testo}
 
 
 @router.get("/switcho/inbox-log")
@@ -503,6 +541,7 @@ class CfgInput(BaseModel):
     auto_avviso_cliente: bool = True
     attivo: bool = True
     ignora_mittenti: str = ""
+    auto_risposta_gruppo: bool = True
 
 
 @router.get("/switcho/config")
