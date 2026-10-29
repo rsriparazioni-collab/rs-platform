@@ -67,6 +67,7 @@ export const SwitchoConfigDialog = ({ trigger }) => {
                 <p className="mt-1 text-xs text-slate-500">{snippet.istruzioni}</p>
                 <pre className="mt-1 max-h-64 overflow-auto rounded bg-slate-900 p-2 text-[10px] text-slate-100">{snippet.codice}</pre>
                 <Button size="sm" variant="outline" className="mt-1 h-7 text-xs" onClick={() => { navigator.clipboard.writeText(snippet.codice); toast.success("Copiato"); }}>Copia codice</Button>
+                <Button size="sm" variant="outline" className="ml-1 mt-1 h-7 text-xs" data-testid="switcho-scarica-service" onClick={() => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([snippet.codice], { type: "text/javascript" })); a.download = "service.js"; a.click(); URL.revokeObjectURL(a.href); }}>Scarica service.js</Button>
               </details>
             )}
           </div>

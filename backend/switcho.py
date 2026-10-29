@@ -784,40 +784,12 @@ async def gruppi(user: dict = Depends(require_addetto)):
 
 @router.get("/switcho/snippet")
 async def snippet(user: dict = Depends(require_addetto)):
-    """Codice da aggiungere al microservizio WhatsApp (Baileys) per inoltrare i messaggi del gruppo."""
-    return {"istruzioni": "Il file whatsapp-service/service.js del progetto è già aggiornato. Su Railway: 1) 'Save to GitHub' dal gestionale così il repo si aggiorna; 2) nel servizio tranquil-clarity → Variables aggiungi CRM_URL (indirizzo del gestionale pubblicato, senza / finale) e CRM_WEBHOOK_SECRET (uguale a WEBHOOK_CRON_SECRET del backend); 3) Deploy. Poi qui sopra premi 'Trova gruppi' e scegli il gruppo Switcho.",
-            "codice": """// --- Inoltro messaggi dei gruppi al gestionale (Switcho) ---
-sock.ev.on('messages.upsert', async ({ messages, type }) => {
-  if (type !== 'notify') return;
-  for (const m of messages) {
-    const jid = m.key?.remoteJid || '';
-    if (!jid.endsWith('@g.us') || m.key?.fromMe) continue;           // solo gruppi, non i nostri
-    const text = m.message?.conversation || m.message?.extendedTextMessage?.text
-              || m.message?.imageMessage?.caption || m.message?.documentMessage?.caption || '';
-    if (!text) continue;
-    const sender = (m.key?.participant || '').split('@')[0];
-    try {
-      await fetch(`${process.env.CRM_URL}/api/whatsapp/inbox`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': process.env.CRM_WEBHOOK_SECRET },
-        body: JSON.stringify({ text, sender, group_id: jid, message_id: m.key.id, session: sessionName,
-                               timestamp: new Date((Number(m.messageTimestamp) || 0) * 1000).toISOString() })
-      });
-    } catch (e) { console.error('inbox CRM', e.message); }
-  }
-});
-
-// --- Invio a gruppi e con allegati: nell'endpoint POST /send ---
-// const jid = phone.endsWith('@g.us') ? phone : `${phone.replace(/\\D/g, '')}@s.whatsapp.net`;
-// if (Array.isArray(media) && media.length) {
-//   for (const f of media) {
-//     const buf = Buffer.from(f.base64, 'base64');
-//     const isImg = (f.mimetype || '').startsWith('image/');
-//     await sock.sendMessage(jid, isImg ? { image: buf, caption: message } : { document: buf, mimetype: f.mimetype, fileName: f.filename, caption: message });
-//     message = '';
-//   }
-//   if (!message) return res.json({ success: true, session: sessionName });
-// }
-// await sock.sendMessage(jid, { text: message });
-// Per conoscere l'ID del gruppo: const groups = await sock.groupFetchAllParticipating(); console.log(Object.values(groups).map(g => g.id + ' ' + g.subject));
-"""}
+    """File COMPLETO whatsapp-service/service.js da mettere su Railway (sostituisce tutto il file)."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "whatsapp-service", "service.js")
+    try:
+        with open(path, encoding="utf-8") as f:
+            codice = f.read()
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"service.js non trovato: {e}")
+    return {"istruzioni": "Questo è il file service.js COMPLETO: su GitHub sostituisci TUTTO il contenuto del file (o usa 'Scarica service.js' e caricalo con Add file → Upload files). Su Railway devono esserci le variabili CRM_URL (indirizzo del gestionale pubblicato, senza / finale), CRM_WEBHOOK_SECRET (uguale a WEBHOOK_CRON_SECRET), WA_API_KEY e AUTH_INFO_PATH=/data. Poi qui premi 'Trova gruppi'.",
+            "codice": codice, "righe": codice.count("\n") + 1}
