@@ -133,6 +133,9 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
   const cambiaTipo = async (att, tipo) => {
     try { await api.patch(`/attachments/${att.id}/tipo`, { tipo }); loadAttachments(); } catch (e) { toast.error(apiError(e)); }
   };
+  const classificaAuto = async () => {
+    try { const r = await api.post(`/clients/${detail.id}/attachments/classifica`); toast.success(`${r.data.classificati} allegati riconosciuti: ${r.data.risultati.map((x) => x.tipo).join(", ") || "nessuno"}`); loadAttachments(); } catch (e) { toast.error(apiError(e)); }
+  };
   const recuperaDocumenti = async () => {
     try { const r = await api.post(`/clients/${detail.id}/richiedi-documenti`); toast.success("Richiesta bollette/documento inviata al cliente dal suo negozio"); setDetail((d) => ({ ...d, bollette_msg_sent_at: r.data.at })); } catch (e) { toast.error(apiError(e)); }
   };
@@ -500,6 +503,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                     </div>
                   ))}
                   {attachments.length === 0 && <p className="text-xs text-slate-400">Nessun allegato</p>}
+                  {docStato?.non_classificati > 0 && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={classificaAuto} data-testid="classifica-auto-btn"><FileText className="mr-1 h-3 w-3" /> Riconosci da solo i {docStato.non_classificati} allegati senza tipo</Button>}
                 </div>
                 {docStato && isEnergiaCambiaOra && (!docStato.ha_bolletta || !docStato.ha_documento || docStato.bolletta_vecchia) && (
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="documenti-consiglio">

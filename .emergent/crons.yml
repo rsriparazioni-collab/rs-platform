@@ -116,7 +116,7 @@ crons:
     method: POST
     enabled: true
   - name: auguri-compleanno
-    description: "Alle 9:00 WhatsApp di auguri dal numero del negozio ai clienti che compiono gli anni oggi (data di nascita o codice fiscale), una volta l'anno"
+    description: "Alle 9:00: WhatsApp di auguri dal numero del negozio ai clienti che compiono gli anni oggi; richiesta 'ultima bolletta' ai clienti CambiaOra con contratto in scadenza tra un mese; classificazione automatica allegati non tipizzati"
     cron: "0 9 * * *"
     timezone: "Europe/Rome"
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.

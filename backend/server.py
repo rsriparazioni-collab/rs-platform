@@ -6268,6 +6268,14 @@ switcho_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, 
                      get_object=get_object, WA_SERVICE=WA_SERVICE, wa_headers=wa_headers, is_addetto=lavorazioni_module._is_addetto,
                      numero_amministrazione="3792773557")
 api_router.include_router(switcho_module.router)
+import documenti_auto as documenti_module
+async def _get_current_user_req(request: Request):
+    auth = request.headers.get("authorization", "")
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=auth[7:]) if auth.lower().startswith("bearer ") else None
+    return await get_current_user(request, creds)
+documenti_module.setup(db=db, get_object=get_object, get_scoped_client=get_scoped_client, get_current_user_req=_get_current_user_req, cliente_energia=cliente_energia,
+                       compute_dates=compute_dates, wa_sessione_negozio=wa_sessione_negozio, store_msg=store_msg, wa_send=wa_send)
+api_router.include_router(documenti_module.router)
 
 @api_router.post("/cron/switcho-48h")
 async def cron_switcho_48h(request: Request, background_tasks: BackgroundTasks):
@@ -6288,6 +6296,8 @@ async def cron_auguri_compleanno(request: Request, background_tasks: BackgroundT
     if not token or not secret or not hmac.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(ricordi_module.invia_auguri)
+    background_tasks.add_task(documenti_module.promemoria_bollette_rinnovo)
+    background_tasks.add_task(documenti_module.classifica_notturna)
     return {"status": "accepted"}
 
 @api_router.post("/cron/riepilogo-lavorazioni")
