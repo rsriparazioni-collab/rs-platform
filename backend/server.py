@@ -6080,15 +6080,54 @@ async def startup():
         logger.error(f"seed accessi contabilità: {e}")
 
 async def whatsapp_queue_loop() -> None:
-    """Fallback interno al cron piattaforma: svuota la coda WhatsApp (recensioni) ogni 60s."""
+    """Fallback interno al cron piattaforma: svuota la coda WhatsApp (recensioni) ogni 60s; ogni 5 minuti, se il servizio è su, rimanda i messaggi falliti."""
+    giro = 0
     while True:
         await asyncio.sleep(60)
+        giro += 1
         try:
             await process_whatsapp_queue()
+            if giro % 5 == 0:
+                await reinvio_automatico_falliti()
             await db.cron_log.update_one({"job": "whatsapp-queue-loop"},
                                          {"$set": {"last_run": datetime.now(timezone.utc).isoformat()}}, upsert=True)
         except Exception as e:
             logger.error(f"whatsapp_queue_loop errore: {e}")
+
+async def reinvio_automatico_falliti() -> dict:
+    """Rimanda da soli i WA falliti per servizio giù/sessione non connessa (ultime 24h, max 3 tentativi), solo se il servizio ora risponde."""
+    da = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    q = {"ok": False, "dry_run": {"$ne": True}, "at": {"$gte": da}, "retried_at": {"$in": [None]}, "phone": {"$nin": [None, ""]}, "message": {"$nin": [None, ""]},
+         "error": {"$regex": "raggiungibile|non connessa|connect|timeout|502|503|Sessione", "$options": "i"}, "auto_retry": {"$not": {"$gte": 3}}}
+    falliti = await db.wa_log.find(q, {"_id": 0}).sort("at", 1).to_list(200)
+    if not falliti:
+        return {"reinviati": 0}
+    try:
+        async with httpx.AsyncClient(timeout=8) as http_client:
+            st = (await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())).json()
+        connesse = {s["session"] for s in st.get("sessions", []) if s.get("connected")}
+    except Exception:
+        return {"reinviati": 0, "motivo": "servizio ancora giù"}
+    ok, visti = 0, set()
+    now = datetime.now(timezone.utc).isoformat()
+    for f in falliti:
+        sess = f.get("session") or "default"
+        if sess not in connesse and sess != "dry-run":
+            continue
+        chiave = (f["phone"], f["message"][:80])
+        if chiave in visti:
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": now, "retried_skip": "duplicato"}})
+            continue
+        visti.add(chiave)
+        try:
+            await wa_send(f["phone"], f["message"], session=sess, tipo=f.get("tipo") or "reinvio", client_id=f.get("client_id") or "")
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": now, "retried_ok": True, "retried_auto": True}})
+            ok += 1
+        except HTTPException:
+            await db.wa_log.update_one({"id": f["id"]}, {"$inc": {"auto_retry": 1}})
+    if ok:
+        logger.info(f"reinvio automatico WhatsApp: {ok} messaggi recuperati")
+    return {"reinviati": ok}
 
 async def avvisi_bollette_loop() -> None:
     """Fallback interno: una volta al giorno (ore 10 Italia) invia i WA 'bollette' ai clienti in alert da 20+ giorni."""

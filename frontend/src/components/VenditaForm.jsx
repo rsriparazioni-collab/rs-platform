@@ -73,9 +73,16 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
       }
       if (!clientId) { toast.error("Seleziona un cliente esistente oppure crealo con '+ Nuovo cliente'"); setSaving(false); return; }
       const payload = { ...form, client_id: clientId, prezzo: Number(form.prezzo), costo: form.costo === "" ? null : Number(form.costo),
-        acconto: Number(String(form.acconto).replace(",", ".")) || 0, pagato: form.stato === "consegnato" ? Boolean(form.pagato) : false,
+        acconto: Number(String(form.acconto).replace(",", ".")) || 0, pagato: Boolean(form.pagato),
         quantita: Number(form.quantita) || 1, data_vendita: form.data_vendita ? new Date(form.data_vendita).toISOString() : null };
-      if (vendita) await api.patch(`/vendite/${vendita.id}`, payload);
+      if (vendita) {
+        await api.patch(`/vendite/${vendita.id}`, payload);
+        const statoOrig = vendita.stato || "consegnato";
+        const pagOrig = vendita.pagato !== false;
+        if (form.stato !== statoOrig || Boolean(form.pagato) !== pagOrig) {
+          await api.post(`/vendite/${vendita.id}/stato`, { stato: form.stato, pagato: form.stato === "consegnato" ? Boolean(form.pagato) : (Boolean(form.pagato) || null) });
+        }
+      }
       else await api.post("/vendite", payload);
       toast.success(vendita ? "Vendita aggiornata" : form.stato === "ordinato" ? "Vendita registrata · articolo in ordine (−1 a magazzino) · WhatsApp di conferma ordine inviato" : form.stato === "arrivato" ? "Vendita registrata · WhatsApp 'telefono arrivato' inviato" : "Vendita registrata");
       if (nuoviDoc.length && clientId) {
@@ -176,10 +183,10 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
           </div>
 
           <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3" data-testid="vendita-stato-box">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stato della vendita{vendita ? " (si cambia dal dettaglio con i tasti Arrivato / Ritirato)" : ""}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stato della vendita{vendita ? " (modificabile: Ordinato · In attesa di ritiro · Ritirato/consegnato al cliente · Pagato/Da pagare)" : ""}</p>
               <div className="flex flex-wrap gap-2">
                 {VENDITA_STATI.map((s) => (
-                  <button type="button" key={s.id} disabled={Boolean(vendita)} onClick={() => set("stato", s.id)} data-testid={`vendita-stato-${s.id}`}
+                  <button type="button" key={s.id} onClick={() => set("stato", s.id)} data-testid={`vendita-stato-${s.id}`}
                           className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors disabled:opacity-60 ${form.stato === s.id ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}>
                     {s.label}
                   </button>
@@ -192,17 +199,21 @@ export default function VenditaForm({ open, onClose, vendita, meta, onSaved, pre
                 {form.stato === "consegnato" && "Vendita completata e ritirata dal cliente: parte la richiesta di recensione dal numero del negozio."}
               </p>
               )}
+              {vendita && form.stato !== (vendita.stato || "consegnato") && (
+                <p className="text-xs text-amber-800" data-testid="vendita-stato-cambio-hint">
+                  {form.stato === "arrivato" && "Passando a 'In attesa di ritiro' parte il WhatsApp 'il tuo telefono è arrivato' e il magazzino viene aggiornato."}
+                  {form.stato === "consegnato" && "Passando a 'Ritirato' la vendita è consegnata al cliente: parte la richiesta di recensione."}
+                  {form.stato === "ordinato" && "Tornando a 'Ordinato' l'articolo torna in ordine (magazzino −1)."}
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {form.stato === "consegnato" ? (
-                  <F l="Pagamento">
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => set("pagato", true)} data-testid="vendita-pagato" className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${form.pagato ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-300 bg-white"}`}>Pagato</button>
-                      <button type="button" onClick={() => set("pagato", false)} data-testid="vendita-da-pagare" className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${!form.pagato ? "border-rose-600 bg-rose-600 text-white" : "border-slate-300 bg-white"}`}>Da pagare</button>
-                    </div>
-                  </F>
-                ) : (
-                  <F l="Acconto € (da pagare il saldo)"><Input type="number" step="0.01" min="0" value={form.acconto} onChange={(e) => set("acconto", e.target.value)} data-testid="vendita-acconto" /></F>
-                )}
+                <F l="Pagamento">
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => set("pagato", true)} data-testid="vendita-pagato" className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${form.pagato ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-300 bg-white"}`}>Pagato</button>
+                    <button type="button" onClick={() => set("pagato", false)} data-testid="vendita-da-pagare" className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${!form.pagato ? "border-rose-600 bg-rose-600 text-white" : "border-slate-300 bg-white"}`}>{form.stato === "consegnato" ? "Da pagare" : "In attesa (saldo al ritiro)"}</button>
+                  </div>
+                </F>
+                {form.stato !== "consegnato" && <F l="Acconto € (da pagare il saldo)"><Input type="number" step="0.01" min="0" value={form.acconto} onChange={(e) => set("acconto", e.target.value)} data-testid="vendita-acconto" /></F>}
                 <F l={form.stato === "ordinato" ? "Ordinato da (fornitore) *" : "Fornitore / acquistato da"}>
                   <Input required={form.stato === "ordinato"} list="vendita-fornitori-list" placeholder="es. Miwo, Phoneclik, Brightstar" value={form.fornitore} onChange={(e) => set("fornitore", e.target.value)} data-testid="vendita-fornitore" />
                   <datalist id="vendita-fornitori-list">{(meta?.fornitori_magazzino || []).map((f) => <option key={f} value={f} />)}</datalist>
