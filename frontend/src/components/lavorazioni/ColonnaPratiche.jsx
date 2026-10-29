@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Hand, RotateCcw, CalendarPlus, AlertTriangle, StickyNote } from "lucide-react";
+import { Hand, RotateCcw, CalendarPlus, AlertTriangle, StickyNote, CheckCircle2 } from "lucide-react";
 import { Input } from "../ui/input";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
@@ -54,6 +54,11 @@ const Riga = ({ r, lavorate, reinserire, onOpen, onChanged, onAgenda, ricordi })
             {r.presa_in_carico_nome && <span className="text-sky-700">in carico a {r.presa_in_carico_nome}</span>}
             {!lavorate && r.gestione !== "enel" && r.documenti === 0 && <span className="rounded bg-rose-50 px-1 text-rose-700" data-testid={`senza-doc-${r.id}`}>senza documenti</span>}
             {r.documenti > 0 && <span className="text-slate-400">{r.documenti} doc</span>}
+            {r.risposta_switcho && (
+              <span className="flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700" title={`${r.risposta_switcho.testo || ""}${r.risposta_switcho.da ? ` — ${r.risposta_switcho.da}` : ""}`} data-testid={`risposto-switcho-${r.id}`}>
+                <CheckCircle2 className="h-3 w-3" /> risposto a Switcho {r.risposta_switcho.at?.slice(8, 10)}/{r.risposta_switcho.at?.slice(5, 7)}{r.risposta_switcho.allegati > 0 && ` · ${r.risposta_switcho.allegati} allegati`}
+              </span>
+            )}
           </div>
           <RicordiLine testi={ricordi?.[r.id]} />
           {r.ultima_nota && (

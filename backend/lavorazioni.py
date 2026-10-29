@@ -140,6 +140,12 @@ async def riepilogo(store_id: str = "", giorni_lavorate: int = 60, user: dict = 
     async for r in db.attachments.aggregate([{"$match": {"client_id": {"$in": [c["id"] for c in tutti]}, "is_deleted": False}}, {"$group": {"_id": "$client_id", "n": {"$sum": 1}}}]):
         n_doc[r["_id"]] = r["n"]
     righe = [{**_riga(c, nomi_store, ultimo), "documenti": n_doc.get(c["id"], 0)} for c in tutti]
+    # ultima risposta data a Switcho per pratica (automatica o manuale)
+    risposte = {}
+    async for s in db.switcho_segnalazioni.find({"client_id": {"$in": [c["id"] for c in tutti]}, "risposta": {"$ne": None}}, {"_id": 0, "client_id": 1, "risposta": 1, "categoria_label": 1}).sort("risposta.at", 1):
+        risposte[s["client_id"]] = {**s["risposta"], "categoria": s.get("categoria_label")}
+    for r in righe:
+        r["risposta_switcho"] = risposte.get(r["id"])
     da_lavorare = sorted([r for r in righe if r["lavorazione"] in DA_LAVORARE], key=lambda r: -r["giorni_fermo"])
     da_reinserire = sorted([r for r in righe if r["lavorazione"] in DA_REINSERIRE], key=lambda r: -r["giorni_fermo"])
     lavorate = sorted([r for r in righe if r["lavorazione"] in LAVORATE], key=lambda r: r["ultimo_cambio"] or "", reverse=True)

@@ -312,20 +312,21 @@ async def _risposta_automatica(segs: list, c: dict) -> dict | None:
 
 
 async def _media_documenti(segs: list) -> list:
-    """Allegati (bollette/documenti) dei clienti citati, pronti per il microservizio (max 10)."""
+    """Solo la bolletta e il documento d'identità più recenti di ogni cliente (fallback: i 2 file più recenti se non classificati)."""
     import base64
     db = _d["db"]
     media = []
     for s in segs:
-        for att in await db.attachments.find({"client_id": s["client_id"], "is_deleted": False}, {"_id": 0}).to_list(20):
-            if len(media) >= 10:
-                break
+        atts = await db.attachments.find({"client_id": s["client_id"], "is_deleted": False}, {"_id": 0}).sort("created_at", -1).to_list(50)
+        scelti = [next((a for a in atts if a.get("tipo") == t), None) for t in ("bolletta", "documento")]
+        scelti = [a for a in scelti if a] or atts[:2]
+        for att in scelti:
             try:
                 data, ct = _d["get_object"](att["storage_path"])
             except Exception as e:
                 logger.warning(f"allegato {att.get('id')}: {e}")
                 continue
-            media.append({"filename": f"{s.get('client_name', '').replace(' ', '_')}_{att.get('original_filename') or 'documento'}", "mimetype": att.get("content_type") or ct, "base64": base64.b64encode(data).decode()})
+            media.append({"filename": f"{s.get('client_name', '').replace(' ', '_')}_{att.get('tipo') or 'doc'}_{att.get('original_filename') or 'documento'}", "mimetype": att.get("content_type") or ct, "base64": base64.b64encode(data).decode()})
     return media
 
 
