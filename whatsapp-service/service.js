@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const express = require('express');
 const cors = require('cors');
 const pino = require('pino');
@@ -71,8 +71,28 @@ async function initSession(sessionId) {
     if (type !== 'notify' || !CRM_URL || !CRM_WEBHOOK_SECRET) return;
     for (const m of messages) {
       const jid = m.key?.remoteJid || '';
-      if (!jid.endsWith('@g.us') || m.key?.fromMe) continue;
+      if (m.key?.fromMe) continue;
       const msg = m.message || {};
+      // Chat privata con un cliente: foto/PDF (bollette, documenti) → salvati nella sua scheda dal gestionale
+      if (!jid.endsWith('@g.us') && (msg.imageMessage || msg.documentMessage)) {
+        const media = msg.imageMessage || msg.documentMessage;
+        if ((media.fileLength || 0) > 15 * 1024 * 1024) continue;
+        try {
+          const buf = await downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
+          let from = String(jid).split('@')[0].split(':')[0];
+          if (jid.endsWith('@lid')) {
+            try { from = String((await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)) || m.key?.senderPn || '').split('@')[0].split(':')[0] || from; } catch (_) { /* ok */ }
+          }
+          const r = await fetch(`${CRM_URL}/api/whatsapp/inbox-media`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': CRM_WEBHOOK_SECRET },
+            body: JSON.stringify({ sender: from, sender_is_lid: jid.endsWith('@lid'), push_name: m.pushName || '', session: sessionId, message_id: m.key.id,
+                                   mimetype: media.mimetype || 'application/octet-stream', filename: media.fileName || '', caption: media.caption || '', base64: buf.toString('base64') }),
+          });
+          console.log(`[${sessionId}] media da ${from} → gestionale: ${r.status}`);
+        } catch (e) { console.error(`[${sessionId}] media cliente:`, e.message); }
+        continue;
+      }
+      if (!jid.endsWith('@g.us')) continue;
       const text = msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || msg.documentMessage?.caption || '';
       if (!text) continue;
       const participant = String(m.key?.participant || '');

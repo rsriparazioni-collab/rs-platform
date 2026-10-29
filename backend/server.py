@@ -6276,6 +6276,7 @@ async def _get_current_user_req(request: Request):
 documenti_module.setup(db=db, get_object=get_object, get_scoped_client=get_scoped_client, get_current_user_req=_get_current_user_req, cliente_energia=cliente_energia,
                        compute_dates=compute_dates, wa_sessione_negozio=wa_sessione_negozio, store_msg=store_msg, wa_send=wa_send)
 api_router.include_router(documenti_module.router)
+switcho_module.setup(classifica_contenuto=documenti_module.classifica_contenuto, put_object=put_object, APP_NAME=APP_NAME)
 
 @api_router.post("/cron/switcho-48h")
 async def cron_switcho_48h(request: Request, background_tasks: BackgroundTasks):

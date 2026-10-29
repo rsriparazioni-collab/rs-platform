@@ -124,6 +124,33 @@ async def _clienti_energia(scope: dict, extra: dict) -> list:
     return [c for c in docs if _d["cliente_energia"](c)]
 
 
+@router.get("/lavorazioni/documenti-report")
+async def documenti_report(user: dict = Depends(require_addetto)):
+    """Per negozio: pratiche CambiaOra aperte con bolletta+documento completi, parziali, senza nulla."""
+    db = _d["db"]
+    scope = _d["client_scope_filter"](user)
+    nomi_store = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    aperti = [c for c in await _clienti_energia(scope, {"lavorazione": {"$in": DA_LAVORARE + DA_REINSERIRE}}) if c.get("gestione") != "enel"]
+    tipi: dict = {}
+    async for a in db.attachments.find({"client_id": {"$in": [c["id"] for c in aperti]}, "is_deleted": False}, {"_id": 0, "client_id": 1, "tipo": 1}):
+        tipi.setdefault(a["client_id"], set()).add(a.get("tipo") or "altro")
+    per_store: dict = {}
+    for c in aperti:
+        s = per_store.setdefault(c.get("venditore_id") or "-", {"store_id": c.get("venditore_id") or "-", "negozio": nomi_store.get(c.get("venditore_id"), "-"), "totale": 0, "completi": 0, "solo_bolletta": 0, "solo_documento": 0, "senza": 0, "mancanti": []})
+        t = tipi.get(c["id"], set())
+        s["totale"] += 1
+        if "bolletta" in t and "documento" in t:
+            s["completi"] += 1
+        else:
+            s["solo_bolletta" if "bolletta" in t else "solo_documento" if "documento" in t else "senza"] += 1
+            s["mancanti"].append({"id": c["id"], "nome": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "manca": [x for x, ok in (("bolletta", "bolletta" in t), ("documento", "documento" in t)) if not ok]})
+    righe = sorted(per_store.values(), key=lambda s: -s["totale"])
+    for s in righe:
+        s["pct_completi"] = round(100 * s["completi"] / s["totale"]) if s["totale"] else 0
+    tot = {"totale": sum(s["totale"] for s in righe), "completi": sum(s["completi"] for s in righe)}
+    return {"negozi": righe, "totali": {**tot, "pct_completi": round(100 * tot["completi"] / tot["totale"]) if tot["totale"] else 0}}
+
+
 @router.get("/lavorazioni/riepilogo")
 async def riepilogo(store_id: str = "", giorni_lavorate: int = 60, user: dict = Depends(require_addetto)):
     db = _d["db"]

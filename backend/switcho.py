@@ -1,3 +1,4 @@
+import base64
 import os
 import re
 import uuid
@@ -335,6 +336,77 @@ async def inbox_log(user: dict = Depends(require_addetto)):
     """Ultimi messaggi arrivati dal microservizio (anche quelli ignorati e perché): serve a capire se l'acquisizione funziona."""
     items = await _d["db"].switcho_inbox_log.find({}, {"_id": 0}).sort("at", -1).to_list(40)
     return {"items": items, "totale_ok": await _d["db"].switcho_inbox_log.count_documents({"esito": "ok"}), "totale_ignorati": await _d["db"].switcho_inbox_log.count_documents({"esito": "ignorato"})}
+
+
+# ---------- media ricevuti in chat privata dal cliente (foto bollette / documenti) ----------
+class InboxMediaInput(BaseModel):
+    sender: str = ""
+    sender_is_lid: bool = False
+    push_name: str = ""
+    session: str = ""
+    message_id: str = ""
+    mimetype: str = "application/octet-stream"
+    filename: str = ""
+    caption: str = ""
+    base64: str
+
+
+EXT_MIME = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+
+
+@router.post("/whatsapp/inbox-media")
+async def inbox_media(input: InboxMediaInput, request: Request):
+    """Salva nella scheda del cliente (riconosciuto dal numero) la foto/PDF ricevuta su WhatsApp e la classifica (bolletta/documento)."""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    tok = request.headers.get("X-Webhook-Secret", "") or request.headers.get("Authorization", "")[7:]
+    if not secret or tok != secret:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db = _d["db"]
+    log = {"id": str(uuid.uuid4()), "at": _now().isoformat(), "sender": input.sender, "push_name": input.push_name, "session": input.session, "message_id": input.message_id, "mimetype": input.mimetype, "filename": input.filename}
+    if input.message_id and await db.whatsapp_media_log.find_one({"message_id": input.message_id}):
+        return {"status": "ignorato", "motivo": "già ricevuto"}
+    mime = input.mimetype.split(";")[0].strip().lower()
+    ext = EXT_MIME.get(mime)
+    if not ext:
+        await db.whatsapp_media_log.insert_one({**log, "esito": "ignorato", "motivo": f"formato {mime}"})
+        return {"status": "ignorato", "motivo": "formato non supportato"}
+    num = re.sub(r"\D", "", input.sender)
+    if len(num) < 9 or input.sender_is_lid and not num:
+        await db.whatsapp_media_log.insert_one({**log, "esito": "ignorato", "motivo": "mittente non identificabile"})
+        return {"status": "ignorato", "motivo": "mittente non identificabile"}
+    coda = num[-9:]
+    cand = [c async for c in db.clients.find({"anonimizzato_at": {"$in": [None]}, "$or": [{"telefono": {"$regex": f"{coda}$"}}, {"telefoni_extra": {"$regex": f"{coda}$"}}]},
+                                             {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "venditore_id": 1, "telefono": 1, "updated_at": 1, "gestione": 1})]
+    cand = [c for c in cand if re.sub(r"\D", "", c.get("telefono") or "").endswith(coda) or any(re.sub(r"\D", "", t or "").endswith(coda) for t in (c.get("telefoni_extra") or []))]
+    if not cand:
+        await db.whatsapp_media_log.insert_one({**log, "esito": "ignorato", "motivo": "numero non in anagrafica"})
+        return {"status": "ignorato", "motivo": "numero non in anagrafica"}
+    # preferisci il cliente del negozio che ha ricevuto il messaggio, poi il più recente
+    cand.sort(key=lambda c: (c.get("venditore_id") == input.session, c.get("updated_at") or ""), reverse=True)
+    c = cand[0]
+    data = base64.b64decode(input.base64)
+    if len(data) > 15 * 1024 * 1024:
+        return {"status": "ignorato", "motivo": "troppo grande"}
+    cls = await _d["classifica_contenuto"](data, mime, input.filename or input.caption or "")
+    nome = input.filename or f"whatsapp_{_now().strftime('%Y%m%d_%H%M')}.{ext}"
+    path = f"{_d['APP_NAME']}/attachments/{c['id']}/{uuid.uuid4()}.{ext}"
+    result = _d["put_object"](path, data, mime)
+    doc = {"id": str(uuid.uuid4()), "client_id": c["id"], "storage_path": result["path"], "original_filename": nome, "content_type": mime, "size": result["size"],
+           "tipo": cls["tipo"], "tipo_auto": cls["fonte"], "tipo_auto_at": _now().isoformat(), "is_deleted": False, "uploaded_by": "whatsapp", "origine": "whatsapp",
+           "caption": input.caption[:300], "created_at": _now().isoformat()}
+    await db.attachments.insert_one(doc)
+    await db.whatsapp_media_log.insert_one({**log, "esito": "ok", "client_id": c["id"], "client_name": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "tipo": cls["tipo"], "attachment_id": doc["id"]})
+    try:
+        await _d["log_lavorazione"](c, {"id": "whatsapp", "name": "WhatsApp", "role": "sistema"}, c.get("lavorazione", ""), f"Ricevuto su WhatsApp: {cls['tipo']} ({nome})")
+    except Exception as e:  # il log pratica non deve bloccare il salvataggio
+        logger.warning(f"log lavorazione media: {e}")
+    return {"status": "ok", "client_id": c["id"], "tipo": cls["tipo"], "attachment_id": doc["id"]}
+
+
+@router.get("/whatsapp/media-log")
+async def media_log(user: dict = Depends(require_addetto)):
+    items = await _d["db"].whatsapp_media_log.find({}, {"_id": 0}).sort("at", -1).to_list(40)
+    return {"items": items}
 
 
 # ---------- API per gli addetti ----------
