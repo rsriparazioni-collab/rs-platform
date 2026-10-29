@@ -11,6 +11,7 @@ import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { LAVORAZIONI, ENEL_OPERAZIONI } from "../lib/constants";
+import { useAuth } from "../context/AuthContext";
 
 const EMPTY = {
   nome: "", cognome: "", tipo_cliente: "privato", codice_fiscale: "", p_iva: "", telefoni_extra: "", email_extra: "", uso_utenza: "",
@@ -67,6 +68,7 @@ const PROSSIMI = [
 ];
 
 export default function ClientForm({ open, onClose, client, meta, onSaved, prefill, onAggiungi }) {
+  const { user } = useAuth();
   const [prossimo, setProssimo] = useState("");
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -165,9 +167,16 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
     onClose();
   };
 
+  const isCambiaOraNuova = !isEdit && form.gestione !== "enel" && !prefill?._nuova_utenza;
+  const haBolletta = nuoviDoc.some((f) => f.tipo === "bolletta");
+  const haDocumento = nuoviDoc.some((f) => f.tipo === "documento");
   const submit = async (e) => {
     e.preventDefault();
-    if (!isEdit && form.gestione !== "enel" && nuoviDoc.length === 0 && !window.confirm("Nessuna bolletta o documento allegato.\nSwitcho li chiederà: vuoi salvare comunque senza documenti?")) return;
+    if (isCambiaOraNuova && (!haBolletta || !haDocumento)) {
+      const manca = [!haBolletta && "la bolletta", !haDocumento && "il documento d'identità"].filter(Boolean).join(" e ");
+      if (user?.role !== "admin") { toast.error(`Pratica CambiaOra non salvata: manca ${manca}. Fotografali o allegali qui sotto.`); return; }
+      if (!window.confirm(`Manca ${manca}. Solo l'amministratore può salvare comunque: confermi?`)) return;
+    }
     setSaving(true);
     const { _nuova_utenza, ...formPulito } = form;
     const splitList = (v) => (Array.isArray(v) ? v : String(v || "").split(/[,;\n]/)).map((x) => x.trim()).filter(Boolean);
@@ -454,12 +463,12 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
             </div>
             <div className="mt-4">
               {form.gestione !== "enel" && (
-                <div className={`mb-2 rounded-lg border px-3 py-2 text-xs ${nuoviDoc.length ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-900"}`} data-testid="cambiaora-doc-hint">
-                  <b>Pratica CambiaOra: fotografa subito bolletta e documento d'identità.</b> Switcho li chiede quasi sempre; se sono già qui li inviamo con un clic e la pratica non si ferma.
-                  {nuoviDoc.length > 0 && <span className="ml-1 font-semibold">✓ {nuoviDoc.length} allegati pronti</span>}
+                <div className={`mb-2 rounded-lg border px-3 py-2 text-xs ${isCambiaOraNuova && haBolletta && haDocumento ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-900"}`} data-testid="cambiaora-doc-hint">
+                  <b>Pratica CambiaOra: bolletta e documento d'identità sono obbligatori per salvare.</b> Switcho li chiede quasi sempre: se sono già qui li inviamo da soli e la pratica non si ferma.
+                  {isCambiaOraNuova && <span className="ml-1 font-semibold" data-testid="cambiaora-doc-stato">{haBolletta ? "✓ bolletta" : "✗ bolletta"} · {haDocumento ? "✓ documento" : "✗ documento"}</span>}
                 </div>
               )}
-              <DocumentiPicker files={nuoviDoc} onChange={setNuoviDoc} testid="client-form-documenti" label="Allega documenti (carta d'identità, bollette, ecc.)" />
+              <DocumentiPicker files={nuoviDoc} onChange={setNuoviDoc} testid="client-form-documenti" label="Allega documenti (carta d'identità, bollette, ecc.)" conTipo />
             </div>
           </section>
 
