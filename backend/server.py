@@ -4060,6 +4060,41 @@ async def process_whatsapp_queue():
 
 # ---------------- Export Excel ----------------
 
+class ReinviaInput(BaseModel):
+    ore: int = 24
+
+@api_router.get("/whatsapp/falliti")
+async def whatsapp_falliti(ore: int = 24, user: dict = Depends(get_current_user)):
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    da = (datetime.now(timezone.utc) - timedelta(hours=ore)).isoformat()
+    q = {"ok": False, "dry_run": {"$ne": True}, "at": {"$gte": da}, "retried_at": {"$in": [None]}, "phone": {"$nin": [None, ""]}, "message": {"$nin": [None, ""]}}
+    items = await db.wa_log.find(q, {"_id": 0, "id": 1, "phone": 1, "session": 1, "tipo": 1, "error": 1, "at": 1, "message": 1, "client_id": 1}).sort("at", -1).to_list(300)
+    return {"items": items, "totale": len(items)}
+
+@api_router.post("/whatsapp/reinvia-falliti")
+async def whatsapp_reinvia_falliti(input: ReinviaInput, user: dict = Depends(get_current_user)):
+    """Rimanda i WhatsApp falliti (es. servizio giù) delle ultime N ore, una volta sola per messaggio, dallo stesso numero."""
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    falliti = (await whatsapp_falliti(input.ore, user))["items"]
+    ok, ko = 0, []
+    visti = set()
+    for f in falliti:
+        chiave = (f["phone"], f["message"][:80])
+        if chiave in visti:  # stesso messaggio fallito più volte: una sola rispedizione
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": datetime.now(timezone.utc).isoformat(), "retried_skip": "duplicato"}})
+            continue
+        visti.add(chiave)
+        try:
+            await wa_send(f["phone"], f["message"], session=f.get("session") or "default", tipo=f.get("tipo") or "reinvio", client_id=f.get("client_id") or "")
+            ok += 1
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": datetime.now(timezone.utc).isoformat(), "retried_ok": True}})
+        except HTTPException as e:
+            ko.append({"phone": f["phone"], "errore": str(e.detail)})
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": datetime.now(timezone.utc).isoformat(), "retried_ok": False}})
+    return {"reinviati": ok, "falliti_ancora": ko, "esaminati": len(falliti)}
+
 EXPORT_COLUMNS = [
     ("cognome", "Cognome"), ("nome", "Nome"), ("codice_fiscale", "Codice Fiscale"), ("p_iva", "P.IVA"),
     ("indirizzo", "Indirizzo"), ("telefono", "Telefono"), ("email", "Email"), ("iban", "IBAN"),

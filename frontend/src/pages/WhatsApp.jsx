@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { MessageCircle, CheckCircle2, XCircle, RefreshCw, Store, QrCode, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import api from "../lib/api";
+import api, { apiError } from "../lib/api";
 import { fmtDateTime } from "../lib/constants";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../context/AuthContext";
@@ -12,6 +12,13 @@ export default function WhatsApp() {
   const seesAll = user?.role === "admin" || user?.can_view_all;
   const [sessions, setSessions] = useState([]);
   const [dryRun, setDryRun] = useState(null);
+  const [falliti, setFalliti] = useState(null);
+  const loadFalliti = () => { if (user?.role === "admin") api.get("/whatsapp/falliti", { params: { ore: 24 } }).then((r) => setFalliti(r.data)).catch(() => {}); };
+  useEffect(() => { loadFalliti(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reinvia = async () => {
+    if (!window.confirm(`Rimandare ora i ${falliti.totale} messaggi falliti nelle ultime 24 ore dagli stessi numeri?`)) return;
+    try { const r = await api.post("/whatsapp/reinvia-falliti", { ore: 24 }); toast.success(`${r.data.reinviati} messaggi reinviati${r.data.falliti_ancora.length ? `, ${r.data.falliti_ancora.length} ancora falliti` : ""}`); loadFalliti(); } catch (e) { toast.error(apiError(e)); }
+  };
   const [stores, setStores] = useState([]);
   const [openQr, setOpenQr] = useState(null);
   const [qrValue, setQrValue] = useState(null);
@@ -104,6 +111,12 @@ export default function WhatsApp() {
       {down && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" data-testid="whatsapp-service-down">
           Servizio WhatsApp non raggiungibile. Riprova tra poco.
+        </div>
+      )}
+      {falliti && falliti.totale > 0 && user?.role === "admin" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-800" data-testid="whatsapp-falliti-banner">
+          <span><b>{falliti.totale} messaggi non consegnati</b> nelle ultime 24 ore (es. servizio WhatsApp fermo): {[...new Set(falliti.items.map((f) => f.tipo))].join(", ")}.</span>
+          <Button size="sm" className="bg-rose-600 hover:bg-rose-700" onClick={reinvia} data-testid="whatsapp-reinvia-falliti">Reinvia ora i falliti</Button>
         </div>
       )}
       {dryRun !== null && user?.role === "admin" && (
