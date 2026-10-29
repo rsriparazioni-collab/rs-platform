@@ -145,11 +145,17 @@ async def _applica(seg: dict, c: dict, user_name: str = "Switcho") -> dict:
         upd = {"lavorazione": nuovo, "updated_at": _now().isoformat()}
         if seg.get("fornitore") and not c.get("nuovo_fornitore"):
             upd["nuovo_fornitore"] = seg["fornitore"]
+        if cat in ("annullata_ip", "annullata_firma"):
+            upd.update({"urgente": True, "urgente_motivo": f"Annullata da Switcho: {seg['testo'][:160]}", "urgente_at": _now().isoformat()})
+            azioni.append("RILAVORAZIONE URGENTE")
         await db.clients.update_one({"id": c["id"]}, {"$set": upd})
         await _d["log_lavorazione"](c, fake_user, nuovo, f"Switcho: {seg['testo'][:300]}")
         azioni.append(f"pratica → {nuovo}")
         c = {**c, **upd}
     elif nuovo:
+        if cat in ("annullata_ip", "annullata_firma") and c.get("lavorazione") in ("annullato",):
+            await db.clients.update_one({"id": c["id"]}, {"$set": {"urgente": True, "urgente_motivo": f"Annullata da Switcho: {seg['testo'][:160]}", "urgente_at": _now().isoformat()}})
+            azioni.append("RILAVORAZIONE URGENTE")
         await _d["log_lavorazione"](c, fake_user, c.get("lavorazione", ""), f"Switcho (sollecito): {seg['testo'][:300]}")
         azioni.append("sollecito registrato")
     docs = await _documenti_cliente(c["id"]) if cat == "documenti" else []
@@ -388,6 +394,23 @@ async def inbox_media(input: InboxMediaInput, request: Request):
     if len(data) > 15 * 1024 * 1024:
         return {"status": "ignorato", "motivo": "troppo grande"}
     cls = await _d["classifica_contenuto"](data, mime, input.filename or input.caption or "")
+    scelta = "unico" if len(cand) == 1 else "negozio/recente"
+    if len(cand) > 1:
+        # numero condiviso: leggo la bolletta (POD/PDR, cognome) per scegliere la scheda giusta
+        testo = _d["testo_documento"](data, mime)
+        if testo:
+            full = [await db.clients.find_one({"id": x["id"]}, {"_id": 0, "id": 1, "pod": 1, "pdr": 1, "cognome": 1, "nome": 1, "codice_fiscale": 1}) for x in cand]
+            tn = _norm(testo)
+            compatto = re.sub(r"\s+", "", testo.upper())
+            per_codice = [x for x in full if (x.get("pod") and x["pod"].upper() in compatto) or (x.get("pdr") and x["pdr"] in compatto) or (x.get("codice_fiscale") and x["codice_fiscale"].upper() in compatto)]
+            if len(per_codice) == 1:
+                c, scelta = next(y for y in cand if y["id"] == per_codice[0]["id"]), "POD/PDR/CF in bolletta"
+            else:
+                per_nome = [x for x in full if x.get("cognome") and f" {_norm(x['cognome'])} " in f" {tn} "]
+                cognomi = {_norm(x["cognome"]) for x in per_nome}
+                if len(cognomi) == 1:
+                    sub = [x for x in per_nome if not x.get("pod") and not x.get("pdr")] or per_nome
+                    c, scelta = next(y for y in cand if y["id"] == sub[0]["id"]), "cognome in bolletta"
     nome = input.filename or f"whatsapp_{_now().strftime('%Y%m%d_%H%M')}.{ext}"
     path = f"{_d['APP_NAME']}/attachments/{c['id']}/{uuid.uuid4()}.{ext}"
     result = _d["put_object"](path, data, mime)
@@ -395,13 +418,13 @@ async def inbox_media(input: InboxMediaInput, request: Request):
            "tipo": cls["tipo"], "tipo_auto": cls["fonte"], "tipo_auto_at": _now().isoformat(), "is_deleted": False, "uploaded_by": "whatsapp", "origine": "whatsapp",
            "caption": input.caption[:300], "created_at": _now().isoformat()}
     await db.attachments.insert_one(doc)
-    await db.whatsapp_media_log.insert_one({**log, "esito": "ok", "client_id": c["id"], "client_name": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "tipo": cls["tipo"], "attachment_id": doc["id"]})
+    await db.whatsapp_media_log.insert_one({**log, "esito": "ok", "client_id": c["id"], "client_name": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "tipo": cls["tipo"], "attachment_id": doc["id"], "scelta_cliente": scelta, "candidati": len(cand)})
     try:
         await _d["log_lavorazione"](c, {"id": "whatsapp", "name": "WhatsApp", "role": "sistema"}, c.get("lavorazione", ""), f"Ricevuto su WhatsApp: {cls['tipo']} ({nome})")
     except Exception as e:  # il log pratica non deve bloccare il salvataggio
         logger.warning(f"log lavorazione media: {e}")
     grazie = await _grazie_cliente(c, cls["tipo"], input.session, len(cand))
-    return {"status": "ok", "client_id": c["id"], "tipo": cls["tipo"], "attachment_id": doc["id"], "grazie": grazie, "omonimi_numero": len(cand) - 1}
+    return {"status": "ok", "client_id": c["id"], "tipo": cls["tipo"], "attachment_id": doc["id"], "grazie": grazie, "omonimi_numero": len(cand) - 1, "scelta_cliente": scelta}
 
 
 GRAZIE = {"bolletta": "Grazie {nome}, abbiamo ricevuto la bolletta: la alleghiamo subito alla tua pratica. Ti aggiorniamo appena ci sono novità.",

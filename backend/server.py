@@ -6276,7 +6276,46 @@ async def _get_current_user_req(request: Request):
 documenti_module.setup(db=db, get_object=get_object, get_scoped_client=get_scoped_client, get_current_user_req=_get_current_user_req, cliente_energia=cliente_energia,
                        compute_dates=compute_dates, wa_sessione_negozio=wa_sessione_negozio, store_msg=store_msg, wa_send=wa_send)
 api_router.include_router(documenti_module.router)
-switcho_module.setup(classifica_contenuto=documenti_module.classifica_contenuto, put_object=put_object, APP_NAME=APP_NAME)
+switcho_module.setup(classifica_contenuto=documenti_module.classifica_contenuto, testo_documento=documenti_module.testo_documento, put_object=put_object, APP_NAME=APP_NAME)
+
+
+class UnisciInput(BaseModel):
+    sorgente_id: str
+    nota: str = ""
+
+
+@api_router.post("/clients/{client_id}/unisci")
+async def unisci_schede(client_id: str, input: UnisciInput, user: dict = Depends(get_current_user)):
+    """Unisce la scheda sorgente in questa (destinazione): sposta utenze/servizi, documenti, storico, WhatsApp, segnalazioni; la sorgente resta come 'unita'."""
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    if input.sorgente_id == client_id:
+        raise HTTPException(status_code=400, detail="Scegli due schede diverse")
+    dest = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    src = await db.clients.find_one({"id": input.sorgente_id}, {"_id": 0})
+    if not dest or not src or src.get("unita_in"):
+        raise HTTPException(status_code=404, detail="Scheda non trovata o già unita")
+    spostati = {}
+    for coll, campo in (("attachments", "client_id"), ("servizi", "client_id"), ("lavorazioni_log", "client_id"), ("wa_log", "client_id"), ("whatsapp_queue", "client_id"),
+                        ("switcho_segnalazioni", "client_id"), ("agenda_lavorazioni", "client_id"), ("ritiri", "client_id"), ("vendite", "client_id"), ("ricordi", "client_id"), ("whatsapp_media_log", "client_id")):
+        r = await db[coll].update_many({campo: src["id"]}, {"$set": {campo: dest["id"]}})
+        if r.modified_count:
+            spostati[coll] = r.modified_count
+    # campi anagrafici vuoti nella destinazione: li prendo dalla sorgente; telefoni/email extra uniti
+    riempiti = {}
+    for k, v in src.items():
+        if k in ("id", "created_at", "updated_at", "lavorazione", "venditore_id", "unita_in", "telefono") or v in (None, "", [], False):
+            continue
+        if dest.get(k) in (None, "", [], False):
+            riempiti[k] = v
+    extra = list(dict.fromkeys([*(dest.get("telefoni_extra") or []), *(src.get("telefoni_extra") or []), *([src["telefono"]] if src.get("telefono") and src["telefono"] != dest.get("telefono") else [])]))
+    riempiti["telefoni_extra"] = extra
+    riempiti["email_extra"] = list(dict.fromkeys([*(dest.get("email_extra") or []), *(src.get("email_extra") or []), *([src["email"]] if src.get("email") and src["email"] != dest.get("email") else [])]))
+    riempiti["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.clients.update_one({"id": dest["id"]}, {"$set": riempiti})
+    await db.clients.update_one({"id": src["id"]}, {"$set": {"unita_in": dest["id"], "anonimizzato_at": datetime.now(timezone.utc).isoformat(), "unita_at": datetime.now(timezone.utc).isoformat(), "unita_da": user["name"]}})
+    await log_lavorazione(dest, user, dest.get("lavorazione", ""), f"Unita la scheda di {src.get('cognome', '')} {src.get('nome', '')} ({src.get('telefono', '')}): {', '.join(f'{k} {v}' for k, v in spostati.items()) or 'nessun elemento'}. {input.nota}".strip())
+    return {"status": "ok", "destinazione": dest["id"], "spostati": spostati, "campi_riempiti": [k for k in riempiti if k not in ("updated_at", "telefoni_extra", "email_extra")]}
 
 @api_router.post("/cron/switcho-48h")
 async def cron_switcho_48h(request: Request, background_tasks: BackgroundTasks):

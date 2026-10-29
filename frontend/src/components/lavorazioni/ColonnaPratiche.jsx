@@ -36,8 +36,9 @@ const Riga = ({ r, lavorate, reinserire, onOpen, onChanged, onAgenda, ricordi })
     try { await api.post(`/lavorazioni/${r.id}/reinserisci`, { motivo }); toast.success("Pratica reinserita: ora è in 'Da lavorare'"); onChanged(); } catch (err) { toast.error(apiError(err)); } finally { setBusy(false); }
   };
   return (
-    <div className={`rounded-lg border bg-white p-2.5 shadow-sm transition-colors hover:border-sky-300 cursor-pointer ${!lavorate && !r.presa_in_carico_da ? "border-amber-300" : "border-slate-200"}`}
+    <div className={`rounded-lg border bg-white p-2.5 shadow-sm transition-colors hover:border-sky-300 cursor-pointer ${r.urgente ? "border-red-500 ring-2 ring-red-200" : !lavorate && !r.presa_in_carico_da ? "border-amber-300" : "border-slate-200"}`}
          onClick={() => onOpen({ id: r.id })} data-testid={`pratica-${r.id}`}>
+      {r.urgente && <div className="mb-1.5 flex items-center gap-1 rounded bg-red-600 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white" title={r.urgente_motivo} data-testid={`urgente-${r.id}`}><AlertTriangle className="h-3 w-3" /> Rilavorazione urgente — lavorare subito</div>}
       <div className="flex items-start gap-2">
         {!lavorate && <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${SEMAFORO[r.semaforo]}`} title={`${r.giorni_fermo} giorni`} data-testid={`semaforo-${r.semaforo}`} />}
         <div className="min-w-0 flex-1">

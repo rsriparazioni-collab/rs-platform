@@ -111,7 +111,8 @@ def _riga(c: dict, nomi_store: dict, ultimo: dict) -> dict:
             "ultimo_cambio": rif, "giorni_fermo": giorni, "semaforo": _semaforo(giorni),
             "presa_in_carico_nome": c.get("presa_in_carico_nome", ""), "presa_in_carico_da": c.get("presa_in_carico_da", ""),
             "presa_in_carico_at": c.get("presa_in_carico_at"), "reinserimenti": int(c.get("reinserimenti") or 0),
-            "ultima_nota": u.get("nota"), "verifica_esito": lav in VERIFICA_ESITO and giorni >= GIORNI_VERIFICA}
+            "ultima_nota": u.get("nota"), "verifica_esito": lav in VERIFICA_ESITO and giorni >= GIORNI_VERIFICA,
+            "urgente": bool(c.get("urgente")), "urgente_motivo": c.get("urgente_motivo", "")}
 
 
 async def _clienti_energia(scope: dict, extra: dict) -> list:
@@ -119,7 +120,7 @@ async def _clienti_energia(scope: dict, extra: dict) -> list:
     proj = {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "telefono": 1, "venditore_id": 1, "gestione": 1, "tipo_bolletta": 1,
             "lavorazione": 1, "updated_at": 1, "created_at": 1, "presa_in_carico_nome": 1, "presa_in_carico_da": 1,
             "presa_in_carico_at": 1, "reinserimenti": 1, "data_contratto": 1, "pod": 1, "pdr": 1,
-            "fornitore_provenienza": 1, "nuovo_fornitore": 1, "origine": 1}
+            "fornitore_provenienza": 1, "nuovo_fornitore": 1, "origine": 1, "urgente": 1, "urgente_motivo": 1}
     docs = await db.clients.find({**scope, **extra, "anonimizzato_at": {"$in": [None]}}, proj).to_list(5000)
     return [c for c in docs if _d["cliente_energia"](c)]
 
@@ -173,8 +174,8 @@ async def riepilogo(store_id: str = "", giorni_lavorate: int = 60, user: dict = 
         risposte[s["client_id"]] = {**s["risposta"], "categoria": s.get("categoria_label")}
     for r in righe:
         r["risposta_switcho"] = risposte.get(r["id"])
-    da_lavorare = sorted([r for r in righe if r["lavorazione"] in DA_LAVORARE], key=lambda r: -r["giorni_fermo"])
-    da_reinserire = sorted([r for r in righe if r["lavorazione"] in DA_REINSERIRE], key=lambda r: -r["giorni_fermo"])
+    da_lavorare = sorted([r for r in righe if r["lavorazione"] in DA_LAVORARE], key=lambda r: (not r["urgente"], -r["giorni_fermo"]))
+    da_reinserire = sorted([r for r in righe if r["lavorazione"] in DA_REINSERIRE], key=lambda r: (not r["urgente"], -r["giorni_fermo"]))
     lavorate = sorted([r for r in righe if r["lavorazione"] in LAVORATE], key=lambda r: r["ultimo_cambio"] or "", reverse=True)
     negozi = {}
     for r in righe:
@@ -287,7 +288,7 @@ async def reinserisci(client_id: str, input: ReinserisciInput, user: dict = Depe
         raise HTTPException(status_code=400, detail="La pratica non è annullata né in problema tecnico")
     prec = c.get("lavorazione")
     await db.clients.update_one({"id": client_id}, {
-        "$set": {"lavorazione": "da_quotare", "updated_at": _now().isoformat(), "reinserita_at": _now().isoformat(),
+        "$set": {"lavorazione": "da_quotare", "updated_at": _now().isoformat(), "reinserita_at": _now().isoformat(), "urgente": False,
                  "presa_in_carico_da": user["id"], "presa_in_carico_nome": user["name"], "presa_in_carico_at": _now().isoformat()},
         "$inc": {"reinserimenti": 1}})
     await _d["log_lavorazione"](c, user, "da_quotare", f"Pratica reinserita (precedente: {prec}). {input.motivo.strip()}".strip())

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, XCircle, FileText, MessageCircle, Paperclip, Pencil, ShieldCheck, Trash2, Upload, Wallet, Ban, Zap, Wrench, Smartphone, Wifi, PackageOpen, ArrowLeftRight, ShoppingBag, Phone, Package, Camera } from "lucide-react";
+import { UnisciSchedeDialog } from "./UnisciSchedeDialog";
 import { useAuth } from "../context/AuthContext";
 import { PerIproButton } from "./PerIproButton";
 import WhatsAppLog from "./WhatsAppLog";
@@ -560,6 +561,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                     <ArrowLeftRight className="mr-2 h-4 w-4" /> {detail.gestione === "enel" ? "Sblocca → CambiaOra" : "Sposta a ENEL"}
                   </Button>
                 )}
+                {isAdmin && !detail.anonimizzato_at && <UnisciSchedeDialog detail={detail} onDone={() => { refresh(); onChanged(); }} />}
                 {(
                   <Button size="sm" variant="outline" data-testid="detail-delete-button"
                           className="text-rose-600 hover:text-rose-700" onClick={remove}>

@@ -36,6 +36,17 @@ def _regole(testo: str) -> str | None:
     return None
 
 
+def testo_documento(data: bytes, content_type: str) -> str:
+    """Testo di un PDF (o di un'immagine via AI non necessario qui): usato per abbinare POD/PDR/cognome."""
+    if content_type == "application/pdf" or data[:4] == b"%PDF":
+        import pymupdf
+        try:
+            return "\n".join(p.get_text() for p in pymupdf.open(stream=data, filetype="pdf"))[:8000]
+        except Exception:
+            return ""
+    return ""
+
+
 async def classifica_contenuto(data: bytes, content_type: str, nome: str) -> dict:
     """Prima regole sul testo (gratis), poi AI (gpt-5.4, anche su immagine) se il testo non basta."""
     testo, img = "", None
