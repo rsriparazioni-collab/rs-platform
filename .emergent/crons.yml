@@ -124,7 +124,7 @@ crons:
     method: POST
     enabled: true
   - name: switcho-48h
-    description: "Alle 9:30 (lun-sab): pratiche con richiesta Switcho 'conferma link' aperta da oltre 48h → agenda + WhatsApp agli addetti lavorazioni"
+    description: "Alle 9:30 (lun-sab): pratiche con richiesta Switcho 'conferma link' aperta da oltre 48h → agenda + WhatsApp agli addetti; avviso all'amministrazione se dal gruppo Switcho non arriva nulla dall'ultimo giorno lavorativo"
     cron: "30 9 * * 1-6"
     timezone: "Europe/Rome"
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.

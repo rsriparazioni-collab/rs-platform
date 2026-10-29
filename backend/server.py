@@ -6226,7 +6226,8 @@ api_router.include_router(ricordi_module.router)
 import switcho as switcho_module
 switcho_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, store_msg=store_msg, log_lavorazione=log_lavorazione,
                      cliente_energia=cliente_energia, wa_sessione_negozio=wa_sessione_negozio, store_id_by_name=store_id_by_name,
-                     get_object=get_object, WA_SERVICE=WA_SERVICE, wa_headers=wa_headers, is_addetto=lavorazioni_module._is_addetto)
+                     get_object=get_object, WA_SERVICE=WA_SERVICE, wa_headers=wa_headers, is_addetto=lavorazioni_module._is_addetto,
+                     numero_amministrazione="3792773557")
 api_router.include_router(switcho_module.router)
 
 @api_router.post("/cron/switcho-48h")
@@ -6237,6 +6238,7 @@ async def cron_switcho_48h(request: Request, background_tasks: BackgroundTasks):
     if not token or not secret or not hmac.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(switcho_module.promemoria_conferma_link)
+    background_tasks.add_task(switcho_module.avviso_silenzio)
     return {"status": "accepted"}
 
 @api_router.post("/cron/auguri-compleanno")

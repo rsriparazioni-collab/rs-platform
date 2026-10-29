@@ -4,6 +4,7 @@ import uuid
 import unicodedata
 import logging
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -30,7 +31,8 @@ LABEL = {"annullata_ip": "Annullata (IP mandato)", "annullata_firma": "Annullata
 STATO_PRATICA = {"annullata_ip": "annullato", "annullata_firma": "annullato", "conferma_link": "in_attesa_ok", "documenti": "attesa_documenti"}
 FORNITORI = ["LENE", "ENI PLENITUDE", "ENIPLENITUDE", "ENI", "MAGIS", "SEGNOVERDE", "E.ON", "EON", "PULSEE", "OCTOPUS", "EDISON", "ILLUMIA", "IREN",
              "HERA", "A2A", "ACEA", "AGSM", "DOLOMITI", "SORGENIA", "ENEL", "WEKIWI", "ALPERIA", "ENGIE", "PLENITUDE"]
-DEFAULT_CFG = {"gruppo_jid": "", "mittente": "393299899503", "session_risposta": "", "auto_avviso_cliente": True, "attivo": True, "ignora_mittenti": "", "auto_risposta_gruppo": True}
+DEFAULT_CFG = {"gruppo_jid": "", "mittente": "393299899503", "session_risposta": "", "auto_avviso_cliente": True, "attivo": True, "ignora_mittenti": "", "auto_risposta_gruppo": True,
+               "auto_documenti_gruppo": True, "avviso_silenzio": True}
 
 
 def setup(**deps):
@@ -278,7 +280,7 @@ def _testo_risposta(segs: list) -> str | None:
         if cat == "conferma_link":
             righe.append(f"ricevuto, avvisiamo {nome} di confermare" if "inviato" in az else f"ricevuto, avvisiamo {nome}")
         elif cat == "documenti":
-            righe.append(f"ricevuto, recuperiamo i documenti di {nome} e ve li mandiamo" if not s.get("documenti_disponibili") else f"ricevuto, vi mandiamo subito i documenti di {nome}")
+            righe.append(f"ricevuto, in allegato i documenti di {nome}" if s.get("documenti_disponibili") else f"ricevuto, recuperiamo i documenti di {nome} e ve li mandiamo")
         elif cat in ("annullata_ip", "annullata_firma"):
             righe.append(f"ricevuto, reinseriamo la pratica di {nome}")
         elif cat == "verifica":
@@ -295,13 +297,36 @@ async def _risposta_automatica(segs: list, c: dict) -> dict | None:
     testo = _testo_risposta(segs)
     if not testo:
         return None
+    media = []
+    if c.get("auto_documenti_gruppo", True):
+        media = await _media_documenti([s for s in segs if s.get("client_id") and s.get("categoria") == "documenti" and s.get("documenti_disponibili")])
     try:
-        await _invia_gruppo(testo, [])
+        await _invia_gruppo(testo, media)
     except HTTPException as e:
         return {"ok": False, "errore": str(e.detail)}
     ids = [s["id"] for s in segs if s.get("client_id")]
-    await _d["db"].switcho_segnalazioni.update_many({"id": {"$in": ids}}, {"$set": {"risposta": {"testo": testo, "allegati": 0, "da": "automatica", "at": _now().isoformat()}}, "$push": {"azioni": "Risposta automatica al gruppo"}})
-    return {"ok": True, "testo": testo}
+    await _d["db"].switcho_segnalazioni.update_many({"id": {"$in": ids}}, {"$set": {"risposta": {"testo": testo, "allegati": len(media), "da": "automatica", "at": _now().isoformat()}}, "$push": {"azioni": f"Risposta automatica al gruppo ({len(media)} allegati)"}})
+    if media:
+        await _d["db"].switcho_segnalazioni.update_many({"id": {"$in": [s["id"] for s in segs if s.get("categoria") == "documenti" and s.get("documenti_disponibili")]}}, {"$set": {"stato": "chiusa", "chiusa_da": "automatica", "chiusa_at": _now().isoformat()}})
+    return {"ok": True, "testo": testo, "allegati": len(media)}
+
+
+async def _media_documenti(segs: list) -> list:
+    """Allegati (bollette/documenti) dei clienti citati, pronti per il microservizio (max 10)."""
+    import base64
+    db = _d["db"]
+    media = []
+    for s in segs:
+        for att in await db.attachments.find({"client_id": s["client_id"], "is_deleted": False}, {"_id": 0}).to_list(20):
+            if len(media) >= 10:
+                break
+            try:
+                data, ct = _d["get_object"](att["storage_path"])
+            except Exception as e:
+                logger.warning(f"allegato {att.get('id')}: {e}")
+                continue
+            media.append({"filename": f"{s.get('client_name', '').replace(' ', '_')}_{att.get('original_filename') or 'documento'}", "mimetype": att.get("content_type") or ct, "base64": base64.b64encode(data).decode()})
+    return media
 
 
 @router.get("/switcho/inbox-log")
@@ -499,6 +524,35 @@ async def rispondi(seg_id: str, input: RispondiInput, user: dict = Depends(requi
 
 
 # ---------- promemoria 48 ore ----------
+async def avviso_silenzio() -> dict:
+    """Cron mattutino (lun-sab): se dal gruppo Switcho non è arrivato nulla (nemmeno ignorato) dall'ultimo giorno lavorativo, WhatsApp all'amministrazione."""
+    db = _d["db"]
+    c = await cfg()
+    if not c.get("attivo") or not c.get("avviso_silenzio"):
+        return {"inviati": 0, "motivo": "disattivato"}
+    oggi = datetime.now(ZoneInfo("Europe/Rome")).date()
+    if oggi.weekday() == 6:
+        return {"inviati": 0, "motivo": "domenica"}
+    ieri = oggi - timedelta(days=2 if oggi.weekday() == 0 else 1)  # lunedì guarda il sabato
+    ultimo = await db.switcho_inbox_log.find_one({}, {"_id": 0, "at": 1}, sort=[("at", -1)])
+    ultimo_dt = datetime.fromisoformat(ultimo["at"]).astimezone(ZoneInfo("Europe/Rome")).date() if ultimo else None
+    if ultimo_dt and ultimo_dt >= ieri:
+        return {"inviati": 0, "ultimo": ultimo["at"]}
+    key = f"switcho-silenzio-{oggi.isoformat()}"
+    if await db.scadenze_alert_log.find_one({"key": key}):
+        return {"inviati": 0, "motivo": "già avvisato oggi"}
+    quando = f"dal {ultimo_dt.strftime('%d/%m')}" if ultimo_dt else "mai (nessun messaggio ricevuto finora)"
+    testo = (f"⚠️ *Gruppo Switcho silenzioso*\nNessun messaggio è arrivato dal gruppo {quando}.\n"
+             "Controlla: servizio WhatsApp su Railway attivo, numero Sondrio collegato e dentro al gruppo, ID gruppo impostato.\n"
+             "Riepilogo Lavorazioni → Impostazioni Switcho → Diagnostica ricezione.")
+    try:
+        await _d["wa_send"](_d["numero_amministrazione"], testo, session=await _d["store_id_by_name"]("Sondrio") or "default", tipo="switcho_silenzio")
+    except HTTPException as e:
+        return {"inviati": 0, "errore": str(e.detail)}
+    await db.scadenze_alert_log.insert_one({"id": str(uuid.uuid4()), "key": key, "sent_at": _now().isoformat()})
+    return {"inviati": 1}
+
+
 async def promemoria_conferma_link() -> dict:
     """Segnalazioni 'conferma_link' aperte da oltre 48h: agenda + WhatsApp agli addetti, una volta sola."""
     db = _d["db"]
@@ -542,6 +596,8 @@ class CfgInput(BaseModel):
     attivo: bool = True
     ignora_mittenti: str = ""
     auto_risposta_gruppo: bool = True
+    auto_documenti_gruppo: bool = True
+    avviso_silenzio: bool = True
 
 
 @router.get("/switcho/config")
