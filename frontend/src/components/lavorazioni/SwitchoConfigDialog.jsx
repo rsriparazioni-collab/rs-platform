@@ -20,7 +20,7 @@ export const SwitchoConfigDialog = ({ trigger }) => {
   };
   const save = async () => {
     try {
-      await api.put("/switcho/config", { gruppo_jid: cfg.gruppo_jid, mittente: cfg.mittente, session_risposta: cfg.session_risposta, auto_avviso_cliente: cfg.auto_avviso_cliente, attivo: cfg.attivo });
+      await api.put("/switcho/config", { gruppo_jid: cfg.gruppo_jid, mittente: cfg.mittente, session_risposta: cfg.session_risposta, auto_avviso_cliente: cfg.auto_avviso_cliente, attivo: cfg.attivo, ignora_mittenti: cfg.ignora_mittenti || "" });
       toast.success("Impostazioni Switcho salvate"); setOpen(false);
     } catch (e) { toast.error(apiError(e)); }
   };
@@ -44,6 +44,7 @@ export const SwitchoConfigDialog = ({ trigger }) => {
               )}
             </label>
             <label className="block"><span className="text-xs font-semibold text-slate-600">Numero di Switcho che scrive nel gruppo</span><Input value={cfg.mittente} onChange={(e) => set("mittente", e.target.value)} data-testid="switcho-cfg-mittente" /></label>
+            <label className="block"><span className="text-xs font-semibold text-slate-600">Da ignorare: nostri numeri, LID o nomi WhatsApp che rispondono nel gruppo (separati da virgola)</span><Input value={cfg.ignora_mittenti || ""} onChange={(e) => set("ignora_mittenti", e.target.value)} placeholder="es. 3519460591, Deborah, 1234567890123" data-testid="switcho-cfg-ignora" /><span className="text-[11px] text-slate-400">I numeri dei negozi collegati al servizio WhatsApp vengono già esclusi in automatico; qui aggiungi i cellulari personali. Nella diagnostica sotto c'è il tasto "Ignora" accanto a ogni messaggio.</span></label>
             <label className="block"><span className="text-xs font-semibold text-slate-600">Sessione per rispondere (vuoto = negozio Sondrio)</span><Input value={cfg.session_risposta} onChange={(e) => set("session_risposta", e.target.value)} data-testid="switcho-cfg-sessione" /></label>
             <label className="flex items-center gap-2"><Checkbox checked={cfg.auto_avviso_cliente} onCheckedChange={(v) => set("auto_avviso_cliente", !!v)} /> WhatsApp automatico al cliente (dal suo negozio) quando Switcho chiede di confermare il link</label>
             <label className="flex items-center gap-2"><Checkbox checked={cfg.attivo} onCheckedChange={(v) => set("attivo", !!v)} /> Integrazione attiva (ricezione dal gruppo)</label>
@@ -52,7 +53,7 @@ export const SwitchoConfigDialog = ({ trigger }) => {
               <div className="text-xs font-semibold text-slate-600">Diagnostica ricezione — ultimi messaggi arrivati dal servizio WhatsApp {log && <span className="font-normal text-slate-400">· {log.totale_ok} elaborati · {log.totale_ignorati} ignorati</span>}</div>
               {!log || log.items.length === 0 ? <p className="mt-1 text-xs text-amber-700">Nessun messaggio è mai arrivato dal servizio WhatsApp: controlla su Railway le variabili CRM_URL e CRM_WEBHOOK_SECRET e che il numero Sondrio sia nel gruppo.</p> : (
                 <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">
-                  {log.items.map((l) => <div key={l.id} className={`rounded px-2 py-1 text-[11px] ${l.esito === "ok" ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}><b>{l.at?.slice(0, 16).replace("T", " ")}</b> · {l.esito === "ok" ? `${l.segnalazioni} segnalazioni${l.azioni?.length ? ` — ${l.azioni.join("; ")}` : ""}` : `ignorato: ${l.motivo}`} <span className="text-slate-500">· da {l.push_name || l.sender_pn || l.sender}{l.lid ? " (LID)" : ""} · gruppo {l.group_id}</span><div className="truncate text-slate-600">{l.testo}</div></div>)}
+                  {log.items.map((l) => <div key={l.id} className={`rounded px-2 py-1 text-[11px] ${l.esito === "ok" ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}><b>{l.at?.slice(0, 16).replace("T", " ")}</b> · {l.esito === "ok" ? `${l.segnalazioni} segnalazioni${l.azioni?.length ? ` — ${l.azioni.join("; ")}` : ""}` : `ignorato: ${l.motivo}`} <span className="text-slate-500">· da {l.push_name || l.sender_pn || l.sender}{l.lid ? " (LID)" : ""} · gruppo {l.group_id}</span>{l.esito === "ok" && <button type="button" className="ml-1 rounded border border-slate-300 px-1 text-[10px] hover:bg-white" title="Aggiungi questo mittente all'elenco da ignorare" onClick={() => set("ignora_mittenti", [cfg.ignora_mittenti, l.sender_pn || l.sender].filter(Boolean).join(", "))} data-testid="switcho-log-ignora">Ignora</button>}<div className="truncate text-slate-600">{l.testo}</div></div>)}
                 </div>
               )}
             </div>

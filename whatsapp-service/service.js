@@ -75,10 +75,17 @@ async function initSession(sessionId) {
       const msg = m.message || {};
       const text = msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || msg.documentMessage?.caption || '';
       if (!text) continue;
-      const sender = String(m.key?.participant || '').split('@')[0].split(':')[0];
-      // WhatsApp ora identifica i membri dei gruppi con un LID: il numero reale, se noto, arriva in participantPn/participantAlt
-      const senderPn = String(m.key?.participantPn || m.key?.participantAlt || '').split('@')[0].split(':')[0];
-      const senderIsLid = String(m.key?.participant || '').endsWith('@lid');
+      const participant = String(m.key?.participant || '');
+      const sender = participant.split('@')[0].split(':')[0];
+      // WhatsApp ora identifica i membri dei gruppi con un LID: il numero reale, se noto, arriva in participantPn/participantAlt o dalla mappa LID→numero
+      let senderPn = String(m.key?.participantPn || m.key?.participantAlt || '').split('@')[0].split(':')[0];
+      const senderIsLid = participant.endsWith('@lid');
+      if (senderIsLid && !senderPn) {
+        try { senderPn = String((await sock.signalRepository?.lidMapping?.getPNForLID?.(participant)) || '').split('@')[0].split(':')[0]; } catch (_) { /* mappa non disponibile */ }
+      }
+      // le risposte scritte dai nostri negozi (altre sessioni di questo servizio) non sono richieste Switcho
+      const nostri = Object.values(sessions).flatMap((s) => [s.user?.id, s.user?.lid]).filter(Boolean).map((j) => String(j).split('@')[0].split(':')[0]);
+      if (nostri.includes(sender) || (senderPn && nostri.includes(senderPn))) { console.log(`[${sessionId}] gruppo ${jid}: messaggio di un nostro negozio, ignorato`); continue; }
       try {
         const r = await fetch(`${CRM_URL}/api/whatsapp/inbox`, {
           method: 'POST',

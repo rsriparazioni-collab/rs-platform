@@ -30,7 +30,7 @@ LABEL = {"annullata_ip": "Annullata (IP mandato)", "annullata_firma": "Annullata
 STATO_PRATICA = {"annullata_ip": "annullato", "annullata_firma": "annullato", "conferma_link": "in_attesa_ok", "documenti": "attesa_documenti"}
 FORNITORI = ["LENE", "ENI PLENITUDE", "ENIPLENITUDE", "ENI", "MAGIS", "SEGNOVERDE", "E.ON", "EON", "PULSEE", "OCTOPUS", "EDISON", "ILLUMIA", "IREN",
              "HERA", "A2A", "ACEA", "AGSM", "DOLOMITI", "SORGENIA", "ENEL", "WEKIWI", "ALPERIA", "ENGIE", "PLENITUDE"]
-DEFAULT_CFG = {"gruppo_jid": "", "mittente": "393299899503", "session_risposta": "", "auto_avviso_cliente": True, "attivo": True}
+DEFAULT_CFG = {"gruppo_jid": "", "mittente": "393299899503", "session_risposta": "", "auto_avviso_cliente": True, "attivo": True, "ignora_mittenti": ""}
 
 
 def setup(**deps):
@@ -248,11 +248,17 @@ async def inbox(input: InboxInput, request: Request):
         return await _scarta(input, "altro gruppo")
     mitt = re.sub(r"\D", "", input.sender_pn or input.sender)
     atteso = re.sub(r"\D", "", c.get("mittente") or "")
-    # se il gruppo è quello configurato accettiamo tutti i membri (WhatsApp manda spesso un LID al posto del numero); altrimenti serve il numero Switcho
-    if not c.get("gruppo_jid") and atteso and not mitt.endswith(atteso[-9:]):
-        if input.sender_is_lid and not input.sender_pn:
-            return await _scarta(input, "mittente in formato LID non verificabile: imposta l'ID del gruppo Switcho nella configurazione")
-        return await _scarta(input, "mittente non Switcho")
+    # nostri numeri/LID/nomi da ignorare (risposte dei negozi nel gruppo)
+    ignora = [x.strip().lower() for x in re.split(r"[,;\n]", c.get("ignora_mittenti") or "") if x.strip()]
+    chiavi = {re.sub(r"\D", "", input.sender), re.sub(r"\D", "", input.sender_pn), (input.push_name or "").strip().lower()} - {""}
+    if any(k == x or (k.isdigit() and x.isdigit() and len(x) >= 9 and k.endswith(x[-9:])) for k in chiavi for x in ignora):
+        return await _scarta(input, "mittente nostro (in elenco da ignorare)")
+    pn = re.sub(r"\D", "", input.sender_pn) or ("" if input.sender_is_lid else re.sub(r"\D", "", input.sender))
+    if atteso and pn and not pn.endswith(atteso[-9:]):
+        return await _scarta(input, f"mittente non Switcho ({pn})")
+    # LID non risolto: accettiamo solo se il gruppo è quello configurato (è il gruppo privato con Switcho)
+    if atteso and not pn and not c.get("gruppo_jid"):
+        return await _scarta(input, "mittente in formato LID non verificabile: imposta l'ID del gruppo Switcho nella configurazione")
     segs = await registra_messaggio(input.text, mitt or input.sender, "gruppo", input.message_id, input.timestamp)
     await _d["db"].switcho_inbox_log.insert_one({"id": str(uuid.uuid4()), "at": _now().isoformat(), "esito": "ok", "segnalazioni": len(segs), "testo": input.text[:300], "sender": input.sender,
                                                  "sender_pn": input.sender_pn, "lid": input.sender_is_lid, "push_name": input.push_name, "group_id": input.group_id, "session": input.session,
@@ -496,6 +502,7 @@ class CfgInput(BaseModel):
     session_risposta: str = ""
     auto_avviso_cliente: bool = True
     attivo: bool = True
+    ignora_mittenti: str = ""
 
 
 @router.get("/switcho/config")
