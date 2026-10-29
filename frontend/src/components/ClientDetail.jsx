@@ -17,6 +17,8 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
   const { user } = useAuth();
   const canSposta = user?.role === "admin" || user?.role === "operatore" || user?.can_view_all;
   const [detail, setDetail] = useState(null);
+  const [docStato, setDocStato] = useState(null);
+  const isEnergiaCambiaOra = !!detail && detail.gestione !== "enel" && !!(detail.pod || detail.pdr || detail.tipo_bolletta) && !!detail.lavorazione;
   const [attachments, setAttachments] = useState([]);
   const [waLoading, setWaLoading] = useState("");
   const [servizi, setServizi] = useState([]);
@@ -72,6 +74,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
     try {
       const res = await api.get(`/clients/${client.id}/attachments`);
       setAttachments(res.data);
+      api.get(`/clients/${client.id}/documenti-stato`).then((r) => setDocStato(r.data)).catch(() => setDocStato(null));
     } catch {
       setAttachments([]);
     }
@@ -126,6 +129,12 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
     } catch (e) {
       toast.error(apiError(e, "Eliminazione fallita"));
     }
+  };
+  const cambiaTipo = async (att, tipo) => {
+    try { await api.patch(`/attachments/${att.id}/tipo`, { tipo }); loadAttachments(); } catch (e) { toast.error(apiError(e)); }
+  };
+  const recuperaDocumenti = async () => {
+    try { const r = await api.post(`/clients/${detail.id}/richiedi-documenti`); toast.success("Richiesta bollette/documento inviata al cliente dal suo negozio"); setDetail((d) => ({ ...d, bollette_msg_sent_at: r.data.at })); } catch (e) { toast.error(apiError(e)); }
   };
 
   const sendWhatsApp = async (tipo) => {
@@ -478,16 +487,31 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                               onClick={() => downloadBlob(`/attachments/${a.id}/download`, a.original_filename)}
                               data-testid={`attachment-download-${a.id}`}>
                         <Paperclip className="h-3.5 w-3.5" /> {a.original_filename}
-                        {a.tipo && a.tipo !== "altro" && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] uppercase text-amber-800" data-testid={`attachment-tipo-${a.id}`}>{a.tipo}</span>}
                       </button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" data-testid={`attachment-delete-${a.id}`}
-                              onClick={() => deleteAttachment(a)}>
-                        <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                      </Button>
+                      <span className="flex items-center gap-1">
+                        <select value={a.tipo || "altro"} onChange={(e) => cambiaTipo(a, e.target.value)} className={`h-7 rounded border px-1 text-[11px] ${!a.tipo || a.tipo === "altro" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-white"}`} title="Tipo allegato (serve all'invio automatico a Switcho)" data-testid={`attachment-tipo-${a.id}`}>
+                          <option value="altro">Tipo? (altro)</option><option value="bolletta">Bolletta</option><option value="documento">Documento d'identità / CF</option>
+                        </select>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" data-testid={`attachment-delete-${a.id}`}
+                                onClick={() => deleteAttachment(a)}>
+                          <Trash2 className="h-3.5 w-3.5 text-rose-500" />
+                        </Button>
+                      </span>
                     </div>
                   ))}
                   {attachments.length === 0 && <p className="text-xs text-slate-400">Nessun allegato</p>}
                 </div>
+                {docStato && isEnergiaCambiaOra && (!docStato.ha_bolletta || !docStato.ha_documento || docStato.bolletta_vecchia) && (
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="documenti-consiglio">
+                    <span>
+                      {!docStato.ha_bolletta || !docStato.ha_documento
+                        ? <><b>Documenti mancanti</b> ({[!docStato.ha_bolletta && "bolletta", !docStato.ha_documento && "documento d'identità"].filter(Boolean).join(", ")}): pratica inserita prima dell'obbligo, va bene così fino al prossimo aggiornamento. Switcho li chiederà.</>
+                        : <><b>Carica le bollette più recenti</b>: l'ultima è di {docStato.giorni_ultima_bolletta} giorni fa. Ai rinnovi servono quelle recenti.</>}
+                      {detail.bollette_msg_sent_at && <span className="ml-1 text-amber-700">· richiesta inviata il {detail.bollette_msg_sent_at.slice(8, 10)}/{detail.bollette_msg_sent_at.slice(5, 7)}</span>}
+                    </span>
+                    <Button size="sm" variant="outline" className="h-7 border-amber-400 text-xs" onClick={recuperaDocumenti} data-testid="recupera-documenti-btn"><MessageCircle className="mr-1 h-3 w-3" /> Recupera documenti (WhatsApp al cliente)</Button>
+                  </div>
+                )}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <select value={attTipo} onChange={(e) => setAttTipo(e.target.value)} className="h-9 rounded-lg border border-slate-200 px-2 text-sm" data-testid="attachment-tipo-select">
                     <option value="bolletta">Bolletta</option>

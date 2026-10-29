@@ -2699,6 +2699,45 @@ async def delete_attachment(att_id: str, user: dict = Depends(get_current_user))
     await db.attachments.update_one({"id": att_id}, {"$set": {"is_deleted": True}})
     return {"status": "ok"}
 
+class AttachmentTipoInput(BaseModel):
+    tipo: str = ""
+
+@api_router.patch("/attachments/{att_id}/tipo")
+async def set_attachment_tipo(att_id: str, input: AttachmentTipoInput, user: dict = Depends(get_current_user)):
+    if input.tipo not in ("", "bolletta", "documento", "altro"):
+        raise HTTPException(status_code=400, detail="Tipo non valido")
+    rec = await db.attachments.find_one({"id": att_id, "is_deleted": False}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Allegato non trovato")
+    await _check_attachment_scope(rec, user)
+    await db.attachments.update_one({"id": att_id}, {"$set": {"tipo": input.tipo}})
+    return {"status": "ok", "tipo": input.tipo}
+
+@api_router.get("/clients/{client_id}/documenti-stato")
+async def documenti_stato(client_id: str, user: dict = Depends(get_current_user)):
+    """Bolletta/documento presenti e quanto è vecchia l'ultima bolletta (per il consiglio 'carica le bollette più recenti' ai rinnovi)."""
+    await get_scoped_client(client_id, user)
+    atts = await db.attachments.find({"client_id": client_id, "is_deleted": False}, {"_id": 0, "tipo": 1, "created_at": 1}).sort("created_at", -1).to_list(200)
+    ult_boll = next((a["created_at"] for a in atts if a.get("tipo") == "bolletta"), None)
+    giorni = (datetime.now(timezone.utc) - datetime.fromisoformat(ult_boll)).days if ult_boll else None
+    return {"ha_bolletta": ult_boll is not None, "ha_documento": any(a.get("tipo") == "documento" for a in atts), "non_classificati": sum(1 for a in atts if not a.get("tipo") or a.get("tipo") == "altro"),
+            "giorni_ultima_bolletta": giorni, "bolletta_vecchia": giorni is None or giorni > 180, "totale": len(atts)}
+
+@api_router.post("/clients/{client_id}/richiedi-documenti")
+async def richiedi_documenti_cliente(client_id: str, user: dict = Depends(get_current_user)):
+    """'Recupera documenti': WhatsApp al cliente dal suo negozio con la richiesta di bollette recenti e documento."""
+    c = await get_scoped_client(client_id, user)
+    if not c.get("telefono"):
+        raise HTTPException(status_code=400, detail="Cliente senza telefono")
+    store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
+    sess = await wa_sessione_negozio(store)
+    msg = store_msg(store, "msg_bollette", nome=c.get("nome", ""))
+    await wa_send(c["telefono"], msg, session=sess, tipo="richiesta_documenti", client_id=client_id)
+    now = datetime.now(timezone.utc).isoformat()
+    await db.clients.update_one({"id": client_id}, {"$set": {"bollette_msg_sent_at": now}})
+    return {"status": "ok", "at": now, "session": sess}
+
+
 @api_router.get("/clients/{client_id}/attachments/merged")
 async def merged_pdf(client_id: str, user: dict = Depends(get_current_user)):
     """PDF unico del cliente: copertina con anagrafica + tutti gli allegati (PDF e immagini)."""

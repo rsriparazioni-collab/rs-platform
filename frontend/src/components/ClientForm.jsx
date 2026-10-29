@@ -168,6 +168,7 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
   };
 
   const isCambiaOraNuova = !isEdit && form.gestione !== "enel" && !prefill?._nuova_utenza;
+  const isRinnovoCambiaOra = isEdit && form.gestione !== "enel" && !!client?.lavorazione;
   const haBolletta = nuoviDoc.some((f) => f.tipo === "bolletta");
   const haDocumento = nuoviDoc.some((f) => f.tipo === "documento");
   const submit = async (e) => {
@@ -462,7 +463,12 @@ export default function ClientForm({ open, onClose, client, meta, onSaved, prefi
               </Field>
             </div>
             <div className="mt-4">
-              {form.gestione !== "enel" && (
+              {form.gestione !== "enel" && isEdit && isRinnovoCambiaOra && !haBolletta && (
+                <div className="mb-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-900" data-testid="rinnovo-doc-hint">
+                  <b>Consiglio: carica le bollette più recenti.</b> Ai rinnovi e aggiornamenti della pratica Switcho chiede l'ultima bolletta: allegala qui se il cliente l'ha portata (non è obbligatorio per salvare).
+                </div>
+              )}
+              {form.gestione !== "enel" && !isEdit && (
                 <div className={`mb-2 rounded-lg border px-3 py-2 text-xs ${isCambiaOraNuova && haBolletta && haDocumento ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-900"}`} data-testid="cambiaora-doc-hint">
                   <b>Pratica CambiaOra: bolletta e documento d'identità sono obbligatori per salvare.</b> Switcho li chiede quasi sempre: se sono già qui li inviamo da soli e la pratica non si ferma.
                   {isCambiaOraNuova && <span className="ml-1 font-semibold" data-testid="cambiaora-doc-stato">{haBolletta ? "✓ bolletta" : "✗ bolletta"} · {haDocumento ? "✓ documento" : "✗ documento"}</span>}
