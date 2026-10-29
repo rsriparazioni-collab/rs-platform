@@ -220,10 +220,19 @@ async def registra_messaggio(testo: str, mittente: str, origine: str, message_id
 class InboxInput(BaseModel):
     text: str = ""
     sender: str = ""
+    sender_pn: str = ""
+    sender_is_lid: bool = False
+    push_name: str = ""
     group_id: str = ""
     message_id: str = ""
     timestamp: str = ""
     session: str = ""
+
+
+async def _scarta(input: InboxInput, motivo: str) -> dict:
+    await _d["db"].switcho_inbox_log.insert_one({"id": str(uuid.uuid4()), "at": _now().isoformat(), "esito": "ignorato", "motivo": motivo, "testo": input.text[:300], "sender": input.sender,
+                                                 "sender_pn": input.sender_pn, "lid": input.sender_is_lid, "push_name": input.push_name, "group_id": input.group_id, "session": input.session})
+    return {"status": "ignorato", "motivo": motivo}
 
 
 @router.post("/whatsapp/inbox")
@@ -234,15 +243,28 @@ async def inbox(input: InboxInput, request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     c = await cfg()
     if not c.get("attivo"):
-        return {"status": "ignorato", "motivo": "integrazione disattivata"}
+        return await _scarta(input, "integrazione disattivata")
     if c.get("gruppo_jid") and input.group_id != c["gruppo_jid"]:
-        return {"status": "ignorato", "motivo": "altro gruppo"}
-    mitt = re.sub(r"\D", "", input.sender)
+        return await _scarta(input, "altro gruppo")
+    mitt = re.sub(r"\D", "", input.sender_pn or input.sender)
     atteso = re.sub(r"\D", "", c.get("mittente") or "")
-    if atteso and not mitt.endswith(atteso[-9:]):
-        return {"status": "ignorato", "motivo": "mittente non Switcho"}
-    segs = await registra_messaggio(input.text, mitt, "gruppo", input.message_id, input.timestamp)
+    # se il gruppo è quello configurato accettiamo tutti i membri (WhatsApp manda spesso un LID al posto del numero); altrimenti serve il numero Switcho
+    if not c.get("gruppo_jid") and atteso and not mitt.endswith(atteso[-9:]):
+        if input.sender_is_lid and not input.sender_pn:
+            return await _scarta(input, "mittente in formato LID non verificabile: imposta l'ID del gruppo Switcho nella configurazione")
+        return await _scarta(input, "mittente non Switcho")
+    segs = await registra_messaggio(input.text, mitt or input.sender, "gruppo", input.message_id, input.timestamp)
+    await _d["db"].switcho_inbox_log.insert_one({"id": str(uuid.uuid4()), "at": _now().isoformat(), "esito": "ok", "segnalazioni": len(segs), "testo": input.text[:300], "sender": input.sender,
+                                                 "sender_pn": input.sender_pn, "lid": input.sender_is_lid, "push_name": input.push_name, "group_id": input.group_id, "session": input.session,
+                                                 "azioni": [a for s in segs for a in s.get("azioni", [])]})
     return {"status": "ok", "segnalazioni": len(segs)}
+
+
+@router.get("/switcho/inbox-log")
+async def inbox_log(user: dict = Depends(require_addetto)):
+    """Ultimi messaggi arrivati dal microservizio (anche quelli ignorati e perché): serve a capire se l'acquisizione funziona."""
+    items = await _d["db"].switcho_inbox_log.find({}, {"_id": 0}).sort("at", -1).to_list(40)
+    return {"items": items, "totale_ok": await _d["db"].switcho_inbox_log.count_documents({"esito": "ok"}), "totale_ignorati": await _d["db"].switcho_inbox_log.count_documents({"esito": "ignorato"})}
 
 
 # ---------- API per gli addetti ----------

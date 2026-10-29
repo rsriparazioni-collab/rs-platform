@@ -11,10 +11,12 @@ export const SwitchoConfigDialog = ({ trigger }) => {
   const [cfg, setCfg] = useState(null);
   const [snippet, setSnippet] = useState(null);
   const [gruppi, setGruppi] = useState(null);
+  const [log, setLog] = useState(null);
   const cercaGruppi = () => api.get("/switcho/gruppi").then((r) => setGruppi(r.data.groups || [])).catch((e) => toast.error(apiError(e)));
   const load = () => {
     api.get("/switcho/config").then((r) => setCfg(r.data)).catch((e) => toast.error(apiError(e)));
     api.get("/switcho/snippet").then((r) => setSnippet(r.data)).catch(() => {});
+    api.get("/switcho/inbox-log").then((r) => setLog(r.data)).catch(() => {});
   };
   const save = async () => {
     try {
@@ -46,6 +48,14 @@ export const SwitchoConfigDialog = ({ trigger }) => {
             <label className="flex items-center gap-2"><Checkbox checked={cfg.auto_avviso_cliente} onCheckedChange={(v) => set("auto_avviso_cliente", !!v)} /> WhatsApp automatico al cliente (dal suo negozio) quando Switcho chiede di confermare il link</label>
             <label className="flex items-center gap-2"><Checkbox checked={cfg.attivo} onCheckedChange={(v) => set("attivo", !!v)} /> Integrazione attiva (ricezione dal gruppo)</label>
             <Button onClick={save} className="w-full" data-testid="switcho-cfg-save">Salva</Button>
+            <div className="rounded-lg border border-slate-200 p-2" data-testid="switcho-inbox-log">
+              <div className="text-xs font-semibold text-slate-600">Diagnostica ricezione — ultimi messaggi arrivati dal servizio WhatsApp {log && <span className="font-normal text-slate-400">· {log.totale_ok} elaborati · {log.totale_ignorati} ignorati</span>}</div>
+              {!log || log.items.length === 0 ? <p className="mt-1 text-xs text-amber-700">Nessun messaggio è mai arrivato dal servizio WhatsApp: controlla su Railway le variabili CRM_URL e CRM_WEBHOOK_SECRET e che il numero Sondrio sia nel gruppo.</p> : (
+                <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">
+                  {log.items.map((l) => <div key={l.id} className={`rounded px-2 py-1 text-[11px] ${l.esito === "ok" ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-900"}`}><b>{l.at?.slice(0, 16).replace("T", " ")}</b> · {l.esito === "ok" ? `${l.segnalazioni} segnalazioni${l.azioni?.length ? ` — ${l.azioni.join("; ")}` : ""}` : `ignorato: ${l.motivo}`} <span className="text-slate-500">· da {l.push_name || l.sender_pn || l.sender}{l.lid ? " (LID)" : ""} · gruppo {l.group_id}</span><div className="truncate text-slate-600">{l.testo}</div></div>)}
+                </div>
+              )}
+            </div>
             {snippet && (
               <details className="rounded-lg border border-slate-200 bg-slate-50 p-2">
                 <summary className="cursor-pointer text-xs font-semibold text-slate-600">Istruzioni Railway (il codice del servizio è già aggiornato nel progetto)</summary>

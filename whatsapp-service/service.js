@@ -76,11 +76,14 @@ async function initSession(sessionId) {
       const text = msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || msg.documentMessage?.caption || '';
       if (!text) continue;
       const sender = String(m.key?.participant || '').split('@')[0].split(':')[0];
+      // WhatsApp ora identifica i membri dei gruppi con un LID: il numero reale, se noto, arriva in participantPn/participantAlt
+      const senderPn = String(m.key?.participantPn || m.key?.participantAlt || '').split('@')[0].split(':')[0];
+      const senderIsLid = String(m.key?.participant || '').endsWith('@lid');
       try {
         const r = await fetch(`${CRM_URL}/api/whatsapp/inbox`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': CRM_WEBHOOK_SECRET },
-          body: JSON.stringify({ text, sender, group_id: jid, message_id: m.key.id, session: sessionId,
+          body: JSON.stringify({ text, sender, sender_pn: senderPn, sender_is_lid: senderIsLid, push_name: m.pushName || '', group_id: jid, message_id: m.key.id, session: sessionId,
                                  timestamp: new Date((Number(m.messageTimestamp) || Date.now() / 1000) * 1000).toISOString() }),
         });
         console.log(`[${sessionId}] gruppo ${jid} → gestionale: ${r.status}`);
