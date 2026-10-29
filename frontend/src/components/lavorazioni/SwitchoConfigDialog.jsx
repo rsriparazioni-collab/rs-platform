@@ -20,7 +20,7 @@ export const SwitchoConfigDialog = ({ trigger }) => {
   };
   const save = async () => {
     try {
-      await api.put("/switcho/config", { gruppo_jid: cfg.gruppo_jid, mittente: cfg.mittente, session_risposta: cfg.session_risposta, auto_avviso_cliente: cfg.auto_avviso_cliente, attivo: cfg.attivo, ignora_mittenti: cfg.ignora_mittenti || "", auto_risposta_gruppo: cfg.auto_risposta_gruppo !== false, auto_documenti_gruppo: cfg.auto_documenti_gruppo !== false, avviso_silenzio: cfg.avviso_silenzio !== false });
+      await api.put("/switcho/config", { gruppo_jid: cfg.gruppo_jid, mittente: cfg.mittente, session_risposta: cfg.session_risposta, auto_avviso_cliente: cfg.auto_avviso_cliente, attivo: cfg.attivo, ignora_mittenti: cfg.ignora_mittenti || "", auto_risposta_gruppo: cfg.auto_risposta_gruppo !== false, auto_documenti_gruppo: cfg.auto_documenti_gruppo !== false, avviso_silenzio: cfg.avviso_silenzio !== false, grazie_documenti: cfg.grazie_documenti !== false });
       toast.success("Impostazioni Switcho salvate"); setOpen(false);
     } catch (e) { toast.error(apiError(e)); }
   };
@@ -51,6 +51,7 @@ export const SwitchoConfigDialog = ({ trigger }) => {
             <label className="flex items-center gap-2"><Checkbox checked={cfg.auto_risposta_gruppo !== false} onCheckedChange={(v) => set("auto_risposta_gruppo", !!v)} data-testid="switcho-cfg-auto-risposta" /> Risposta automatica nel gruppo dal numero Sondrio ("Ricevuto, avvisiamo il cliente…") quando la richiesta è stata gestita</label>
             <label className="flex items-center gap-2"><Checkbox checked={cfg.auto_documenti_gruppo !== false} onCheckedChange={(v) => set("auto_documenti_gruppo", !!v)} data-testid="switcho-cfg-auto-documenti" /> Se Switcho chiede bollette/documenti già caricati nella scheda cliente, allegali da sola alla risposta nel gruppo</label>
             <label className="flex items-center gap-2"><Checkbox checked={cfg.avviso_silenzio !== false} onCheckedChange={(v) => set("avviso_silenzio", !!v)} data-testid="switcho-cfg-silenzio" /> Avvisami su WhatsApp alle 9:30 (lun-sab) se dal gruppo non è arrivato nulla dall'ultimo giorno lavorativo</label>
+            <label className="flex items-center gap-2"><Checkbox checked={cfg.grazie_documenti !== false} onCheckedChange={(v) => set("grazie_documenti", !!v)} data-testid="switcho-cfg-grazie" /> "Grazie, bolletta ricevuta" automatico dal negozio quando un cliente manda foto/PDF su WhatsApp (una volta ogni 10 minuti)</label>
             <Button onClick={save} className="w-full" data-testid="switcho-cfg-save">Salva</Button>
             <div className="rounded-lg border border-slate-200 p-2" data-testid="switcho-inbox-log">
               <div className="text-xs font-semibold text-slate-600">Diagnostica ricezione — ultimi messaggi arrivati dal servizio WhatsApp {log && <span className="font-normal text-slate-400">· {log.totale_ok} elaborati · {log.totale_ignorati} ignorati</span>}</div>

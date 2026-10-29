@@ -33,7 +33,7 @@ STATO_PRATICA = {"annullata_ip": "annullato", "annullata_firma": "annullato", "c
 FORNITORI = ["LENE", "ENI PLENITUDE", "ENIPLENITUDE", "ENI", "MAGIS", "SEGNOVERDE", "E.ON", "EON", "PULSEE", "OCTOPUS", "EDISON", "ILLUMIA", "IREN",
              "HERA", "A2A", "ACEA", "AGSM", "DOLOMITI", "SORGENIA", "ENEL", "WEKIWI", "ALPERIA", "ENGIE", "PLENITUDE"]
 DEFAULT_CFG = {"gruppo_jid": "", "mittente": "393299899503", "session_risposta": "", "auto_avviso_cliente": True, "attivo": True, "ignora_mittenti": "", "auto_risposta_gruppo": True,
-               "auto_documenti_gruppo": True, "avviso_silenzio": True}
+               "auto_documenti_gruppo": True, "avviso_silenzio": True, "grazie_documenti": True}
 
 
 def setup(**deps):
@@ -400,7 +400,56 @@ async def inbox_media(input: InboxMediaInput, request: Request):
         await _d["log_lavorazione"](c, {"id": "whatsapp", "name": "WhatsApp", "role": "sistema"}, c.get("lavorazione", ""), f"Ricevuto su WhatsApp: {cls['tipo']} ({nome})")
     except Exception as e:  # il log pratica non deve bloccare il salvataggio
         logger.warning(f"log lavorazione media: {e}")
-    return {"status": "ok", "client_id": c["id"], "tipo": cls["tipo"], "attachment_id": doc["id"]}
+    grazie = await _grazie_cliente(c, cls["tipo"], input.session, len(cand))
+    return {"status": "ok", "client_id": c["id"], "tipo": cls["tipo"], "attachment_id": doc["id"], "grazie": grazie, "omonimi_numero": len(cand) - 1}
+
+
+GRAZIE = {"bolletta": "Grazie {nome}, abbiamo ricevuto la bolletta: la alleghiamo subito alla tua pratica. Ti aggiorniamo appena ci sono novità.",
+          "documento": "Grazie {nome}, documento ricevuto e allegato alla tua pratica.",
+          "altro": "Grazie {nome}, abbiamo ricevuto il file: lo verifichiamo e ti aggiorniamo."}
+
+
+async def _grazie_cliente(c: dict, tipo: str, session: str, n_cand: int) -> dict | None:
+    """Risposta automatica dal negozio: una sola volta ogni 10 minuti per cliente (se manda 3 foto, un solo grazie)."""
+    db = _d["db"]
+    if not (await cfg()).get("grazie_documenti", True):
+        return None
+    ultimo = await db.wa_log.find_one({"client_id": c["id"], "tipo": "grazie_documenti", "ok": True}, {"_id": 0, "at": 1}, sort=[("at", -1)])
+    if ultimo and (_now() - datetime.fromisoformat(ultimo["at"])) < timedelta(minutes=10):
+        return {"ok": True, "saltato": "già ringraziato pochi minuti fa"}
+    store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
+    sess = session if session and session == c.get("venditore_id") else await _d["wa_sessione_negozio"](store)
+    testo = GRAZIE.get(tipo, GRAZIE["altro"]).format(nome=c.get("nome", "")).replace("  ", " ")
+    try:
+        await _d["wa_send"](c["telefono"], testo, session=sess, tipo="grazie_documenti", client_id=c["id"])
+        return {"ok": True, "testo": testo}
+    except HTTPException as e:
+        return {"ok": False, "errore": str(e.detail)}
+
+
+@router.get("/lavorazioni/numeri-doppi")
+async def numeri_doppi(user: dict = Depends(require_addetto)):
+    """Clienti attivi che condividono lo stesso numero di telefono: i documenti WhatsApp potrebbero finire sulla scheda sbagliata."""
+    db = _d["db"]
+    nomi_store = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    gruppi: dict = {}
+    async for c in db.clients.find({"anonimizzato_at": {"$in": [None]}, "telefono": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "telefono": 1, "venditore_id": 1, "lavorazione": 1, "gestione": 1, "tipo_bolletta": 1, "pod": 1, "pdr": 1, "codice_fiscale": 1}):
+        num = re.sub(r"\D", "", c["telefono"])
+        if len(num) < 9:
+            continue
+        gruppi.setdefault(num[-9:], []).append(c)
+    out = []
+    for coda, cl in gruppi.items():
+        if len(cl) < 2:
+            continue
+        cf = {(c.get("codice_fiscale") or "").upper() for c in cl if c.get("codice_fiscale")}
+        nomi = {f"{(c.get('cognome') or '').strip().lower()} {(c.get('nome') or '').strip().lower()}" for c in cl}
+        stessa_persona = len(nomi) == 1 or (len(cf) == 1 and all(c.get("codice_fiscale") for c in cl))
+        out.append({"telefono": cl[0]["telefono"], "stessa_persona": stessa_persona, "n": len(cl),
+                    "clienti": [{"id": c["id"], "nome": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "negozio": nomi_store.get(c.get("venditore_id"), "-"), "lavorazione": c.get("lavorazione", ""),
+                                 "utenza": f"{c.get('tipo_bolletta') or ''} {c.get('pod') or c.get('pdr') or ''}".strip()} for c in cl]})
+    out.sort(key=lambda g: (g["stessa_persona"], -g["n"]))
+    return {"gruppi": out, "da_verificare": sum(1 for g in out if not g["stessa_persona"]), "stessa_persona": sum(1 for g in out if g["stessa_persona"])}
 
 
 @router.get("/whatsapp/media-log")
@@ -671,6 +720,7 @@ class CfgInput(BaseModel):
     auto_risposta_gruppo: bool = True
     auto_documenti_gruppo: bool = True
     avviso_silenzio: bool = True
+    grazie_documenti: bool = True
 
 
 @router.get("/switcho/config")
