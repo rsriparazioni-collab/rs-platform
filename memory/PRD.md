@@ -833,3 +833,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-30 – Falsi errori AdE Sondrio (es. 1/10: 81,97+18,03=100)
 - Causa: righe AdE importate prima della correzione avevano totale = "Ammontare delle vendite" (annulli inclusi). Fix: ricalcola_totali_importati() all'avvio (idempotente) riallinea totale = imponibile+imposta e conserva l'ammontare per mostrare gli annulli. Test: 118,20 → 100,00; seconda esecuzione 0; confronto senza differenze.
 - Lista differenze mostra ora "(imponibile X + imposta Y · n chiusure da k registratori)" per capire subito la causa.
+
+## 2026-10-30 – Doppie chiusure AdE (5/10, 12/10)
+- Import: _unisci_doppie_chiusure → per (matricola, data) si tiene solo la riga col totale (quella a 0 è una doppia chiusura). Risposta import: doppie_chiusure_unificate.
+- Startup: ricalcola_totali_importati rimuove anche le righe a 0 già salvate quando esiste una riga col totale per lo stesso negozio/giorno.

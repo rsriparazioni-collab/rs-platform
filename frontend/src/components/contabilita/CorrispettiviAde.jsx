@@ -15,7 +15,7 @@ export const CorrispettiviAde = ({ storeId, anno, mese, confronto, stores, reloa
     const fd = new FormData(); fd.append("file", file);
     try {
       const r = await api.post("/contabilita/corrispettivi-ade/importa", fd, { params: { store_id: storeId }, headers: { "Content-Type": "multipart/form-data" } });
-      toast.success(`${r.data.importate} chiusure importate${r.data.aggiornate ? `, ${r.data.aggiornate} aggiornate` : ""} (${r.data.giorni} giorni)`);
+      toast.success(`${r.data.importate} chiusure importate${r.data.aggiornate ? `, ${r.data.aggiornate} aggiornate` : ""} (${r.data.giorni} giorni)${r.data.doppie_chiusure_unificate ? ` · ${r.data.doppie_chiusure_unificate} doppie chiusure unificate (tenuta quella col totale)` : ""}`);
       const c = r.data.controllo;
       if (c) {
         if (c.problemi) toast.warning(`Controllo automatico: ${c.problemi} cos${c.problemi === 1 ? "a" : "e"} da sistemare${c.avvisi_whatsapp ? ` · avviso WhatsApp inviato al negozio` : ""}. Vedi il riquadro "Cose da sistemare".`, { duration: 8000 });

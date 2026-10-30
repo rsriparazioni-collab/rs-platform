@@ -107,6 +107,23 @@ def _tag_parent_ok(el) -> bool:
 
 
 def parse_corrispettivi(filename: str, content: bytes) -> list:
+    return _unisci_doppie_chiusure(_parse_grezzo(filename, content))
+
+
+def _unisci_doppie_chiusure(righe: list) -> list:
+    """Doppia chiusura dello stesso registratore nello stesso giorno (una a 0 e una col totale, o un rinvio): vale UNA sola riga, quella col totale."""
+    best: dict = {}
+    for r in righe:
+        k = (r["matricola"], r["data"])
+        cur = best.get(k)
+        if cur is None or r["totale"] > cur["totale"] or (r["totale"] == cur["totale"] and r.get("ammontare", 0) > cur.get("ammontare", 0)):
+            best[k] = {**r, "chiusure_nel_file": (cur or {}).get("chiusure_nel_file", 0) + 1}
+        else:
+            cur["chiusure_nel_file"] = cur.get("chiusure_nel_file", 1) + 1
+    return sorted(best.values(), key=lambda x: (x["data"], x["matricola"]))
+
+
+def _parse_grezzo(filename: str, content: bytes) -> list:
     name = filename.lower()
     if name.endswith(".zip"):
         out = []
@@ -185,7 +202,8 @@ async def importa(request: Request, file: UploadFile = File(...), store_id: Opti
     negozi_toccati = sorted({mappa.get(r["matricola"], "") for r in righe} - {""}) or ([store_id] if store_id else [])
     mesi = sorted({(int(r["data"][:4]), int(r["data"][5:7])) for r in righe})
     controllo = await _avvisa_differenze(negozi_toccati, mesi)
-    return {"importate": importate, "aggiornate": aggiornate, "matricole_da_assegnare": sorted(senza_negozio), "giorni": len({r["data"] for r in righe}),
+    doppie = sum(1 for r in righe if r.get("chiusure_nel_file", 1) > 1)
+    return {"importate": importate, "aggiornate": aggiornate, "doppie_chiusure_unificate": doppie, "matricole_da_assegnare": sorted(senza_negozio), "giorni": len({r["data"] for r in righe}),
             "giorni_caricati": sorted({r["data"] for r in righe}), "negozi": negozi_toccati, "controllo": controllo}
 
 
@@ -290,6 +308,12 @@ async def ricalcola_totali_importati() -> int:
                 upd["ammontare"] = _num(r.get("totale"))
             await db.corrispettivi_ade.update_one({"id": r["id"]}, {"$set": upd})
             n += 1
-    if n:
-        logger.info(f"corrispettivi AdE: {n} totali riallineati a imponibile+imposta")
-    return n
+    # doppie chiusure già salvate (stesso negozio/giorno, una a 0): si tiene solo quella col totale
+    tolte = 0
+    async for g in db.corrispettivi_ade.aggregate([{"$match": {"totale": {"$lte": 0}}}, {"$group": {"_id": {"s": "$store_id", "d": "$data"}, "ids": {"$push": "$id"}}}]):
+        if await db.corrispettivi_ade.find_one({"store_id": g["_id"]["s"], "data": g["_id"]["d"], "totale": {"$gt": 0}}, {"_id": 0, "id": 1}):
+            r = await db.corrispettivi_ade.delete_many({"id": {"$in": g["ids"]}})
+            tolte += r.deleted_count
+    if n or tolte:
+        logger.info(f"corrispettivi AdE: {n} totali riallineati a imponibile+imposta, {tolte} chiusure a zero doppie rimosse")
+    return n + tolte
