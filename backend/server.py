@@ -5967,6 +5967,7 @@ async def _seed_indexes():
     try:
         await automazioni_contabilita_module.seed_affitti()
         await scadenzario_module.seed_beneficiari()
+        await corrispettivi_ade_module.ricalcola_totali_importati()
     except Exception as e:
         logging.getLogger("seed").warning(f"seed affitti: {e}")
     await db.login_attempts.create_index("identifier")

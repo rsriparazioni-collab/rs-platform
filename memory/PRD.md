@@ -829,3 +829,7 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-30 – Annulli AdE visibili
 - confronto_ade restituisce tot_annulli, giorni_annulli e per riga ade_annulli (= ammontare − totale). UI: riquadro "Scontrini annullati nel mese" nel Confronto AdE, "⊘ importo" nella colonna AdE del giorno, "annullati" nella lista differenze. Test: 29/10 140,20 vs 122,00 → annulli 18,20.
+
+## 2026-10-30 – Falsi errori AdE Sondrio (es. 1/10: 81,97+18,03=100)
+- Causa: righe AdE importate prima della correzione avevano totale = "Ammontare delle vendite" (annulli inclusi). Fix: ricalcola_totali_importati() all'avvio (idempotente) riallinea totale = imponibile+imposta e conserva l'ammontare per mostrare gli annulli. Test: 118,20 → 100,00; seconda esecuzione 0; confronto senza differenze.
+- Lista differenze mostra ora "(imponibile X + imposta Y · n chiusure da k registratori)" per capire subito la causa.

@@ -229,8 +229,14 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
     pref = f"{anno:04d}-{mese:02d}"
     ade: dict = {}
     annulli: dict = {}
-    async for r in db.corrispettivi_ade.find({"store_id": store_id, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "totale": 1, "ammontare": 1}):
+    dettaglio: dict = {}
+    async for r in db.corrispettivi_ade.find({"store_id": store_id, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "totale": 1, "ammontare": 1, "imponibile": 1, "imposta": 1, "matricola": 1}):
         ade[r["data"]] = round(ade.get(r["data"], 0.0) + r["totale"], 2)
+        dt = dettaglio.setdefault(r["data"], {"imponibile": 0.0, "imposta": 0.0, "chiusure": 0, "matricole": set()})
+        dt["imponibile"] = round(dt["imponibile"] + _num(r.get("imponibile")), 2)
+        dt["imposta"] = round(dt["imposta"] + _num(r.get("imposta")), 2)
+        dt["chiusure"] += 1
+        dt["matricole"].add(r.get("matricola") or "")
         # scontrini annullati = ammontare delle vendite − (imponibile + imposta)
         if r.get("ammontare"):
             annulli[r["data"]] = round(annulli.get(r["data"], 0.0) + max(0.0, r["ammontare"] - r["totale"]), 2)
@@ -252,7 +258,9 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
             d = round(sc - (a or 0.0), 2) if a is not None else None
             r["ade_diff"] = d
             if d is not None and abs(d) >= 0.01:
-                diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": a, "diff": d, "annulli": annulli.get(r["data"], 0.0)})
+                dt = dettaglio.get(r["data"]) or {}
+                diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": a, "diff": d, "annulli": annulli.get(r["data"], 0.0), "imponibile": dt.get("imponibile", 0.0), "imposta": dt.get("imposta", 0.0),
+                                    "chiusure": dt.get("chiusure", 0), "matricole": sorted(dt.get("matricole") or [])})
             elif a is None and not r.get("vuoto") and ade and ade_min <= r["data"] <= ade_max:
                 diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": None, "diff": None})
     tot_man_periodo = round(sum(g["scontrini"] for g in diff_giorni if g["ade"] is not None) + sum(a for d, a in ade.items() if any(r["data"] == d and r.get("ade_diff") == 0 for r in righe_manuali)), 2)
@@ -267,3 +275,21 @@ async def svuota(store_id: str, anno: int, mese: int, request: Request):
         raise HTTPException(status_code=403, detail="Solo amministratore")
     r = await _d["db"].corrispettivi_ade.delete_many({"store_id": store_id, "data": {"$regex": f"^{anno:04d}-{mese:02d}"}})
     return {"eliminate": r.deleted_count}
+
+
+async def ricalcola_totali_importati() -> int:
+    """All'avvio (idempotente): le righe AdE importate con la vecchia lettura (totale = 'Ammontare delle vendite', che include gli annulli)
+    vengono riallineate a imponibile + imposta."""
+    db = _d["db"]
+    n = 0
+    async for r in db.corrispettivi_ade.find({"$or": [{"imponibile": {"$gt": 0}}, {"imposta": {"$gt": 0}}]}, {"_id": 0, "id": 1, "imponibile": 1, "imposta": 1, "totale": 1, "ammontare": 1}):
+        giusto = round(_num(r.get("imponibile")) + _num(r.get("imposta")), 2)
+        if abs(giusto - _num(r.get("totale"))) >= 0.01:
+            upd = {"totale": giusto}
+            if not r.get("ammontare") and _num(r.get("totale")) > giusto:
+                upd["ammontare"] = _num(r.get("totale"))
+            await db.corrispettivi_ade.update_one({"id": r["id"]}, {"$set": upd})
+            n += 1
+    if n:
+        logger.info(f"corrispettivi AdE: {n} totali riallineati a imponibile+imposta")
+    return n
