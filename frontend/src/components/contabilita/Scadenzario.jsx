@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { CalendarClock, Plus, Trash2, CheckCircle2, Circle, BellRing } from "lucide-react";
+import { CalendarClock, Plus, Trash2, CheckCircle2, Circle, BellRing, Pencil, Landmark, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
@@ -9,7 +9,7 @@ import { PeriodoPicker, eur } from "./shared";
 const fmt = (d) => d.split("-").reverse().join("/");
 
 const NuovaScadenza = ({ centri, anno, mese, onSaved }) => {
-  const vuoto = { centro_id: centri[0]?.id || "", tipo: "f24", voce: "", importo: "", data: `${anno}-${String(mese).padStart(2, "0")}-16`, ricorrenza: "nessuna", fino_a: "", note: "" };
+  const vuoto = { centro_id: centri[0]?.id || "", tipo: "f24", voce: "", importo: "", data: `${anno}-${String(mese).padStart(2, "0")}-16`, ricorrenza: "nessuna", fino_a: "", note: "", beneficiario: "" };
   const [f, setF] = useState(vuoto);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const salva = async () => {
@@ -27,6 +27,7 @@ const NuovaScadenza = ({ centri, anno, mese, onSaved }) => {
       <Input type="date" value={f.data} onChange={set("data")} className="h-9" data-testid="scadenza-data" />
       <select value={f.ricorrenza} onChange={set("ricorrenza")} className="h-9 rounded-lg border border-slate-200 bg-white px-2" data-testid="scadenza-ricorrenza"><option value="nessuna">Una volta</option><option value="mensile">Ogni mese</option></select>
       <Button onClick={salva} className="h-9 gap-1" data-testid="scadenza-salva"><Plus className="h-4 w-4" /> Aggiungi</Button>
+      <div className="flex flex-wrap items-center gap-2 md:col-span-8 text-xs text-slate-600"><Landmark className="h-3.5 w-3.5 text-sky-600" /> Nome sul bonifico (opzionale): <Input value={f.beneficiario} onChange={set("beneficiario")} placeholder="es. Savina Caminada" className="h-8 w-56" data-testid="scadenza-beneficiario" /> — quando nell'estratto compare un'uscita con questo nome e lo stesso importo, la scadenza si segna pagata da sola</div>
       {f.ricorrenza === "mensile" && <div className="flex items-center gap-2 md:col-span-8 text-xs text-slate-600">Fino a (opzionale): <Input type="date" value={f.fino_a} onChange={set("fino_a")} className="h-8 w-44" data-testid="scadenza-fino-a" /> — ogni mese lo stesso giorno della prima data</div>}
     </div>
   );
@@ -39,6 +40,14 @@ export const Scadenzario = ({ anno, mese, setAnno, setMese, centri = [], isAdmin
   useEffect(() => { load(); }, [load]);
   const toggle = async (s) => { try { await api.put(`/scadenzario/${s.id}/pagata`, { pagata: !s.pagata_at }); load(); } catch (e) { toast.error(apiError(e)); } };
   const del = async (s) => { if (!window.confirm(s.template_id ? "Eliminare questa scadenza ricorrente (tutti i mesi)?" : "Eliminare la scadenza?")) return; try { await api.delete(`/scadenzario/${s.id}`); load(); } catch (e) { toast.error(apiError(e)); } };
+  const [edit, setEdit] = useState(null);
+  const salvaEdit = async () => {
+    if (!edit.voce.trim() || !edit.importo) return toast.error("Compila descrizione e importo");
+    try {
+      await api.put(`/scadenzario/voce/${edit.id}`, { centro_id: edit.centro_id, tipo: edit.tipo, voce: edit.voce, importo: Number(edit.importo), data: edit.data, ricorrenza: edit.ricorrenza || "nessuna", fino_a: edit.fino_a || null, note: edit.note || "", beneficiario: edit.beneficiario || "" });
+      toast.success(edit.template_id ? "Scadenza ricorrente modificata (vale per tutti i mesi)" : "Scadenza modificata"); setEdit(null); load();
+    } catch (e) { toast.error(apiError(e)); }
+  };
   const salvaCfg = async () => { try { await api.put("/scadenzario/config", { giorni_preavviso: Number(giorni) }); toast.success("Preavviso salvato"); } catch (e) { toast.error(apiError(e)); } };
   const oggi = new Date().toISOString().slice(0, 10);
   if (!d) return <div className="text-sm text-slate-500">Caricamento…</div>;
@@ -63,15 +72,26 @@ export const Scadenzario = ({ anno, mese, setAnno, setMese, centri = [], isAdmin
             {d.items.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-slate-400" data-testid="scad-vuoto">Nessuna scadenza inserita per questo mese</td></tr>}
             {d.items.map((s) => {
               const late = !s.pagata_at && s.data < oggi;
+              if (edit?.id === s.id) return (
+                <tr key={s.id} className="border-t bg-amber-50/60" data-testid="scad-edit-riga">
+                  <td className="p-2 text-xs text-slate-500">{s.template_id ? "mensile" : ""}</td>
+                  <td className="p-2"><Input type="date" value={edit.data} onChange={(e) => setEdit({ ...edit, data: e.target.value })} className="h-8" data-testid="scad-edit-data" /></td>
+                  <td className="p-2 text-xs">{s.centro_nome}</td>
+                  <td className="p-2"><select value={edit.tipo} onChange={(e) => setEdit({ ...edit, tipo: e.target.value })} className="h-8 rounded border border-slate-200 bg-white px-1 text-xs" data-testid="scad-edit-tipo"><option value="iva">IVA</option><option value="inps">INPS</option><option value="f24">F24</option><option value="affitto">Affitto</option><option value="altro">Altro</option></select></td>
+                  <td className="p-2"><Input value={edit.voce} onChange={(e) => setEdit({ ...edit, voce: e.target.value })} className="h-8" data-testid="scad-edit-voce" /><Input value={edit.beneficiario || ""} onChange={(e) => setEdit({ ...edit, beneficiario: e.target.value })} placeholder="Nome sul bonifico (es. Boffini Franca)" className="mt-1 h-8" data-testid="scad-edit-beneficiario" /></td>
+                  <td className="p-2"><Input type="number" step="0.01" value={edit.importo} onChange={(e) => setEdit({ ...edit, importo: e.target.value })} className="h-8 w-28 text-right" data-testid="scad-edit-importo" /></td>
+                  <td className="whitespace-nowrap p-2 text-right"><button onClick={salvaEdit} className="mr-2 text-emerald-600" title="Salva" data-testid="scad-edit-save"><Check className="h-4 w-4" /></button><button onClick={() => setEdit(null)} className="text-slate-400" title="Annulla" data-testid="scad-edit-cancel"><X className="h-4 w-4" /></button></td>
+                </tr>
+              );
               return (
                 <tr key={s.id} className={`border-t ${s.pagata_at ? "text-slate-400" : late ? "bg-rose-50" : ""}`} data-testid="scad-riga">
                   <td className="p-2">{isAdmin ? <button onClick={() => toggle(s)} title={s.pagata_at ? "Segna non pagata" : "Segna pagata"} data-testid="scad-toggle">{s.pagata_at ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <Circle className="h-5 w-5 text-slate-300" />}</button> : (s.pagata_at ? "Pagata" : "—")}</td>
                   <td className="p-2 tabular-nums">{fmt(s.data)}{late && <span className="ml-1 text-[10px] font-bold text-rose-600">SCADUTA</span>}</td>
                   <td className="p-2">{s.centro_nome}</td>
                   <td className="p-2"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{d.tipi[s.tipo] || s.tipo}</span>{s.template_id && <span className="ml-1 text-[10px] text-slate-400">mensile</span>}</td>
-                  <td className="p-2">{s.voce}{s.note && <div className="text-xs text-slate-400">{s.note}</div>}</td>
+                  <td className="p-2">{s.voce}{s.beneficiario && <span className="ml-2 inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-800" title="Nome sul bonifico: abbinamento automatico dall'estratto conto" data-testid="scad-beneficiario"><Landmark className="h-3 w-3" />{s.beneficiario}</span>}{s.pagata_banca && <div className="text-[10px] text-emerald-700" data-testid="scad-pagata-banca">✓ pagata dal conto il {fmt(s.pagata_banca.data)} — {s.pagata_banca.descrizione}</div>}{s.note && <div className="text-xs text-slate-400">{s.note}</div>}</td>
                   <td className="p-2 text-right font-semibold tabular-nums">{eur(s.importo)}</td>
-                  <td className="p-2 text-right">{isAdmin && <button onClick={() => del(s)} className="text-slate-400 hover:text-rose-600" data-testid="scad-del"><Trash2 className="h-4 w-4" /></button>}</td>
+                  <td className="whitespace-nowrap p-2 text-right">{isAdmin && <><button onClick={() => setEdit({ ...s, importo: String(s.importo) })} className="mr-2 text-slate-400 hover:text-sky-700" title="Modifica (importo, nome sul bonifico…)" data-testid="scad-edit"><Pencil className="h-4 w-4" /></button><button onClick={() => del(s)} className="text-slate-400 hover:text-rose-600" data-testid="scad-del"><Trash2 className="h-4 w-4" /></button></>}</td>
                 </tr>
               );
             })}

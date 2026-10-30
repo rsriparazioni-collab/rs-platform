@@ -3,6 +3,7 @@
 import logging
 import uuid
 from calendar import monthrange
+import re
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional
 
@@ -40,6 +41,7 @@ class ScadenzaInput(BaseModel):
     ricorrenza: str = "nessuna"  # nessuna | mensile
     fino_a: Optional[str] = None  # per mensile: ultimo mese (YYYY-MM-DD), opzionale
     note: str = ""
+    beneficiario: str = ""  # nome che compare nel bonifico (es. proprietario affitto) → abbinamento automatico dall'estratto
 
 
 def _clamp(anno: int, mese: int, giorno: int) -> str:
@@ -55,9 +57,9 @@ def _istanze(docs: list, anno: int, mese: int) -> list:
             if s["data"][:7] > pref or (s.get("fino_a") and s["fino_a"][:7] < pref):
                 continue
             iid = f"{s['id']}:{pref}"
-            out.append({**s, "id": iid, "template_id": s["id"], "data": _clamp(anno, mese, int(s["data"][8:10])), "pagata_at": (s.get("pagate") or {}).get(pref)})
+            out.append({**s, "id": iid, "template_id": s["id"], "data": _clamp(anno, mese, int(s["data"][8:10])), "pagata_at": (s.get("pagate") or {}).get(pref), "pagata_banca": (s.get("pagate_banca") or {}).get(pref)})
         elif s["data"][:7] == pref:
-            out.append({k: v for k, v in s.items() if k != "pagate"})
+            out.append({k: v for k, v in s.items() if k not in ("pagate", "pagate_banca")})
     return out
 
 
@@ -122,6 +124,87 @@ async def crea(body: ScadenzaInput, request: Request):
 
 class PagataInput(BaseModel):
     pagata: bool
+
+
+@router.put("/voce/{sid}")
+async def modifica(sid: str, body: ScadenzaInput, request: Request):
+    """Modifica voce, importo, giorno, beneficiario (nome sul bonifico) di una scadenza o di una ricorrente (vale per tutti i mesi)."""
+    user = await _admin(request)
+    tpl = sid.split(":", 1)[0]
+    old = await _d["db"].scadenze_f24.find_one({"id": tpl}, {"_id": 0})
+    if not old:
+        raise HTTPException(status_code=404, detail="Scadenza non trovata")
+    if body.tipo not in TIPI:
+        raise HTTPException(status_code=400, detail="Tipo non valido")
+    try:
+        date.fromisoformat(body.data)
+        if body.fino_a:
+            date.fromisoformat(body.fino_a)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data non valida")
+    upd = {**body.model_dump(), "centro_id": old["centro_id"], "beneficiario": body.beneficiario.strip(), "updated_at": _now().isoformat(), "updated_by": user["name"]}
+    await _d["db"].scadenze_f24.update_one({"id": tpl}, {"$set": upd})
+    return {**old, **upd}
+
+
+def _match_desc(desc: str, beneficiario: str) -> bool:
+    d = desc.lower()
+    parole = [p for p in beneficiario.lower().replace(",", " ").split() if len(p) >= 3]
+    return bool(parole) and all(p in d for p in parole)
+
+
+async def abbina_movimenti_banca(entita: str, dal: str, al: str) -> dict:
+    """Automatico dopo ogni estratto: una scadenza con 'beneficiario' viene segnata pagata se nel periodo c'è un'uscita con quel nome e importo uguale (±2 %).
+    Mai due scadenze sullo stesso movimento; non tocca scadenze già pagate."""
+    db = _d["db"]
+    centro_id = _d["entita_centro"].get(entita)
+    if not centro_id:
+        return {"abbinate": 0}
+    conti = [c["id"] for c in _d["conti"] if c["entita"] == entita and c["tipo"] == "banca"]
+    d0, d1 = date.fromisoformat(dal), date.fromisoformat(al)
+    mesi = sorted({(d0.year, d0.month), (d1.year, d1.month)})
+    if mesi[0] != mesi[-1] and (mesi[0][0], mesi[0][1] + 1 if mesi[0][1] < 12 else 1) not in mesi:
+        mesi = [mesi[0], mesi[-1]]
+    usati = set()
+    async for s in db.scadenze_f24.find({"centro_id": centro_id}, {"_id": 0, "pagata_banca": 1, "pagate_banca": 1}):
+        if (s.get("pagata_banca") or {}).get("movimento_id"):
+            usati.add(s["pagata_banca"]["movimento_id"])
+        for v in (s.get("pagate_banca") or {}).values():
+            if v.get("movimento_id"):
+                usati.add(v["movimento_id"])
+    abbinate = []
+    for anno, mese in mesi:
+        for s in await scadenze_centro(centro_id, anno, mese):
+            if s.get("pagata_at") or not (s.get("beneficiario") or "").strip():
+                continue
+            sd = date.fromisoformat(s["data"])
+            lo, hi = (sd - timedelta(days=20)).isoformat(), (sd + timedelta(days=25)).isoformat()
+            tol = max(1.0, s["importo"] * 0.02)
+            mov = await db.movimenti_banca.find_one({"conto_id": {"$in": conti}, "data": {"$gte": lo, "$lte": hi}, "importo": {"$gte": -(s["importo"] + tol), "$lte": -(s["importo"] - tol)}, "id": {"$nin": list(usati)},
+                                                     "descrizione": {"$regex": re.escape(s["beneficiario"].split()[0]), "$options": "i"}}, {"_id": 0, "id": 1, "data": 1, "importo": 1, "descrizione": 1})
+            if not mov or not _match_desc(mov["descrizione"], s["beneficiario"]):
+                continue
+            info = {"movimento_id": mov["id"], "data": mov["data"], "importo": mov["importo"], "descrizione": mov["descrizione"][:80], "at": _now().isoformat()}
+            if ":" in s["id"]:
+                tpl, pref = s["id"].split(":", 1)
+                await db.scadenze_f24.update_one({"id": tpl}, {"$set": {f"pagate.{pref}": mov["data"], f"pagate_banca.{pref}": info}})
+            else:
+                await db.scadenze_f24.update_one({"id": s["id"]}, {"$set": {"pagata_at": mov["data"], "pagata_banca": info}})
+            usati.add(mov["id"])
+            abbinate.append(f"{s['voce']} {_eur(s['importo'])} → bonifico del {mov['data'][8:10]}/{mov['data'][5:7]}")
+    return {"abbinate": len(abbinate), "dettaglio": abbinate}
+
+
+BENEFICIARI_DEFAULT = {"Affitto Gravedona": "Savina Caminada", "Affitto Morbegno": "Boffini Franca", "Affitto Sondrio": "Egidio Libera"}
+
+
+async def seed_beneficiari() -> int:
+    """All'avvio (idempotente): imposta il nome sul bonifico degli affitti se non ancora indicato."""
+    n = 0
+    for voce, nome in BENEFICIARI_DEFAULT.items():
+        res = await _d["db"].scadenze_f24.update_many({"tipo": "affitto", "voce": voce, "$or": [{"beneficiario": {"$exists": False}}, {"beneficiario": ""}]}, {"$set": {"beneficiario": nome}})
+        n += res.modified_count
+    return n
 
 
 @router.put("/{sid}/pagata")

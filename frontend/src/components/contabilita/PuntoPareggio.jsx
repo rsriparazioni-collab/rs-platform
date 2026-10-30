@@ -11,6 +11,7 @@ import { PdpDashboard } from "./PdpDashboard";
 import { PdpImportReport } from "./PdpImportReport";
 import { IvaDashboard } from "./IvaDashboard";
 import { PdpNegozi } from "./PdpNegozi";
+import { PdpFisseAuto } from "./PdpFisseAuto";
 
 const CAT = [["entrate", "Entrate (fatturato)", "text-emerald-700"], ["spese_fisse", "Spese fisse", "text-rose-700"], ["spese_semifisse", "Spese semi-fisse e contanti", "text-amber-700"], ["fornitori", "Fornitori / acquisti (costi variabili)", "text-slate-700"]];
 
@@ -63,6 +64,7 @@ export const PuntoPareggio = ({ storeId, anno, mese, setAnno, setMese, isAdmin }
       </div>
       <PdpImportReport esito={report} onClose={() => setReport(null)} onChanged={async () => { load(); try { const r = await api.post("/contabilita/pdp/importa-fogli"); setReport(r.data.esito); } catch (e) { toast.error(apiError(e)); } }} />
       <p className="text-xs text-slate-500" data-testid="pdp-centro-negozi">Centro di costo <b>{d.centro.nome}</b>: {d.centro.negozi.join(" + ")} — i corrispettivi dei negozi entrano automaticamente nelle entrate.</p>
+      {isAdmin && <PdpFisseAuto centri={centri} onSaved={load} />}
       {d.foglio && <div className={`space-y-1 rounded-lg border px-4 py-2 text-sm ${Math.abs(d.foglio.diff_entrate) < 1 && Math.abs(d.foglio.diff_uscite) < 1 ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`} data-testid="pdp-foglio-confronto">
         <div className="flex flex-wrap items-center gap-3">
           <b>Foglio Google:</b> entrate {eur(d.foglio.entrate)} <span className="text-xs">(corrispettivi {eur(d.foglio.corrispettivi)} + fatture {eur(d.foglio.emesse)})</span> → PDP {eur(d.tot_entrate)} <b>{d.foglio.diff_entrate > 0 ? "+" : ""}{eur(d.foglio.diff_entrate)}</b>

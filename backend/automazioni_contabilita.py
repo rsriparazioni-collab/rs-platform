@@ -126,34 +126,71 @@ async def promemoria_ade_primo_mese() -> dict:
     return {"inviati": inviati, **ricorrenti}
 
 
-AFFITTI_PDP = {"morbegno+gravedona": 1300.0}  # Morbegno 700 + Gravedona 600, pagati dal conto corrente
+FISSE_PDP_DEFAULT = [{"centro_id": "morbegno+gravedona", "voce": "Affitti", "importo": 1300.0, "note": "Morbegno 700 + Gravedona 600"}]
+
+
+class FissaPdpInput(BaseModel):
+    centro_id: str
+    voce: str
+    importo: float
+    note: str = ""
+
+
+async def _fisse_pdp() -> list:
+    doc = await _d["db"].settings.find_one({"key": "pdp_fisse_auto"}, {"_id": 0})
+    return doc["value"] if doc else None
+
+
+@router.get("/pdp-fisse-auto")
+async def lista_fisse(request: Request):
+    user = await _d["user"](request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    return await _fisse_pdp() or []
+
+
+@router.put("/pdp-fisse-auto")
+async def salva_fisse(body: list[FissaPdpInput], request: Request):
+    """Spese fisse pagate dal conto (affitti, utenze, condominio, commercialista…): ogni mese compilate da sole nel Punto di pareggio se la voce è vuota."""
+    user = await _d["user"](request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    items = [{"id": str(uuid.uuid4()), "centro_id": b.centro_id, "voce": b.voce.strip(), "importo": round(b.importo, 2), "note": b.note[:80]} for b in body if b.voce.strip() and b.importo > 0]
+    await _d["db"].settings.update_one({"key": "pdp_fisse_auto"}, {"$set": {"value": items, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("name", "")}}, upsert=True)
+    oggi = date.today()
+    esito = await affitti_pdp_mese(oggi.year, oggi.month)
+    return {"items": items, **esito}
 
 
 async def seed_affitti() -> dict:
-    """Idempotente, all'avvio e il 1° del mese: gli affitti NON sono spese di cassa → rimuove l'eventuale spesa fissa di cassa creata per errore
-    e inserisce 'Affitti' tra le spese fisse del Punto di pareggio del mese corrente se la voce è vuota (non sovrascrive valori inseriti a mano)."""
+    """Idempotente, all'avvio: gli affitti NON sono spese di cassa → rimuove l'eventuale spesa fissa di cassa creata per errore;
+    inizializza l'elenco spese fisse da conto (Affitti 1300) e compila il mese corrente nel Punto di pareggio."""
     db = _d["db"]
     rimossi = 0
     async for r in db.spese_ricorrenti.find({"created_by": "impostazione iniziale", "motivo": "Affitto negozio"}, {"_id": 0, "id": 1}):
         res = await db.spese_cassa.delete_many({"ricorrente_id": r["id"]})
         rimossi += res.deleted_count
         await db.spese_ricorrenti.delete_one({"id": r["id"]})
+    if await _fisse_pdp() is None:
+        await db.settings.update_one({"key": "pdp_fisse_auto"}, {"$set": {"value": [{"id": str(uuid.uuid4()), **f} for f in FISSE_PDP_DEFAULT]}}, upsert=True)
     oggi = date.today()
     return {"spese_cassa_rimosse": rimossi, **(await affitti_pdp_mese(oggi.year, oggi.month))}
 
 
 async def affitti_pdp_mese(anno: int, mese: int) -> dict:
+    """Compila nel PdP del mese le spese fisse da conto non ancora valorizzate (non sovrascrive valori inseriti a mano)."""
     db = _d["db"]
     inseriti = 0
-    for centro_id, importo in AFFITTI_PDP.items():
-        doc = await db.pdp.find_one({"centro_id": centro_id, "anno": anno, "mese": mese}, {"_id": 0, "valori": 1})
-        if doc and (doc.get("valori") or {}).get("spese_fisse|Affitti"):
+    for f in await _fisse_pdp() or []:
+        chiave = f"spese_fisse|{f['voce']}"
+        doc = await db.pdp.find_one({"centro_id": f["centro_id"], "anno": anno, "mese": mese}, {"_id": 0, "valori": 1})
+        if doc and (doc.get("valori") or {}).get(chiave):
             continue
-        await db.pdp.update_one({"centro_id": centro_id, "anno": anno, "mese": mese},
-                                {"$set": {"valori.spese_fisse|Affitti": importo, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": "automatico (affitti)"},
+        await db.pdp.update_one({"centro_id": f["centro_id"], "anno": anno, "mese": mese},
+                                {"$set": {f"valori.{chiave}": f["importo"], "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": "automatico (spese fisse da conto)"},
                                  "$setOnInsert": {"id": str(uuid.uuid4()), "note": ""}}, upsert=True)
         inseriti += 1
-    return {"affitti_pdp_inseriti": inseriti}
+    return {"fisse_pdp_inserite": inseriti}
 
 
 async def riepilogo_settimanale() -> dict:

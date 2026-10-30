@@ -5966,6 +5966,7 @@ async def _seed_indexes():
     await db.giorni_chiusi.create_index([("store_id", 1), ("data", 1)], unique=True)
     try:
         await automazioni_contabilita_module.seed_affitti()
+        await scadenzario_module.seed_beneficiari()
     except Exception as e:
         logging.getLogger("seed").warning(f"seed affitti: {e}")
     await db.login_attempts.create_index("identifier")
@@ -6498,7 +6499,8 @@ async def _centri_tutti():
 estere_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, store_id_by_name=store_id_by_name, centri_tutti=_centri_tutti, put_object=put_object, get_object=get_object, delete_object=delete_object)
 api_router.include_router(estere_module.router)
 import banche as banche_module
-banche_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, wa_send=wa_send, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE)
+banche_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, wa_send=wa_send, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE,
+                    abbina_scadenze=lambda entita, dal, al: scadenzario_module.abbina_movimenti_banca(entita, dal, al))
 api_router.include_router(banche_module.router)
 import report_commercialista as report_comm_module
 report_comm_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, pdp_calcolo=contabilita_module._pdp_calcolo,
@@ -6536,7 +6538,8 @@ fiscale_module.setup(db=db, user=contabilita_module._user, centro=contabilita_mo
 api_router.include_router(fiscale_module.router)
 import scadenzario as scadenzario_module
 scadenzario_module.setup(db=db, user=contabilita_module._user, centri=contabilita_module._centri, centro=contabilita_module._centro, piano=fiscale_module.piano,
-                         wa_send=wa_send, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE)
+                         wa_send=wa_send, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE,
+                         conti=banche_module.CONTI_DEFAULT, entita_centro=banche_module.ENTITA_CENTRO)
 api_router.include_router(scadenzario_module.router)
 import chiusura_mese as chiusura_module
 chiusura_module.setup(db=db, centri_tutti=_centri_tutti, wa_send=wa_send, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE, riconciliazione=lambda entita, anno, mese: banche_module.riconciliazione(entita, anno, mese, user={"role": "admin"}),

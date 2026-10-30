@@ -817,3 +817,8 @@ Vedi /app/memory/test_credentials.md
 - "Negozio chiuso" nel dialog del giorno (POST/DELETE /contabilita/corrispettivi/{store}/{data}/chiuso, coll. giorni_chiusi): il giorno non compare tra le cose da sistemare né nella chiusura mese; domeniche già escluse.
 - CORRETTO: gli affitti NON sono spese di cassa. seed_affitti() rimuove la spesa fissa di cassa creata per errore e inserisce 'spese_fisse|Affitti' = 1300 (Morbegno 700 + Gravedona 600) nel Punto di pareggio del centro morbegno+gravedona per il mese corrente se vuoto (anche il 1° del mese via cron). Pagamento reale: Scadenzario affitti (già con avviso WhatsApp).
 - Cron lunedì 8:00 /cron/riepilogo-da-sistemare → WhatsApp amministrazione con conteggio per negozio (mese corrente + precedente).
+
+## 2026-10-30 – Affitti pagati dal conto: abbinamento automatico + spese fisse PdP
+- Scadenze: campo `beneficiario` (nome sul bonifico) + PUT /scadenzario/voce/{sid} (modifica voce/importo/data/beneficiario, anche ricorrenti). Seed idempotente: Affitto Gravedona→Savina Caminada, Morbegno→Boffini Franca, Sondrio→Egidio Libera.
+- Dopo ogni estratto banca: scadenzario.abbina_movimenti_banca(entita, dal, al) → uscita con nome beneficiario e importo ±2% nel periodo (−20/+25 gg) segna pagata (pagate.{mese} + pagate_banca con movimento_id, mai riuso dello stesso movimento). Test: 1 abbinata, seconda esecuzione 0, altre scadenze non toccate.
+- PdP: settings pdp_fisse_auto (GET/PUT /contabilita/pdp-fisse-auto) con editor "Spese fisse pagate dal conto corrente" in Punto di pareggio; compila le voci vuote il 1° del mese e al salvataggio. Default Affitti 1300 per morbegno+gravedona.

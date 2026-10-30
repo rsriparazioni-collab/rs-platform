@@ -18,6 +18,7 @@ const ContoCard = ({ c, onUploaded }) => {
       const r = await api.post("/banche/upload", fd); toast.success(`${c.nome}: ${r.data.nuovi} movimenti nuovi, ${r.data.gia_presenti} già presenti (${r.data.dal} → ${r.data.al})`);
       const k = r.data.controllo;
       if (k) { k.non_trovate ? toast.warning(`Controllo fatture: ${k.abbinate} abbinate ai bonifici, ${k.non_trovate} ancora senza pagamento${k.avviso ? " · avviso WhatsApp inviato" : ""}`, { duration: 8000 }) : toast.success(`Controllo fatture: tutte le ${k.abbinate} fatture ricevute risultano pagate ✓`); }
+      if (r.data.scadenze?.abbinate) toast.success(`Scadenzario: ${r.data.scadenze.abbinate} scadenz${r.data.scadenze.abbinate === 1 ? "a segnata pagata" : "e segnate pagate"} dal conto — ${r.data.scadenze.dettaglio.join("; ")}`, { duration: 9000 });
       onUploaded();
     } catch (err) { toast.error(apiError(err)); } finally { setBusy(false); }
   };

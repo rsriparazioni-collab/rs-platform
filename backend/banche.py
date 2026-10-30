@@ -307,7 +307,15 @@ async def upload(conto_id: str = Form(...), file: UploadFile = File(...), user: 
         await db.estratti_caricati.insert_one({"id": estratto_id, "conto_id": conto_id, "file": file.filename, "righe": len(righe), "nuovi": nuovi, "doppi": doppi,
                                            "dal": date_[0], "al": date_[-1], "da": user["name"], "at": _now().isoformat()})
     controllo = await _controllo_fatture_dopo_upload(conto_id, date_) if nuovi else None
-    return {"righe": len(righe), "nuovi": nuovi, "gia_presenti": doppi, "dal": date_[0], "al": date_[-1], "controllo": controllo}
+    scadenze = None
+    if nuovi and _d.get("abbina_scadenze"):
+        conto = next((c for c in CONTI_DEFAULT if c["id"] == conto_id), None)
+        if conto and conto["tipo"] == "banca":
+            try:
+                scadenze = await _d["abbina_scadenze"](conto["entita"], date_[0], date_[-1])
+            except Exception as e:
+                logger.warning(f"abbinamento scadenze {conto_id}: {e}")
+    return {"righe": len(righe), "nuovi": nuovi, "gia_presenti": doppi, "dal": date_[0], "al": date_[-1], "controllo": controllo, "scadenze": scadenze}
 
 
 async def _controllo_fatture_dopo_upload(conto_id: str, date_: list) -> dict | None:
