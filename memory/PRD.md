@@ -815,5 +815,5 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-30 – Giorno chiuso, affitti fissi, riepilogo lunedì
 - "Negozio chiuso" nel dialog del giorno (POST/DELETE /contabilita/corrispettivi/{store}/{data}/chiuso, coll. giorni_chiusi): il giorno non compare tra le cose da sistemare né nella chiusura mese; domeniche già escluse.
-- Spese fisse seed all'avvio (idempotente): Affitto negozio Morbegno 700 €, Gravedona 600 € il 1° del mese (NB: sono spese di CASSA → riducono i contanti da versare; se l'affitto si paga in banca, sospenderle).
+- CORRETTO: gli affitti NON sono spese di cassa. seed_affitti() rimuove la spesa fissa di cassa creata per errore e inserisce 'spese_fisse|Affitti' = 1300 (Morbegno 700 + Gravedona 600) nel Punto di pareggio del centro morbegno+gravedona per il mese corrente se vuoto (anche il 1° del mese via cron). Pagamento reale: Scadenzario affitti (già con avviso WhatsApp).
 - Cron lunedì 8:00 /cron/riepilogo-da-sistemare → WhatsApp amministrazione con conteggio per negozio (mese corrente + precedente).

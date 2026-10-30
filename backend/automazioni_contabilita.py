@@ -106,6 +106,7 @@ async def promemoria_ade_primo_mese() -> dict:
     oggi = date.today()
     db = _d["db"]
     ricorrenti = await genera_mese(oggi.year, oggi.month)
+    ricorrenti.update(await affitti_pdp_mese(oggi.year, oggi.month))
     anno, mese = (oggi.year, oggi.month - 1) if oggi.month > 1 else (oggi.year - 1, 12)
     key = f"promemoria-ade-{anno}-{mese:02d}"
     if await db.scadenze_alert_log.find_one({"key": key}):
@@ -125,23 +126,34 @@ async def promemoria_ade_primo_mese() -> dict:
     return {"inviati": inviati, **ricorrenti}
 
 
-AFFITTI_DEFAULT = [("Morbegno", 700.0), ("Gravedona", 600.0)]
+AFFITTI_PDP = {"morbegno+gravedona": 1300.0}  # Morbegno 700 + Gravedona 600, pagati dal conto corrente
 
 
-async def seed_affitti() -> int:
-    """All'avvio (idempotente): spesa fissa 'Affitto negozio' per Morbegno 700 € e Gravedona 600 €, se non esiste già."""
+async def seed_affitti() -> dict:
+    """Idempotente, all'avvio e il 1° del mese: gli affitti NON sono spese di cassa → rimuove l'eventuale spesa fissa di cassa creata per errore
+    e inserisce 'Affitti' tra le spese fisse del Punto di pareggio del mese corrente se la voce è vuota (non sovrascrive valori inseriti a mano)."""
     db = _d["db"]
-    creati = 0
-    for nome, importo in AFFITTI_DEFAULT:
-        store = await db.stores.find_one({"nome": nome}, {"_id": 0, "id": 1})
-        if not store or await db.spese_ricorrenti.find_one({"store_id": store["id"], "motivo": {"$regex": "^affitto", "$options": "i"}}, {"_id": 0, "id": 1}):
+    rimossi = 0
+    async for r in db.spese_ricorrenti.find({"created_by": "impostazione iniziale", "motivo": "Affitto negozio"}, {"_id": 0, "id": 1}):
+        res = await db.spese_cassa.delete_many({"ricorrente_id": r["id"]})
+        rimossi += res.deleted_count
+        await db.spese_ricorrenti.delete_one({"id": r["id"]})
+    oggi = date.today()
+    return {"spese_cassa_rimosse": rimossi, **(await affitti_pdp_mese(oggi.year, oggi.month))}
+
+
+async def affitti_pdp_mese(anno: int, mese: int) -> dict:
+    db = _d["db"]
+    inseriti = 0
+    for centro_id, importo in AFFITTI_PDP.items():
+        doc = await db.pdp.find_one({"centro_id": centro_id, "anno": anno, "mese": mese}, {"_id": 0, "valori": 1})
+        if doc and (doc.get("valori") or {}).get("spese_fisse|Affitti"):
             continue
-        await db.spese_ricorrenti.insert_one({"id": str(uuid.uuid4()), "store_id": store["id"], "motivo": "Affitto negozio", "importo": importo, "giorno": 1, "riferimento": "", "attiva": True,
-                                              "created_at": datetime.now(timezone.utc).isoformat(), "created_by": "impostazione iniziale"})
-        creati += 1
-    if creati:
-        await genera_mese(date.today().year, date.today().month)
-    return creati
+        await db.pdp.update_one({"centro_id": centro_id, "anno": anno, "mese": mese},
+                                {"$set": {"valori.spese_fisse|Affitti": importo, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": "automatico (affitti)"},
+                                 "$setOnInsert": {"id": str(uuid.uuid4()), "note": ""}}, upsert=True)
+        inseriti += 1
+    return {"affitti_pdp_inseriti": inseriti}
 
 
 async def riepilogo_settimanale() -> dict:
