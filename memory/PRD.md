@@ -798,3 +798,9 @@ Vedi /app/memory/test_credentials.md
 - Causa: lo stesso messaggio del gruppo Switcho arriva a OGNI nostro numero presente nel gruppo (Sondrio, Tirano, Gravedona, Morbegno…); ogni sessione inoltrava il webhook in parallelo e il controllo "già ricevuto" (find_one+insert) non era atomico → 2-3 segnalazioni, 2-3 avvisi al cliente, 2 risposte nel gruppo.
 - Fix backend: indice unico su switcho_messaggi.id + insert_one con DuplicateKeyError (pulizia duplicati all'avvio). Test: 3 webhook paralleli → 1 messaggio, 1 invio.
 - Fix service.js (Railway, da ricaricare): cache 30 min dei message id già inoltrati → un solo webhook per messaggio (anche media).
+
+## 2026-10-30 – QR WhatsApp che non compaiono (ENEL Deborah, Sondalo, Ipro)
+- Causa: dopo uno scollegamento (loggedOut) il servizio teneva le credenziali scadute e non rigenerava il QR; la sessione restava "muta" (né connessa né QR).
+- Fix service.js (Railway, da ricaricare): su loggedOut cancella le credenziali e riparte col QR; watchdog 60 s → reset automatico se né QR né connessione.
+- Fix backend: GET /whatsapp/qr reimposta da solo la sessione muta (max 1 volta/2 min) → QR compare anche col servizio vecchio.
+- Verificato: enel-deborah, Sondalo, Ipro ora espongono il QR.

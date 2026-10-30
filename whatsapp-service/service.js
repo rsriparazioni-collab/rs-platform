@@ -65,9 +65,14 @@ async function initSession(sessionId) {
       sess.user = null;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log(`[${sessionId}] Connessione chiusa, riconnessione:`, shouldReconnect);
+      console.log(`[${sessionId}] Connessione chiusa (${statusCode}), riconnessione:`, shouldReconnect);
       delete sessions[sessionId];
-      if (shouldReconnect) setTimeout(() => initSession(sessionId).catch((e) => console.error('Init error:', e)), 5000);
+      if (!shouldReconnect) {
+        // telefono scollegato dall'utente / sessione scaduta: credenziali vecchie inutili → le cancelliamo così al prossimo giro compare il QR
+        fs.rmSync(dir, { recursive: true, force: true });
+        console.log(`[${sessionId}] credenziali eliminate, QR rigenerato`);
+      }
+      setTimeout(() => initSession(sessionId).catch((e) => console.error('Init error:', e)), 5000);
     } else if (connection === 'open') {
       sess.connected = true;
       sess.qr = null;
@@ -76,6 +81,16 @@ async function initSession(sessionId) {
     }
   });
   sock.ev.on('creds.update', saveCreds);
+  // sessione "muta": né connessa né QR entro 60 s (credenziali corrotte/scadute) → reset automatico
+  setTimeout(() => {
+    if (sessions[sessionId] === sess && !sess.connected && !sess.qr) {
+      console.log(`[${sessionId}] nessun QR né connessione dopo 60 s: reset automatico`);
+      try { sock.end(undefined); } catch (_) { /* ignore */ }
+      delete sessions[sessionId];
+      fs.rmSync(dir, { recursive: true, force: true });
+      initSession(sessionId).catch((e) => console.error('Init error:', e));
+    }
+  }, 60 * 1000);
   // Inoltro al gestionale dei messaggi ricevuti nei gruppi (es. gruppo Switcho)
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify' || !CRM_URL || !CRM_WEBHOOK_SECRET) return;

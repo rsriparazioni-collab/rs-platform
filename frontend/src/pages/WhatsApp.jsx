@@ -180,7 +180,7 @@ export default function WhatsApp() {
                       ) : (
                         <div className="space-y-1">
                           <p className="text-xs text-slate-500">Generazione QR in corso...</p>
-                          <p className="text-xs text-amber-700">Se dopo 20 secondi non compare, premi "Reimposta collegamento".</p>
+                          <p className="text-xs text-amber-700">Il collegamento viene reimpostato da solo: attendi fino a 30 secondi. Se ancora non compare, premi "Reimposta collegamento".</p>
                         </div>
                       )}
                       <p className="mt-2 text-xs text-slate-500">WhatsApp → Dispositivi collegati → Collega un dispositivo</p>
