@@ -793,3 +793,8 @@ Vedi /app/memory/test_credentials.md
 - I tasti +/− nel Magazzino aprono una finestra "Carica/Scarica pezzi" con quantità libera, anteprima nuova giacenza e toast di conferma (prima solo ±1 senza feedback).
 - Utente negozio: tasti disabilitati sugli articoli di altri negozi (prima errore generico "Articolo non trovato").
 - WhatsApp: servizio Railway OK, /groups 200; Sondalo (sessione sparita, reimpostata) e Ipro con QR pronto da scansionare. Gruppo Switcho trovato: "Switcho <> RS Riparazioni" 120363328635036300@g.us – da salvare in Impostazioni Switcho in produzione. Test ricezione simulato OK in preview (dry run).
+
+## 2026-10-30 – Fix doppi invii Switcho
+- Causa: lo stesso messaggio del gruppo Switcho arriva a OGNI nostro numero presente nel gruppo (Sondrio, Tirano, Gravedona, Morbegno…); ogni sessione inoltrava il webhook in parallelo e il controllo "già ricevuto" (find_one+insert) non era atomico → 2-3 segnalazioni, 2-3 avvisi al cliente, 2 risposte nel gruppo.
+- Fix backend: indice unico su switcho_messaggi.id + insert_one con DuplicateKeyError (pulizia duplicati all'avvio). Test: 3 webhook paralleli → 1 messaggio, 1 invio.
+- Fix service.js (Railway, da ricaricare): cache 30 min dei message id già inoltrati → un solo webhook per messaggio (anche media).

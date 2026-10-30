@@ -22,6 +22,16 @@ const CRM_URL = (process.env.CRM_URL || '').replace(/\/$/, '');
 const CRM_WEBHOOK_SECRET = process.env.CRM_WEBHOOK_SECRET || '';
 const logger = pino({ level: 'silent' });
 const sessions = {};
+// lo stesso messaggio di gruppo arriva a ogni nostro numero presente nel gruppo: lo inoltriamo al gestionale una volta sola
+const inoltrati = new Map();
+function giaInoltrato(messageId) {
+  if (!messageId) return false;
+  const now = Date.now();
+  for (const [k, t] of inoltrati) if (now - t > 30 * 60 * 1000) inoltrati.delete(k);
+  if (inoltrati.has(messageId)) return true;
+  inoltrati.set(messageId, now);
+  return false;
+}
 
 function sanitizeId(id) {
   return String(id || 'default').replace(/[^\w-]/g, '').slice(0, 64) || 'default';
@@ -77,6 +87,7 @@ async function initSession(sessionId) {
       if (!jid.endsWith('@g.us') && (msg.imageMessage || msg.documentMessage)) {
         const media = msg.imageMessage || msg.documentMessage;
         if ((media.fileLength || 0) > 15 * 1024 * 1024) continue;
+        if (giaInoltrato(m.key?.id)) continue;
         try {
           const buf = await downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
           let from = String(jid).split('@')[0].split(':')[0];
@@ -106,6 +117,7 @@ async function initSession(sessionId) {
       // le risposte scritte dai nostri negozi (altre sessioni di questo servizio) non sono richieste Switcho
       const nostri = Object.values(sessions).flatMap((s) => [s.user?.id, s.user?.lid]).filter(Boolean).map((j) => String(j).split('@')[0].split(':')[0]);
       if (nostri.includes(sender) || (senderPn && nostri.includes(senderPn))) { console.log(`[${sessionId}] gruppo ${jid}: messaggio di un nostro negozio, ignorato`); continue; }
+      if (giaInoltrato(m.key?.id)) { console.log(`[${sessionId}] gruppo ${jid}: messaggio già inoltrato da un'altra sessione`); continue; }
       try {
         const r = await fetch(`${CRM_URL}/api/whatsapp/inbox`, {
           method: 'POST',

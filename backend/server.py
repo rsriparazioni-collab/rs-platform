@@ -5949,6 +5949,10 @@ SEED_CLIENT_SAMPLES = [
 
 async def _seed_indexes():
     await db.users.create_index("email", unique=True)
+    # un solo record per messaggio WhatsApp: lo stesso messaggio di gruppo arriva da ogni nostro numero presente nel gruppo
+    async for d in db.switcho_messaggi.aggregate([{"$group": {"_id": "$id", "n": {"$sum": 1}, "ids": {"$push": "$_id"}}}, {"$match": {"n": {"$gt": 1}}}]):
+        await db.switcho_messaggi.delete_many({"_id": {"$in": d["ids"][1:]}})
+    await db.switcho_messaggi.create_index("id", unique=True)
     await db.login_attempts.create_index("identifier")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.password_reset_tokens.create_index("token_hash")

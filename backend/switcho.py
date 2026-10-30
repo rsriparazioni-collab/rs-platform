@@ -1,5 +1,6 @@
 import base64
 import os
+from pymongo.errors import DuplicateKeyError
 import re
 import uuid
 import unicodedata
@@ -216,10 +217,12 @@ async def registra_messaggio(testo: str, mittente: str, origine: str, message_id
     if not testo:
         return []
     mid = message_id or f"{origine}-{uuid.uuid4()}"
-    if await db.switcho_messaggi.find_one({"id": mid}):
-        return []
     msg = {"id": mid, "testo": testo, "mittente": mittente, "origine": origine, "at": at or _now().isoformat(), "ricevuto_at": _now().isoformat()}
-    await db.switcho_messaggi.insert_one(msg)
+    # atomico (indice unico su id): lo stesso messaggio arriva da ogni numero nostro presente nel gruppo (webhook in parallelo) → lo registra solo il primo
+    try:
+        await db.switcho_messaggi.insert_one(msg)
+    except DuplicateKeyError:
+        return []
     segs = await processa_messaggio(msg)
     await db.switcho_messaggi.update_one({"id": mid}, {"$set": {"segnalazioni": [s["id"] for s in segs]}})
     return segs
