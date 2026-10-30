@@ -228,9 +228,14 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
     db = _d["db"]
     pref = f"{anno:04d}-{mese:02d}"
     ade: dict = {}
-    async for r in db.corrispettivi_ade.find({"store_id": store_id, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "totale": 1}):
+    annulli: dict = {}
+    async for r in db.corrispettivi_ade.find({"store_id": store_id, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "totale": 1, "ammontare": 1}):
         ade[r["data"]] = round(ade.get(r["data"], 0.0) + r["totale"], 2)
+        # scontrini annullati = ammontare delle vendite − (imponibile + imposta)
+        if r.get("ammontare"):
+            annulli[r["data"]] = round(annulli.get(r["data"], 0.0) + max(0.0, r["ammontare"] - r["totale"]), 2)
     tot_ade = round(sum(ade.values()), 2)
+    tot_annulli = round(sum(annulli.values()), 2)
     ade_min, ade_max = (min(ade), max(ade)) if ade else ("", "")
     tot_man = 0.0
     diff_giorni = []
@@ -238,6 +243,8 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
         a = ade.get(r["data"])
         if a is not None:
             r["ade_totale"] = a
+            if annulli.get(r["data"]):
+                r["ade_annulli"] = annulli[r["data"]]
         sc = 0.0 if r.get("vuoto") else round(_num(r.get("riparazioni")) + _num(r.get("merce")) + _num(r.get("art74")), 2)
         if not r.get("vuoto"):
             tot_man += sc
@@ -245,12 +252,12 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
             d = round(sc - (a or 0.0), 2) if a is not None else None
             r["ade_diff"] = d
             if d is not None and abs(d) >= 0.01:
-                diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": a, "diff": d})
+                diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": a, "diff": d, "annulli": annulli.get(r["data"], 0.0)})
             elif a is None and not r.get("vuoto") and ade and ade_min <= r["data"] <= ade_max:
                 diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": None, "diff": None})
     tot_man_periodo = round(sum(g["scontrini"] for g in diff_giorni if g["ade"] is not None) + sum(a for d, a in ade.items() if any(r["data"] == d and r.get("ade_diff") == 0 for r in righe_manuali)), 2)
     return {"presente": bool(ade), "tot_ade": tot_ade, "tot_scontrini": round(tot_man, 2), "tot_scontrini_periodo": tot_man_periodo, "periodo": [ade_min, ade_max],
-            "diff": round(tot_man_periodo - tot_ade, 2), "giorni_ade": len(ade), "giorni_diff": diff_giorni}
+            "diff": round(tot_man_periodo - tot_ade, 2), "giorni_ade": len(ade), "giorni_diff": diff_giorni, "tot_annulli": tot_annulli, "giorni_annulli": sorted([{"data": d, "annulli": v} for d, v in annulli.items() if v], key=lambda x: x["data"])}
 
 
 @router.delete("")

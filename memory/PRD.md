@@ -826,3 +826,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-30 – Import AdE: totale = imponibile vendite + imposta vendite
 - "Ammontare delle vendite" comprende anche scontrini annullati (es. 29/10 −18,20) → non più usato come totale; colonna letta solo a scopo informativo. Totale = imponibile + imposta se presenti, altrimenti colonna Totale.
 - Va ricaricato il file AdE del mese per aggiornare i totali già importati.
+
+## 2026-10-30 – Annulli AdE visibili
+- confronto_ade restituisce tot_annulli, giorni_annulli e per riga ade_annulli (= ammontare − totale). UI: riquadro "Scontrini annullati nel mese" nel Confronto AdE, "⊘ importo" nella colonna AdE del giorno, "annullati" nella lista differenze. Test: 29/10 140,20 vs 122,00 → annulli 18,20.
