@@ -106,7 +106,7 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
       {d && (
         <div className="rounded-xl border border-slate-200 bg-white" data-testid="estere-lista">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
-            <span><b>{d.items.length}</b> fatture · imponibile <b>{eur(d.totali.imponibile)}</b> · IVA integrata {eur(d.totali.iva_integrata)} · IVA dogana {eur(d.totali.iva_dogana)} · <span className={d.totali.da_inviare ? "font-semibold text-rose-700" : "text-emerald-700"} data-testid="estere-da-inviare">{d.totali.da_inviare} da inviare</span></span>
+            <span><b>{d.items.length}</b> {d.items.length === 1 ? "fattura" : "fatture"} · imponibile <b>{eur(d.totali.imponibile)}</b> · IVA integrata {eur(d.totali.iva_integrata)} · IVA dogana {eur(d.totali.iva_dogana)} · <span className={d.totali.da_inviare ? "font-semibold text-rose-700" : "text-emerald-700"} data-testid="estere-da-inviare">{d.totali.da_inviare} da inviare</span></span>
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={copia} data-testid="estere-copia"><Copy className="mr-1 h-3 w-3" /> Testo per il commercialista</Button>
           </div>
           {d.items.length === 0 ? <p className="px-4 py-6 text-center text-sm text-slate-400">Nessuna fattura estera nel mese.</p> : (

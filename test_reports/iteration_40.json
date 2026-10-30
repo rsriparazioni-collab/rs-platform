@@ -1,0 +1,47 @@
+{
+  "summary": "Tested the reorganised Contabilità end to end as admin Enrico with 2FA, on backend and frontend. Working: the 4 tabs and all sub-menus; 'Cose da sistemare' (closed shows 3 items, the toggle shows all, sorted high->medium->low, plain Italian text, 'Vai' opens the day dialog); inline edit and delete of cash expenses with the 'modificata da Enrico' badge and change history; inline edit and delete of deposits made after month end; editing foreign invoices (pre-filled form, 'Salva modifiche' and 'Annulla modifica', PUT call); monthly fixed expenses (the expense is generated at once, genera does not create duplicates, pause/resume/edit/delete all work); cron promemoria-ade (401 without a token or with a wrong one, 200 accepted with it, dry-run kept on, 0 messages sent); AdE import response includes 'controllo' {problemi, avvisi_whatsapp, dettaglio}; Magazzino +2/-2 returns to the starting stock; Chiusura mese 'Vai' links go to the right tab and sub-tab. Jev AI classification answers for real (ai=true, choice is one of the allowed categories, confidence between 0 and 1). Auth checks pass: bcrypt $2b$, httpOnly gu_token cookie, CORS with explicit origin and credentials. Found 2 input-validation bugs and 1 mismatch in the cash carry-over to the next month (riporto).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/estere/fattura/{id}", "issue": "No input validation. An invalid date returns 500 (unhandled ValueError from date.fromisoformat). A negative imponibile is accepted (200). An unknown tipo is accepted (200), and that would break the frontend list, because d.tipi[f.tipo].split runs on undefined. POST already validates all three: copy those checks. The PUT also resets valuta to 'EUR' (default in the model) and saves no updated_by."},
+      {"endpoint": "PUT /api/contabilita/spese-ricorrenti/{id}", "issue": "No validation, unlike POST: giorno=99 and importo=-3 are saved (200). Add the same 400 checks as POST (giorno 1-28, importo > 0, motivo not empty)."},
+      {"endpoint": "contabilita._mese_dati (automatic carry-over / riporto_proposto)", "issue": "Morbegno: September shows 'Da versare € 110,60', and da-sistemare says €110,60 is still to be deposited. October's automatic carry-over is € 30,60 instead. RCA: riporto_proposto (lines 270-273) adds up the raw 'contanti' from db.corrispettivi without _norm(), so invoices paid in cash (fatture_contanti) are left out. The month totals use _norm(c), which includes them. Fix: reuse _norm(c)['contanti'], or the previous month's _mese_dati totals, when computing the proposal."},
+      {"endpoint": "GET /api/contabilita/da-sistemare (admin part)", "issue": "The missing-bank-statement check uses estratti_caricati.find_one({conto_id exists, dal ^YYYY-MM}). It is not limited to the accounts of the centro (entity), so one statement from any entity hides the warning for all entities."},
+      {"endpoint": "automazioni_contabilita.genera_mese", "issue": "If a paused spesa ricorrente is turned back on, nothing is generated for the current month until next month's cron (only POST calls genera_mese). Also, a generated expense is found by ricorrente_id + month: if the user moves its date to another month, the next run creates a duplicate."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "FattureEstere", "issue": "The edit/delete testids are estera-edit-{id} / estera-del-{id}, not estere-edit-{id} as written in the review request. The code works; the docs and the code are just inconsistent.", "selector": "[data-testid^=estera-edit-]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Cassa - Cose da sistemare", "issues": ["'Vai' on items without a date (for example 'restano € X da versare') stays on the Cassa tab and visibly does nothing. It could scroll to the 'Versamenti dopo fine mese' section."]},
+      {"screen": "Cassa - Spese di cassa", "issues": ["Expenses created by a spesa ricorrente show no 'automatico' badge: created_by is not shown in the UI, so users cannot tell them apart from manual ones."]},
+      {"screen": "Spese fisse mensili / Fatture estere", "issues": ["Wrong grammar for singular counts: '1 attive', '1 fatture'.", "Date fields use the browser's native date picker (mm/dd/yyyy in an en-US browser) instead of the shadcn calendar."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter40_contabilita_riorg.py", "/app/backend/tests/test_iter40_edge_auth.py", "/app/test_reports/pytest/pytest_iter40.xml", "/app/test_reports/pytest/pytest_iter40_edge.xml"],
+  "action_items": [
+    "Validate PUT /api/estere/fattura/{id}: date (400, not 500), imponibile > 0, tipo in TIPI. Keep the existing valuta and set updated_by.",
+    "Add to PUT /api/contabilita/spese-ricorrenti/{id} the same validation as POST.",
+    "Fix riporto_proposto in contabilita._mese_dati so it uses normalised contanti (including fatture_contanti) and matches the previous month's 'da_versare' (Morbegno Sep 110,60 vs Oct riporto 30,60).",
+    "da_sistemare: limit the estratti_caricati check to the conti of the centro's entity.",
+    "Optional: generate the current month's expense when a spesa ricorrente is turned back on; show an 'automatico' badge on generated expenses; make 'Vai' on items without a date scroll to the relevant section."
+  ],
+  "critical_code_review_comments": [
+    "estere.modifica does no validation, and date.fromisoformat raises an unhandled error, so the endpoint returns 500.",
+    "automazioni_contabilita.modifica: no checks on giorno/importo/motivo.",
+    "contabilita._mese_dati: riporto_proposto uses raw contanti while the totals use _norm(), so the two disagree.",
+    "da_sistemare: the estratti check is not scoped by conto or entità.",
+    "The admin WhatsApp number is hardcoded (NUMERO_AMMINISTRAZIONE / '3792773557' in server.py); it should come from settings or env.",
+    "Good: PUT /spese/{id} keeps a change history ('storico'); the cron uses hmac.compare_digest; genera_mese does not create duplicates."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter40_contabilita_riorg.py", "/app/backend/tests/test_iter40_edge_auth.py"],
+  "success_rate": {"backend": "87% (13/15 tests: 8/8 feature tests and 3/3 auth checks pass; 2 edge-case validation tests fail)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Only TEST records, all deleted at the end: spesa, versato, fattura estera, spesa ricorrente, the expense it generated, and the scadenze_alert_log entry 'promemoria-ade-2026-09' (n=0) written by the cron. The AdE record 1BENI060703 2026-09-01 was re-imported with the same values and then restored from a backup copy. wa_dry_run is still true.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Server date is 30/10/2026. The default store in the UI is Gravedona; select Morbegno (348642fd-...) with contabilita-store-select. Sep 2026 Morbegno has 8 da-sistemare items (3 alto). Run pytest with -n0 (pytest.ini adds xdist). The DB helpers in the tests use sync pymongo. Store contabilita_config currently has no wa_numero, so the promemoria/AdE alerts send 0 messages. Jev check: switcho.classifica() called directly gives ai=true.",
+  "rca of the issue": "Riporto mismatch: _mese_dati builds the current month's totals from _norm(corrispettivo), where contanti includes fatture_contanti. The previous-month proposal (lines 268-275) reads the raw 'contanti' field, so for Morbegno € 80 of invoices paid in cash are left out (Sep da_versare 110,60 vs Oct auto riporto 30,60). Mitigation: compute the proposal from the normalised records, or by calling _mese_dati for the previous month without recursing into the proposal."
+}

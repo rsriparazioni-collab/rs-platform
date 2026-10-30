@@ -6541,7 +6541,8 @@ import corrispettivi_ade as corrispettivi_ade_module
 import da_sistemare as da_sistemare_module
 import automazioni_contabilita as automazioni_contabilita_module
 da_sistemare_module.setup(db=db, mese_dati=contabilita_module._mese_dati, user=contabilita_module._user, store_completo=contabilita_module._store_completo,
-                          centri_tutti=_centri_tutti, scadenze=lambda centro_id, anno, mese: scadenzario_module.scadenze_centro(centro_id, anno, mese))
+                          centri_tutti=_centri_tutti, scadenze=lambda centro_id, anno, mese: scadenzario_module.scadenze_centro(centro_id, anno, mese),
+                          conti=banche_module.CONTI_DEFAULT, entita_centro=banche_module.ENTITA_CENTRO)
 api_router.include_router(da_sistemare_module.router)
 automazioni_contabilita_module.setup(db=db, user=contabilita_module._user, store_completo=contabilita_module._store_completo, wa_send=wa_send)
 api_router.include_router(automazioni_contabilita_module.router)

@@ -804,3 +804,11 @@ Vedi /app/memory/test_credentials.md
 - Fix service.js (Railway, da ricaricare): su loggedOut cancella le credenziali e riparte col QR; watchdog 60 s → reset automatico se né QR né connessione.
 - Fix backend: GET /whatsapp/qr reimposta da solo la sessione muta (max 1 volta/2 min) → QR compare anche col servizio vecchio.
 - Verificato: enel-deborah, Sondalo, Ipro ora espongono il QR.
+
+## 2026-10-30 – Contabilità riorganizzata + automazioni (test iteration_40 + fix)
+- 4 schede: Cassa & Corrispettivi · Banche & Fatture (admin) · Scadenze & Chiusura (scadenzario/chiusura/IVA) · Analisi (PdP/fiscale/report/impostazioni). MAPPA_TAB mantiene i link "Vai" vecchi.
+- Riquadro "Cose da sistemare" (GET /contabilita/da-sistemare, backend da_sistemare.py): corrispettivi mancanti, differenze AdE, AdE assente, file AdE non caricato, ammanco/da versare, scadenze scadute, estere da inviare, estratti mancanti (admin). Testi in italiano semplice, ordinati per urgenza; "Vai" apre il giorno o scorre alla sezione.
+- Modifica inline: spese cassa (PUT /contabilita/spese/{id}, storico + updated_by), versati-dopo (PUT …/versati-dopo/{vid}), fatture estere (form precompilato, PUT validato).
+- Spese fisse mensili (automazioni_contabilita.py): CRUD /contabilita/spese-ricorrenti, generazione idempotente per mese (ricorrente_mese), badge "automatica".
+- Automazioni: import AdE → controllo differenze + WhatsApp al negozio (1/giorno); upload estratto banca → fatture abbinate/non trovate + WhatsApp amministrazione (1/giorno); cron 1° del mese 8:00 /cron/promemoria-ade (promemoria scarico AdE + genera ricorrenti).
+- Fix: riporto automatico mese dopo ora usa contanti normalizzati (incluse fatture in contanti) → Morbegno set 110,60 = riporto ott 110,60.

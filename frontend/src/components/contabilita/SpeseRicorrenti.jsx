@@ -35,7 +35,7 @@ export const SpeseRicorrenti = ({ storeId, reload }) => {
     <div className="rounded-xl border border-slate-200 bg-white" data-testid="spese-ricorrenti">
       <button type="button" onClick={() => setAperto((a) => !a)} className="flex w-full items-center justify-between px-5 py-3 text-left" data-testid="spese-ricorrenti-toggle">
         <h3 className="flex items-center gap-2 font-semibold text-slate-900"><Repeat className="h-4 w-4 text-sky-600" /> Spese fisse mensili <span className="text-xs font-normal text-slate-500">(affitto, pulizie…: create da sole ogni mese)</span></h3>
-        <span className="text-xs text-slate-500">{items.length ? `${items.filter((i) => i.attiva).length} attive` : "nessuna"} {aperto ? "▲" : "▼"}</span>
+        <span className="text-xs text-slate-500">{items.length ? `${items.filter((i) => i.attiva).length} attiv${items.filter((i) => i.attiva).length === 1 ? "a" : "e"}` : "nessuna"} {aperto ? "▲" : "▼"}</span>
       </button>
       {aperto && (
         <div className="border-t border-slate-100">

@@ -267,7 +267,8 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     prev_pref = f"{prev_a:04d}-{prev_m:02d}"
     prev_cont = 0.0
     prev_vers = 0.0
-    async for c in db.corrispettivi.find({"store_id": store_id, "data": {"$regex": f"^{prev_pref}"}}, {"_id": 0, "contanti": 1, "versati": 1}):
+    async for c in db.corrispettivi.find({"store_id": store_id, "data": {"$regex": f"^{prev_pref}"}}, {"_id": 0}):
+        c = _norm(c)
         prev_cont += _f(c.get("contanti"))
         prev_vers += _f(c.get("versati"))
     prev_spese = sum([_f(s.get("importo")) async for s in db.spese_cassa.find({"store_id": store_id, "data": {"$regex": f"^{prev_pref}"}}, {"_id": 0, "importo": 1})])

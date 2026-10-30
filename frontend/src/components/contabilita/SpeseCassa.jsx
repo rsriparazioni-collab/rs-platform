@@ -52,7 +52,7 @@ export const SpeseCassa = ({ storeId, anno, mese, spese, reload }) => {
           ) : (
             <tr key={s.id} data-testid={`spesa-row-${s.id}`}>
               <td className="px-5 py-1.5 text-slate-500">{dmy(s.data)}</td>
-              <td className="px-3 py-1.5">{s.motivo}{s.updated_by && <span className="ml-2 text-[10px] text-amber-700" title={`Modificata il ${s.updated_at?.slice(0, 10).split("-").reverse().join("/")}`} data-testid={`spesa-modificata-${s.id}`}>modificata da {s.updated_by}</span>}</td>
+              <td className="px-3 py-1.5">{s.motivo}{s.ricorrente_id && <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800" data-testid={`spesa-automatica-${s.id}`}>automatica</span>}{s.updated_by && <span className="ml-2 text-[10px] text-amber-700" title={`Modificata il ${s.updated_at?.slice(0, 10).split("-").reverse().join("/")}`} data-testid={`spesa-modificata-${s.id}`}>modificata da {s.updated_by}</span>}</td>
               <td className="px-3 py-1.5 text-right tabular-nums">{eur(s.importo)}</td><td className="px-3 py-1.5 text-slate-500">{s.riferimento}</td>
               <td className="whitespace-nowrap px-3 py-1.5 text-right">
                 <button onClick={() => setEdit({ ...s, importo: String(s.importo) })} className="mr-2 text-slate-400 hover:text-sky-700" title="Modifica" data-testid={`spesa-edit-${s.id}`}><Pencil className="h-4 w-4" /></button>

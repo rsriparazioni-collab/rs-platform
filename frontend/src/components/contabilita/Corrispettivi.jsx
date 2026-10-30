@@ -38,7 +38,11 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin, 
   const rigaOggi = dati.righe.find((r) => r.data === oggi && !r.vuoto);
   return (
     <div className="space-y-6" data-testid="corrispettivi-panel">
-      <DaSistemare storeId={storeId} anno={anno} mese={mese} refreshKey={dati} goTab={(tab, data) => { if (tab === "cassa" && data) { const r = dati.righe.find((x) => x.data === data); if (r) setGiorno(r); } else if (goTab) goTab(tab); }} />
+      <DaSistemare storeId={storeId} anno={anno} mese={mese} refreshKey={dati} goTab={(tab, data, tipo) => {
+        if (tab === "cassa" && data) { const r = dati.righe.find((x) => x.data === data); if (r) setGiorno(r); return; }
+        if (tab === "cassa") { const sel = tipo === "ade_file_mancante" ? '[data-testid="corrispettivi-ade"]' : '[data-testid="versati-dopo"]'; document.querySelector(sel)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+        if (goTab) goTab(tab);
+      }} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodoPicker anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} />
         {rigaOggi && (

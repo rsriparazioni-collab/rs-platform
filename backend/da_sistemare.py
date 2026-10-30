@@ -79,7 +79,9 @@ async def problemi_negozio(store: dict, anno: int, mese: int, is_admin: bool) ->
             n_est = await db.fatture_estere.count_documents({"centro_id": c["id"], "anno": anno, "mese": mese, "inviata_at": None})
             if n_est and (anno, mese) < (oggi.year, oggi.month):
                 out.append({"livello": "medio", "testo": f"{n_est} fattur{'a' if n_est == 1 else 'e'} ester{'a' if n_est == 1 else 'e'} di {MESI[mese]} non ancora trasmess{'a' if n_est == 1 else 'e'} allo SdI (scadenza il 15 del mese dopo).", "tab": "banche", "tipo": "estere"})
-            if not await db.estratti_caricati.find_one({"conto_id": {"$exists": True}, "dal": {"$regex": f"^{pref}"}}) and (anno, mese) < (oggi.year, oggi.month):
+            ent = next((e for e, cid in (_d.get("entita_centro") or {}).items() if cid == c["id"]), None)
+            conti_ids = [x["id"] for x in (_d.get("conti") or []) if x["entita"] == ent and x["tipo"] == "banca"] if ent else []
+            if conti_ids and not await db.estratti_caricati.find_one({"conto_id": {"$in": conti_ids}, "dal": {"$regex": f"^{pref}"}}) and (anno, mese) < (oggi.year, oggi.month):
                 out.append({"livello": "basso", "testo": f"Nessun estratto conto di {MESI[mese]} caricato per {c['nome']}: scarica i movimenti da Intesa/Nexi/myPOS e caricali in Banche & Fatture.", "tab": "banche", "tipo": "estratti"})
     except Exception as e:
         logger.warning(f"da_sistemare admin {store['id']}: {e}")

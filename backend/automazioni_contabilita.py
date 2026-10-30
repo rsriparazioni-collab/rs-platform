@@ -56,8 +56,14 @@ async def modifica(rid: str, body: RicorrenteInput, request: Request):
     if not old:
         raise HTTPException(status_code=404, detail="Spesa ricorrente non trovata")
     await _d["store_completo"](user, old["store_id"])
+    if not body.motivo.strip() or body.importo <= 0:
+        raise HTTPException(status_code=400, detail="Scrivi il motivo e un importo maggiore di zero")
+    if not 1 <= body.giorno <= 28:
+        raise HTTPException(status_code=400, detail="Il giorno deve essere tra 1 e 28")
     upd = {**body.model_dump(), "store_id": old["store_id"], "motivo": body.motivo.strip(), "importo": round(body.importo, 2), "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("name", "")}
     await _d["db"].spese_ricorrenti.update_one({"id": rid}, {"$set": upd})
+    if body.attiva and not old.get("attiva"):
+        await genera_mese(date.today().year, date.today().month)
     return {**old, **upd}
 
 
@@ -78,11 +84,11 @@ async def genera_mese(anno: int, mese: int) -> dict:
     pref = f"{anno:04d}-{mese:02d}"
     create = 0
     async for r in db.spese_ricorrenti.find({"attiva": True}, {"_id": 0}):
-        if await db.spese_cassa.find_one({"ricorrente_id": r["id"], "data": {"$regex": f"^{pref}"}}, {"_id": 0, "id": 1}):
+        if await db.spese_cassa.find_one({"ricorrente_id": r["id"], "ricorrente_mese": pref}, {"_id": 0, "id": 1}):
             continue
         giorno = min(int(r.get("giorno") or 1), monthrange(anno, mese)[1])
         await db.spese_cassa.insert_one({"id": str(uuid.uuid4()), "store_id": r["store_id"], "data": f"{pref}-{giorno:02d}", "motivo": r["motivo"], "importo": round(float(r["importo"]), 2),
-                                         "riferimento": r.get("riferimento") or "", "ricorrente_id": r["id"], "created_at": datetime.now(timezone.utc).isoformat(), "created_by": "automatico (spesa ricorrente)"})
+                                         "riferimento": r.get("riferimento") or "", "ricorrente_id": r["id"], "ricorrente_mese": pref, "created_at": datetime.now(timezone.utc).isoformat(), "created_by": "automatico (spesa ricorrente)"})
         create += 1
     return {"create": create, "mese": pref}
 

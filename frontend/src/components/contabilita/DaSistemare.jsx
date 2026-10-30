@@ -40,7 +40,7 @@ export const DaSistemare = ({ storeId, anno, mese, goTab, refreshKey }) => {
           <li key={i} className={`flex items-start gap-3 rounded-lg border px-3 py-2 text-sm ${LIV[p.livello].cls}`} data-testid={`da-sistemare-item-${i}`}>
             <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${LIV[p.livello].dot}`} />
             <span className="flex-1">{p.testo}</span>
-            {goTab && <button type="button" onClick={() => goTab(p.tab, p.data)} className="shrink-0 text-xs font-semibold underline-offset-2 hover:underline" data-testid={`da-sistemare-vai-${i}`}>Vai</button>}
+            {goTab && <button type="button" onClick={() => goTab(p.tab, p.data, p.tipo)} className="shrink-0 text-xs font-semibold underline-offset-2 hover:underline" data-testid={`da-sistemare-vai-${i}`}>Vai</button>}
           </li>
         ))}
       </ol>

@@ -102,8 +102,16 @@ async def modifica(fid: str, body: EsteraInput, user: dict = Depends(require_adm
     old = await _d["db"].fatture_estere.find_one({"id": fid}, {"_id": 0})
     if not old:
         raise HTTPException(status_code=404, detail="Fattura non trovata")
-    d = date.fromisoformat(body.data)
-    doc = _calcola({**old, **body.model_dump(), "anno": d.year, "mese": d.month, "updated_at": _now().isoformat()})
+    if body.tipo not in TIPI:
+        raise HTTPException(status_code=400, detail="Tipo non valido")
+    try:
+        d = date.fromisoformat(body.data)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data non valida")
+    if body.imponibile <= 0:
+        raise HTTPException(status_code=400, detail="Imponibile obbligatorio")
+    nuovi = body.model_dump(exclude_unset=True)
+    doc = _calcola({**old, **nuovi, "anno": d.year, "mese": d.month, "updated_at": _now().isoformat(), "updated_by": user["name"]})
     await _d["db"].fatture_estere.update_one({"id": fid}, {"$set": doc})
     return doc
 
