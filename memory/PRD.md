@@ -822,3 +822,7 @@ Vedi /app/memory/test_credentials.md
 - Scadenze: campo `beneficiario` (nome sul bonifico) + PUT /scadenzario/voce/{sid} (modifica voce/importo/data/beneficiario, anche ricorrenti). Seed idempotente: Affitto Gravedona→Savina Caminada, Morbegno→Boffini Franca, Sondrio→Egidio Libera.
 - Dopo ogni estratto banca: scadenzario.abbina_movimenti_banca(entita, dal, al) → uscita con nome beneficiario e importo ±2% nel periodo (−20/+25 gg) segna pagata (pagate.{mese} + pagate_banca con movimento_id, mai riuso dello stesso movimento). Test: 1 abbinata, seconda esecuzione 0, altre scadenze non toccate.
 - PdP: settings pdp_fisse_auto (GET/PUT /contabilita/pdp-fisse-auto) con editor "Spese fisse pagate dal conto corrente" in Punto di pareggio; compila le voci vuote il 1° del mese e al salvataggio. Default Affitti 1300 per morbegno+gravedona.
+
+## 2026-10-30 – Import AdE: totale = imponibile vendite + imposta vendite
+- "Ammontare delle vendite" comprende anche scontrini annullati (es. 29/10 −18,20) → non più usato come totale; colonna letta solo a scopo informativo. Totale = imponibile + imposta se presenti, altrimenti colonna Totale.
+- Va ricaricato il file AdE del mese per aggiornare i totali già importati.

@@ -20,9 +20,11 @@ _d: dict = {}
 KEYS = {
     "matricola": ("matricola", "matricola dispositivo", "id dispositivo", "dispositivo", "identificativo dispositivo", "rt"),
     "data": ("data rilevazione", "data e ora rilevazione", "data chiusura", "data trasmissione", "data e ora trasmissione", "data invio", "data"),
-    "imponibile": ("totale imponibile", "imponibile", "ammontare imponibile"),
-    "imposta": ("totale imposta", "imposta", "iva"),
-    "totale": ("totale corrispettivi", "totale corrispettivo", "totale", "importo totale", "ammontare"),
+    "imponibile": ("totale imponibile", "imponibile vendite", "imponibile", "ammontare imponibile"),
+    "imposta": ("totale imposta", "imposta vendite", "imposta", "iva"),
+    # AdE: "Ammontare delle vendite" comprende anche gli scontrini annullati → solo informativo, NON è il totale
+    "ammontare": ("ammontare delle vendite", "ammontare vendite", "ammontare"),
+    "totale": ("totale corrispettivi", "totale corrispettivo", "importo totale", "totale"),
 }
 
 
@@ -51,16 +53,17 @@ def _parse_tabella(filename: str, content: bytes) -> list:
     for r in rows:
         if not m:
             cand = _mappa(r)
-            if "data" in cand and ("totale" in cand or "imponibile" in cand):
+            if "data" in cand and ("totale" in cand or "imponibile" in cand or "ammontare" in cand):
                 m = cand
             continue
         get = lambda k: r[m[k]] if k in m and m[k] < len(r) else None  # noqa: E731
         data = _data(get("data"))
         if not data:
             continue
-        imp, iva = _num(get("imponibile")), _num(get("imposta"))
-        tot = _num(get("totale")) or round(imp + iva, 2)
-        out.append({"matricola": str(get("matricola") or "").strip()[:40], "data": data, "imponibile": imp, "imposta": iva, "totale": tot})
+        imp, iva, amm = _num(get("imponibile")), _num(get("imposta")), _num(get("ammontare"))
+        # totale giornata = imponibile vendite + imposta vendite ("Ammontare delle vendite" include anche gli scontrini annullati: solo informativo)
+        tot = round(imp + iva, 2) if ("imponibile" in m or "imposta" in m) else (_num(get("totale")) if "totale" in m else round(amm, 2))
+        out.append({"matricola": str(get("matricola") or "").strip()[:40], "data": data, "imponibile": round(imp, 2), "imposta": round(iva, 2), "ammontare": round(amm, 2), "totale": tot})
     return out
 
 
