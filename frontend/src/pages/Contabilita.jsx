@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Receipt, Scale, TrendingUp, Settings2, Activity, Landmark, Calculator, Globe, CalendarClock, ClipboardCheck } from "lucide-react";
+import { Receipt, Landmark, CalendarClock, TrendingUp, Activity } from "lucide-react";
 import api from "../lib/api";
 import { FattureEstere } from "../components/contabilita/FattureEstere";
 import { Banche } from "../components/contabilita/Banche";
@@ -15,13 +15,24 @@ import { ContabilitaImpostazioni } from "../components/contabilita/ContabilitaIm
 import { NuovoNegozioDialog } from "../components/contabilita/NuovoNegozioDialog";
 
 const oggi = new Date();
+// vecchie schede → nuova scheda (per i link "Vai" della chiusura mese e del riquadro Cose da sistemare)
+const MAPPA_TAB = { corrispettivi: ["cassa", "corrispettivi"], pdp: ["analisi", "pdp"], iva: ["scadenze", "iva"], estere: ["banche", "estere"], banche: ["banche", "banche"], scadenzario: ["scadenze", "scadenzario"], chiusura: ["scadenze", "chiusura"], fiscale: ["analisi", "fiscale"], report: ["analisi", "report"], impostazioni: ["analisi", "impostazioni"] };
+
+const SottoMenu = ({ voci, valore, onChange, testid }) => (
+  <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1" data-testid={testid}>
+    {voci.map(([id, label]) => (
+      <button key={id} type="button" onClick={() => onChange(id)} className={`rounded-md px-3 py-1.5 text-sm transition-colors ${valore === id ? "bg-white font-semibold text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`} data-testid={`${testid}-${id}`}>{label}</button>
+    ))}
+  </div>
+);
 
 export default function Contabilita() {
   const [meta, setMeta] = useState(null);
   const [storeId, setStoreId] = useState("");
   const [anno, setAnno] = useState(oggi.getFullYear());
   const [mese, setMese] = useState(oggi.getMonth() + 1);
-  const [tab, setTab] = useState("corrispettivi");
+  const [tab, setTab] = useState("cassa");
+  const [sub, setSub] = useState({ cassa: "corrispettivi", banche: "banche", scadenze: "scadenzario", analisi: "pdp" });
   const loadMeta = useCallback(() => api.get("/contabilita/meta").then((r) => {
     setMeta(r.data);
     setStoreId((cur) => cur || (r.data.stores.find((s) => s.completo) || {}).id || "");
@@ -30,20 +41,28 @@ export default function Contabilita() {
   const [centriEstere, setCentriEstere] = useState([]);
   useEffect(() => { if (meta?.is_admin) api.get("/contabilita/pdp/centri").then((r) => setCentriEstere(r.data)).catch(() => {}); }, [meta?.is_admin]);
 
+  const goTab = (vecchia) => {
+    const [t, s] = MAPPA_TAB[vecchia] || [vecchia, null];
+    setTab(t);
+    if (s) setSub((cur) => ({ ...cur, [t]: s }));
+  };
+
   if (!meta) return <div className="p-6 text-sm text-slate-500" data-testid="contabilita-loading">Caricamento…</div>;
   const completi = meta.stores.filter((s) => s.completo);
   const soloStato = meta.stores.filter((s) => !s.completo);
   const periodo = { storeId, anno, mese, setAnno, setMese };
+  const adm = meta.is_admin;
+  const setS = (t) => (v) => setSub((cur) => ({ ...cur, [t]: v }));
 
   return (
     <div className="space-y-6" data-testid="contabilita-page">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">Corrispettivi & Contabilità</h1>
-          <p className="mt-1 text-sm text-slate-500">Corrispettivi giornalieri, spese di cassa, punto di pareggio e andamento del fatturato per negozio.</p>
+          <p className="mt-1 text-sm text-slate-500">Cassa e corrispettivi, banche e fatture, scadenze e chiusura mese, analisi: tutto per negozio, con le cose da sistemare in evidenza.</p>
         </div>
         <div className="flex items-center gap-2">
-          {meta.is_admin && <NuovoNegozioDialog onCreated={(id) => { setStoreId(id); loadMeta(); }} />}
+          {adm && <NuovoNegozioDialog onCreated={(id) => { setStoreId(id); loadMeta(); }} />}
           {completi.length > 0 && (
             <select value={storeId} onChange={(e) => setStoreId(e.target.value)} className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm" data-testid="contabilita-store-select">
               {completi.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
@@ -62,28 +81,39 @@ export default function Contabilita() {
       )}
       {!storeId ? <p className="text-sm text-slate-500" data-testid="contabilita-nessun-negozio">Nessun negozio con corrispettivi condivisi.</p> : (
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="flex-wrap">
-            <TabsTrigger value="corrispettivi" className="gap-1.5" data-testid="contabilita-tab-corrispettivi"><Receipt className="h-4 w-4" /> Corrispettivi</TabsTrigger>
-            <TabsTrigger value="pdp" className="gap-1.5" data-testid="contabilita-tab-pdp"><Scale className="h-4 w-4" /> Punto di pareggio</TabsTrigger>
-            <TabsTrigger value="iva" className="gap-1.5" data-testid="contabilita-tab-iva"><Landmark className="h-4 w-4" /> IVA</TabsTrigger>
-            {meta.is_admin && <TabsTrigger value="estere" className="gap-1.5" data-testid="contabilita-tab-estere"><Globe className="h-4 w-4" /> Fatture estere</TabsTrigger>}
-            {meta.is_admin && <TabsTrigger value="banche" className="gap-1.5" data-testid="contabilita-tab-banche"><Landmark className="h-4 w-4" /> Banche & commercialisti</TabsTrigger>}
-            <TabsTrigger value="scadenzario" className="gap-1.5" data-testid="contabilita-tab-scadenzario"><CalendarClock className="h-4 w-4" /> Scadenzario</TabsTrigger>
-            {meta.is_admin && <TabsTrigger value="chiusura" className="gap-1.5" data-testid="contabilita-tab-chiusura"><ClipboardCheck className="h-4 w-4" /> Chiusura mese</TabsTrigger>}
-            <TabsTrigger value="fiscale" className="gap-1.5" data-testid="contabilita-tab-fiscale"><Calculator className="h-4 w-4" /> Pianificazione fiscale</TabsTrigger>
-            <TabsTrigger value="report" className="gap-1.5" data-testid="contabilita-tab-report"><TrendingUp className="h-4 w-4" /> Report fatturato</TabsTrigger>
-            <TabsTrigger value="impostazioni" className="gap-1.5" data-testid="contabilita-tab-impostazioni"><Settings2 className="h-4 w-4" /> Invii e impostazioni</TabsTrigger>
+          <TabsList className="h-auto flex-wrap">
+            <TabsTrigger value="cassa" className="gap-1.5 px-4 py-2" data-testid="contabilita-tab-cassa"><Receipt className="h-4 w-4" /> Cassa & Corrispettivi</TabsTrigger>
+            {adm && <TabsTrigger value="banche" className="gap-1.5 px-4 py-2" data-testid="contabilita-tab-banche"><Landmark className="h-4 w-4" /> Banche & Fatture</TabsTrigger>}
+            <TabsTrigger value="scadenze" className="gap-1.5 px-4 py-2" data-testid="contabilita-tab-scadenze"><CalendarClock className="h-4 w-4" /> Scadenze & Chiusura</TabsTrigger>
+            <TabsTrigger value="analisi" className="gap-1.5 px-4 py-2" data-testid="contabilita-tab-analisi"><TrendingUp className="h-4 w-4" /> Analisi</TabsTrigger>
           </TabsList>
-          <TabsContent value="corrispettivi"><Corrispettivi {...periodo} isAdmin={meta.is_admin} stores={meta.stores} /></TabsContent>
-          <TabsContent value="pdp"><PuntoPareggio {...periodo} isAdmin={meta.is_admin} /></TabsContent>
-          <TabsContent value="iva"><IvaDashboard {...periodo} isAdmin={meta.is_admin} /></TabsContent>
-          {meta.is_admin && <TabsContent value="estere"><FattureEstere anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} /></TabsContent>}
-          {meta.is_admin && <TabsContent value="banche"><Banche anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} /></TabsContent>}
-          <TabsContent value="scadenzario"><Scadenzario anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} isAdmin={meta.is_admin} /></TabsContent>
-          {meta.is_admin && <TabsContent value="chiusura"><ChiusuraMese anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} goTab={setTab} /></TabsContent>}
-          <TabsContent value="fiscale"><PianoFiscale anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
-          <TabsContent value="report"><ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} isAdmin={meta.is_admin} /></TabsContent>
-          <TabsContent value="impostazioni"><ContabilitaImpostazioni meta={meta} storeId={storeId} reload={loadMeta} /></TabsContent>
+
+          <TabsContent value="cassa" className="space-y-4">
+            <Corrispettivi {...periodo} isAdmin={adm} stores={meta.stores} goTab={goTab} />
+          </TabsContent>
+
+          {adm && (
+            <TabsContent value="banche" className="space-y-4">
+              <SottoMenu testid="contabilita-sub-banche" valore={sub.banche} onChange={setS("banche")} voci={[["banche", "Estratti conto & riconciliazione"], ["estere", "Fatture estere"]]} />
+              {sub.banche === "banche" && <Banche anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} />}
+              {sub.banche === "estere" && <FattureEstere anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} />}
+            </TabsContent>
+          )}
+
+          <TabsContent value="scadenze" className="space-y-4">
+            <SottoMenu testid="contabilita-sub-scadenze" valore={sub.scadenze} onChange={setS("scadenze")} voci={[["scadenzario", "Scadenzario F24 & affitti"], ...(adm ? [["chiusura", "Chiusura mese"]] : []), ["iva", "IVA"]]} />
+            {sub.scadenze === "scadenzario" && <Scadenzario anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} isAdmin={adm} />}
+            {adm && sub.scadenze === "chiusura" && <ChiusuraMese anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} goTab={goTab} />}
+            {sub.scadenze === "iva" && <IvaDashboard {...periodo} isAdmin={adm} />}
+          </TabsContent>
+
+          <TabsContent value="analisi" className="space-y-4">
+            <SottoMenu testid="contabilita-sub-analisi" valore={sub.analisi} onChange={setS("analisi")} voci={[["pdp", "Punto di pareggio"], ["fiscale", "Pianificazione fiscale"], ["report", "Report fatturato"], ["impostazioni", "Invii e impostazioni"]]} />
+            {sub.analisi === "pdp" && <PuntoPareggio {...periodo} isAdmin={adm} />}
+            {sub.analisi === "fiscale" && <PianoFiscale anno={anno} setAnno={setAnno} isAdmin={adm} />}
+            {sub.analisi === "report" && <ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} isAdmin={adm} />}
+            {sub.analisi === "impostazioni" && <ContabilitaImpostazioni meta={meta} storeId={storeId} reload={loadMeta} />}
+          </TabsContent>
         </Tabs>
       )}
     </div>

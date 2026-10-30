@@ -163,3 +163,10 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/report-commercialisti"
     method: POST
     enabled: true
+  - name: promemoria-ade
+    description: "Il 1° di ogni mese alle 8:00: WhatsApp a ogni negozio per scaricare e caricare i corrispettivi AdE del mese precedente; crea le spese ricorrenti del mese"
+    cron: "0 8 1 * *"
+    timezone: "Europe/Rome"
+    endpoint: "{{BASE_URL}}/api/cron/promemoria-ade"
+    method: POST
+    enabled: true

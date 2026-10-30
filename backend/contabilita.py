@@ -495,6 +495,23 @@ async def add_versato_dopo(store_id: str, anno: int, mese: int, body: VersatoDop
     return v
 
 
+@router.put("/corrispettivi/{store_id}/{anno}/{mese}/versati-dopo/{vid}")
+async def edit_versato_dopo(store_id: str, anno: int, mese: int, vid: str, body: VersatoDopoInput, request: Request):
+    user = await _user(request)
+    await _store_completo(user, store_id)
+    try:
+        date.fromisoformat(body.data)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data non valida")
+    res = await _d["db"].corrispettivi_mese.update_one(
+        {"store_id": store_id, "anno": anno, "mese": mese, "versati_dopo.id": vid},
+        {"$set": {"versati_dopo.$.data": body.data, "versati_dopo.$.importo": _f(body.importo), "versati_dopo.$.note": body.note[:120],
+                  "versati_dopo.$.updated_at": datetime.now(timezone.utc).isoformat(), "versati_dopo.$.updated_by": user.get("name", "")}})
+    if not res.matched_count:
+        raise HTTPException(status_code=404, detail="Versamento non trovato")
+    return {"ok": True}
+
+
 @router.delete("/corrispettivi/{store_id}/{anno}/{mese}/versati-dopo/{vid}")
 async def del_versato_dopo(store_id: str, anno: int, mese: int, vid: str, request: Request):
     user = await _user(request)
@@ -520,6 +537,32 @@ async def add_spesa(body: SpesaInput, request: Request):
     await _d["db"].spese_cassa.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+
+class SpesaEditInput(BaseModel):
+    data: str
+    motivo: str
+    importo: float
+    riferimento: str = ""
+
+
+@router.put("/spese/{spesa_id}")
+async def edit_spesa(spesa_id: str, body: SpesaEditInput, request: Request):
+    user = await _user(request)
+    sp = await _d["db"].spese_cassa.find_one({"id": spesa_id}, {"_id": 0})
+    if not sp:
+        raise HTTPException(status_code=404, detail="Spesa non trovata")
+    await _store_completo(user, sp["store_id"])
+    try:
+        date.fromisoformat(body.data)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data non valida")
+    if not body.motivo.strip():
+        raise HTTPException(status_code=400, detail="Il motivo è obbligatorio")
+    upd = {"data": body.data, "motivo": body.motivo.strip(), "importo": _f(body.importo), "riferimento": body.riferimento,
+           "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("name", "")}
+    await _d["db"].spese_cassa.update_one({"id": spesa_id}, {"$set": upd, "$push": {"storico": {"at": upd["updated_at"], "da": upd["updated_by"], "prima": {k: sp.get(k) for k in ("data", "motivo", "importo", "riferimento")}}}})
+    return {**sp, **upd}
 
 
 @router.delete("/spese/{spesa_id}")

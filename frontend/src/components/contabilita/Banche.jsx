@@ -14,7 +14,12 @@ const ContoCard = ({ c, onUploaded }) => {
     if (!file) return;
     const fd = new FormData(); fd.append("conto_id", c.id); fd.append("file", file);
     setBusy(true);
-    try { const r = await api.post("/banche/upload", fd); toast.success(`${c.nome}: ${r.data.nuovi} movimenti nuovi, ${r.data.gia_presenti} già presenti (${r.data.dal} → ${r.data.al})`); onUploaded(); } catch (err) { toast.error(apiError(err)); } finally { setBusy(false); }
+    try {
+      const r = await api.post("/banche/upload", fd); toast.success(`${c.nome}: ${r.data.nuovi} movimenti nuovi, ${r.data.gia_presenti} già presenti (${r.data.dal} → ${r.data.al})`);
+      const k = r.data.controllo;
+      if (k) { k.non_trovate ? toast.warning(`Controllo fatture: ${k.abbinate} abbinate ai bonifici, ${k.non_trovate} ancora senza pagamento${k.avviso ? " · avviso WhatsApp inviato" : ""}`, { duration: 8000 }) : toast.success(`Controllo fatture: tutte le ${k.abbinate} fatture ricevute risultano pagate ✓`); }
+      onUploaded();
+    } catch (err) { toast.error(apiError(err)); } finally { setBusy(false); }
   };
   return (
     <label className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-sky-50 ${c.tipo === "pos" ? "border-violet-200 bg-violet-50/40" : "border-slate-200 bg-white"}`} data-testid={`conto-${c.id}`}>

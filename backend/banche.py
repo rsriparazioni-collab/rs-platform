@@ -1,9 +1,12 @@
 import io
+import logging
 import re
 import uuid
 import hashlib
 from datetime import datetime, timezone, date
 from typing import Optional
+
+logger = logging.getLogger("banche")
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
@@ -303,7 +306,43 @@ async def upload(conto_id: str = Form(...), file: UploadFile = File(...), user: 
     if nuovi:
         await db.estratti_caricati.insert_one({"id": estratto_id, "conto_id": conto_id, "file": file.filename, "righe": len(righe), "nuovi": nuovi, "doppi": doppi,
                                            "dal": date_[0], "al": date_[-1], "da": user["name"], "at": _now().isoformat()})
-    return {"righe": len(righe), "nuovi": nuovi, "gia_presenti": doppi, "dal": date_[0], "al": date_[-1]}
+    controllo = await _controllo_fatture_dopo_upload(conto_id, date_) if nuovi else None
+    return {"righe": len(righe), "nuovi": nuovi, "gia_presenti": doppi, "dal": date_[0], "al": date_[-1], "controllo": controllo}
+
+
+async def _controllo_fatture_dopo_upload(conto_id: str, date_: list) -> dict | None:
+    """Automatico dopo ogni estratto banca: abbina le fatture AdE ricevute ai bonifici e avvisa l'amministrazione SOLO di quelle ancora senza pagamento (1 avviso al giorno per entità/mese)."""
+    conto = next((c for c in CONTI_DEFAULT if c["id"] == conto_id), None)
+    if not conto or conto["tipo"] != "banca":
+        return None
+    db = _d["db"]
+    mesi = sorted({(int(d[:4]), int(d[5:7])) for d in date_})
+    out = {"abbinate": 0, "non_trovate": 0, "avviso": False, "dettaglio": []}
+    for anno, mese in mesi:
+        try:
+            r = await riconciliazione(conto["entita"], anno, mese, user={"role": "admin"})
+        except Exception as e:
+            logger.warning(f"controllo fatture {conto_id} {anno}-{mese}: {e}")
+            continue
+        aperte = r.get("fatture_non_trovate_in_banca") or []
+        out["abbinate"] += len(r.get("fatture_pagate") or [])
+        out["non_trovate"] += len(aperte)
+        out["dettaglio"] += [f"{f.get('controparte', '?')[:30]} {f.get('totale', 0):.2f} € del {f.get('data', '')[8:10]}/{f.get('data', '')[5:7]}" for f in aperte[:15]]
+        if not aperte or not _d.get("wa_send"):
+            continue
+        key = f"fatture-aperte-{conto['entita']}-{anno}-{mese:02d}-{date.today().isoformat()}"
+        if await db.scadenze_alert_log.find_one({"key": key}):
+            continue
+        testo = (f"🏦 *Estratto {conto['nome']} caricato – {mese:02d}/{anno}*\n{len(r.get('fatture_pagate') or [])} fatture abbinate ai bonifici ✓\n"
+                 f"⚠️ {len(aperte)} fattur{'a' if len(aperte) == 1 else 'e'} ricevut{'a' if len(aperte) == 1 else 'e'} senza pagamento trovato in banca:\n" + "\n".join(f"• {f.get('controparte', '?')[:30]} – {f.get('totale', 0):.2f} €" + (" (forse contanti)" if f.get("suggerimento_contanti") else "") for f in aperte[:12])
+                 + (f"\n… e altre {len(aperte) - 12}" if len(aperte) > 12 else "") + "\n\nSegnale come pagate in contanti/carta in Contabilità → Banche & Fatture, oppure controlla il mese dopo.")
+        try:
+            await _d["wa_send"](_d["numero_amministrazione"], testo, session=await _d["store_id_by_name"]("Sondrio") or "default", tipo="fatture_non_trovate")
+            await db.scadenze_alert_log.insert_one({"key": key, "at": _now().isoformat(), "n": len(aperte)})
+            out["avviso"] = True
+        except Exception as e:
+            logger.warning(f"avviso fatture aperte: {e}")
+    return out
 
 
 @router.get("/movimenti")

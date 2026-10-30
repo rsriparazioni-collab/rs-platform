@@ -8,8 +8,10 @@ import { GiornoDialog } from "./GiornoDialog";
 import { SpeseCassa } from "./SpeseCassa";
 import { VersatiDopo } from "./VersatiDopo";
 import { CorrispettiviAde } from "./CorrispettiviAde";
+import { SpeseRicorrenti } from "./SpeseRicorrenti";
+import { DaSistemare } from "./DaSistemare";
 
-export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin, stores }) => {
+export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin, stores, goTab }) => {
   const [dati, setDati] = useState(null);
   const [giorno, setGiorno] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -36,6 +38,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin, 
   const rigaOggi = dati.righe.find((r) => r.data === oggi && !r.vuoto);
   return (
     <div className="space-y-6" data-testid="corrispettivi-panel">
+      <DaSistemare storeId={storeId} anno={anno} mese={mese} refreshKey={dati} goTab={(tab, data) => { if (tab === "cassa" && data) { const r = dati.righe.find((x) => x.data === data); if (r) setGiorno(r); } else if (goTab) goTab(tab); }} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodoPicker anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} />
         {rigaOggi && (
@@ -85,6 +88,7 @@ export const Corrispettivi = ({ storeId, anno, mese, setAnno, setMese, isAdmin, 
       </div>
       <CorrispettiviAde storeId={storeId} anno={anno} mese={mese} confronto={dati.confronto_ade} stores={stores || []} reload={load} isAdmin={isAdmin} />
       <SpeseCassa storeId={storeId} anno={anno} mese={mese} spese={dati.spese} reload={load} />
+      <SpeseRicorrenti storeId={storeId} reload={load} />
       <VersatiDopo storeId={storeId} anno={anno} mese={mese} versati={dati.versati_dopo} totali={t} riporto={dati.riporto} riportoNote={dati.riporto_note} riportoAuto={dati.riporto_auto} proposto={dati.riporto_proposto} propostoMese={dati.riporto_proposto_mese} reload={load} />
       {giorno && <GiornoDialog storeId={storeId} riga={giorno} onClose={() => setGiorno(null)} onSaved={() => { setGiorno(null); load(); }} />}
     </div>

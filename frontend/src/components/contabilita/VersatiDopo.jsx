@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Trash2, Pencil, Check, X } from "lucide-react";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -21,7 +21,16 @@ export const VersatiDopo = ({ storeId, anno, mese, versati, totali, riporto, rip
     try { await api.post(`/contabilita/corrispettivi/${storeId}/${anno}/${mese}/versati-dopo`, { ...f, importo: parseFloat(f.importo) }); setF({ ...f, importo: "", note: "" }); toast.success("Versamento registrato"); reload(); }
     catch (e) { toast.error(apiError(e)); }
   };
-  const del = async (id) => { try { await api.delete(`/contabilita/corrispettivi/${storeId}/${anno}/${mese}/versati-dopo/${id}`); reload(); } catch (e) { toast.error(apiError(e)); } };
+  const del = async (v) => {
+    if (!window.confirm(`Eliminare il versamento di ${eur(v.importo)} del ${v.data.split("-").reverse().join("/")}?`)) return;
+    try { await api.delete(`/contabilita/corrispettivi/${storeId}/${anno}/${mese}/versati-dopo/${v.id}`); toast.success("Versamento eliminato"); reload(); } catch (e) { toast.error(apiError(e)); }
+  };
+  const [edit, setEdit] = useState(null);
+  const salvaEdit = async () => {
+    if (edit.importo === "") return toast.error("Scrivi l'importo");
+    try { await api.put(`/contabilita/corrispettivi/${storeId}/${anno}/${mese}/versati-dopo/${edit.id}`, { data: edit.data, importo: parseFloat(edit.importo), note: edit.note || "" }); toast.success("Versamento modificato"); setEdit(null); reload(); }
+    catch (e) { toast.error(apiError(e)); }
+  };
   const dv = totali.da_versare;
   return (
     <div className="rounded-xl border border-slate-200 bg-white" data-testid="versati-dopo">
@@ -52,9 +61,23 @@ export const VersatiDopo = ({ storeId, anno, mese, versati, totali, riporto, rip
         <Button size="sm" onClick={add} data-testid="versato-add">Aggiungi</Button>
       </div>
       <table className="w-full text-sm"><tbody className="divide-y divide-slate-100">
-        {versati.map((v) => (
-          <tr key={v.id} data-testid={`versato-row-${v.id}`}><td className="px-5 py-1.5 text-slate-500">{v.data.split("-").reverse().join("/")}</td><td className="px-3 py-1.5 text-right tabular-nums">{eur(v.importo)}</td><td className="px-3 py-1.5 text-slate-500">{v.note}</td>
-            <td className="px-3 py-1.5 text-right"><button onClick={() => del(v.id)} className="text-slate-400 hover:text-rose-600" data-testid={`versato-del-${v.id}`}><Trash2 className="h-4 w-4" /></button></td></tr>
+        {versati.map((v) => edit?.id === v.id ? (
+          <tr key={v.id} className="bg-amber-50/60" data-testid={`versato-edit-row-${v.id}`}>
+            <td className="px-3 py-1.5"><Input type="date" value={edit.data} onChange={(e) => setEdit({ ...edit, data: e.target.value })} className="h-8" data-testid="versato-edit-data" /></td>
+            <td className="px-3 py-1.5"><Num value={edit.importo} onChange={(x) => setEdit({ ...edit, importo: x })} testid="versato-edit-importo" /></td>
+            <td className="px-3 py-1.5"><Input value={edit.note || ""} onChange={(e) => setEdit({ ...edit, note: e.target.value })} className="h-8" data-testid="versato-edit-note" /></td>
+            <td className="whitespace-nowrap px-3 py-1.5 text-right">
+              <button onClick={salvaEdit} className="mr-2 text-emerald-600 hover:text-emerald-800" title="Salva" data-testid="versato-edit-save"><Check className="h-4 w-4" /></button>
+              <button onClick={() => setEdit(null)} className="text-slate-400 hover:text-slate-700" title="Annulla" data-testid="versato-edit-cancel"><X className="h-4 w-4" /></button>
+            </td>
+          </tr>
+        ) : (
+          <tr key={v.id} data-testid={`versato-row-${v.id}`}><td className="px-5 py-1.5 text-slate-500">{v.data.split("-").reverse().join("/")}</td><td className="px-3 py-1.5 text-right tabular-nums">{eur(v.importo)}</td>
+            <td className="px-3 py-1.5 text-slate-500">{v.note}{v.updated_by && <span className="ml-2 text-[10px] text-amber-700" data-testid={`versato-modificato-${v.id}`}>modificato da {v.updated_by}</span>}</td>
+            <td className="whitespace-nowrap px-3 py-1.5 text-right">
+              <button onClick={() => setEdit({ ...v, importo: String(v.importo) })} className="mr-2 text-slate-400 hover:text-sky-700" title="Modifica" data-testid={`versato-edit-${v.id}`}><Pencil className="h-4 w-4" /></button>
+              <button onClick={() => del(v)} className="text-slate-400 hover:text-rose-600" title="Elimina" data-testid={`versato-del-${v.id}`}><Trash2 className="h-4 w-4" /></button>
+            </td></tr>
         ))}
         {!versati.length && <tr><td className="px-5 py-3 text-sm text-slate-400">Nessun versamento successivo registrato</td></tr>}
       </tbody></table>

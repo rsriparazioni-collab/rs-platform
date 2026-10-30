@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Globe, Plus, Trash2, Check, Copy, Send, Paperclip, FileSearch } from "lucide-react";
+import { Globe, Plus, Trash2, Check, Copy, Send, Paperclip, FileSearch, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { Button } from "../ui/button";
@@ -36,12 +36,22 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
   const rc = form.tipo !== "extra_ue";
   const imp = Number(form.imponibile) || 0;
   const anteprima = rc ? imp * (Number(form.iva_pct) || 0) / 100 : Number(form.iva_dogana) || 0;
+  const [editId, setEditId] = useState(null);
   const salva = async () => {
     try {
-      await api.post("/estere", { ...form, imponibile: imp, iva_pct: Number(form.iva_pct) || 0, iva_dogana: Number(form.iva_dogana) || 0 });
-      toast.success("Fattura estera registrata"); setForm({ ...EMPTY, centro_id: form.centro_id, tipo: form.tipo }); setPdfNome(""); load();
+      const payload = { ...form, imponibile: imp, iva_pct: Number(form.iva_pct) || 0, iva_dogana: Number(form.iva_dogana) || 0 };
+      if (editId) { await api.put(`/estere/fattura/${editId}`, payload); toast.success("Fattura estera modificata"); }
+      else { await api.post("/estere", payload); toast.success("Fattura estera registrata"); }
+      setEditId(null); setForm({ ...EMPTY, centro_id: form.centro_id, tipo: form.tipo }); setPdfNome(""); load();
     } catch (e) { toast.error(apiError(e)); }
   };
+  const modifica = (f) => {
+    setEditId(f.id);
+    setForm({ ...EMPTY, centro_id: f.centro_id, tipo: f.tipo, data: f.data, fornitore: f.fornitore, paese: f.paese || "", numero: f.numero || "", imponibile: String(f.imponibile ?? ""), iva_pct: String(f.iva_pct ?? 22), iva_dogana: String(f.iva_dogana ?? ""), note: f.note || "" });
+    setPdfNome("");
+    document.querySelector('[data-testid="estere-form"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const annullaModifica = () => { setEditId(null); setForm({ ...EMPTY, centro_id: form.centro_id, tipo: form.tipo }); };
   const inviata = async (f) => { try { await api.post(`/estere/fattura/${f.id}/inviata`, { inviata: !f.inviata_at }); load(); } catch (e) { toast.error(apiError(e)); } };
   const rimuoviAllegato = async (f) => { if (!window.confirm("Rimuovere l'allegato?")) return; try { await api.delete(`/estere/fattura/${f.id}/allegato`); load(); } catch (e) { toast.error(apiError(e)); } };
   const allegato = async (f, e) => {
@@ -87,8 +97,9 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
           <Input type="number" step="0.01" placeholder="Imponibile €" value={form.imponibile} onChange={(e) => set("imponibile", e.target.value)} data-testid="estere-imponibile" />
           {rc ? <Input type="number" step="1" placeholder="IVA %" value={form.iva_pct} onChange={(e) => set("iva_pct", e.target.value)} data-testid="estere-iva-pct" />
               : <Input type="number" step="0.01" placeholder="IVA pagata in dogana €" value={form.iva_dogana} onChange={(e) => set("iva_dogana", e.target.value)} data-testid="estere-iva-dogana" />}
-          <Input placeholder="Note" value={form.note} onChange={(e) => set("note", e.target.value)} className="md:col-span-3" data-testid="estere-note" />
-          <Button onClick={salva} disabled={!form.fornitore || !imp} data-testid="estere-save"><Plus className="mr-1 h-4 w-4" /> Registra</Button>
+          <Input placeholder="Note" value={form.note} onChange={(e) => set("note", e.target.value)} className={editId ? "md:col-span-2" : "md:col-span-3"} data-testid="estere-note" />
+          {editId && <Button variant="outline" onClick={annullaModifica} data-testid="estere-annulla-modifica">Annulla modifica</Button>}
+          <Button onClick={salva} disabled={!form.fornitore || !imp} className={editId ? "bg-amber-600 hover:bg-amber-700" : ""} data-testid="estere-save">{editId ? <><Check className="mr-1 h-4 w-4" /> Salva modifiche</> : <><Plus className="mr-1 h-4 w-4" /> Registra</>}</Button>
         </div>
         {imp > 0 && <p className="mt-2 text-xs text-slate-500" data-testid="estere-anteprima">{rc ? `IVA integrata ${eur(anteprima)} (a debito e a credito, saldo 0) · costo per il PDP ${eur(imp)}` : `IVA dogana ${eur(anteprima)} · costo per il PDP ${eur(imp + anteprima)}`}</p>}
       </div>
@@ -115,7 +126,10 @@ export const FattureEstere = ({ anno, mese, setAnno, setMese, centri = [] }) => 
                       {f.allegato_path ? <span><a href={`${process.env.REACT_APP_BACKEND_URL}/api/estere/fattura/${f.id}/allegato`} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline" data-testid={`estera-allegato-${f.id}`}><Paperclip className="inline h-3 w-3" /> {f.allegato_nome?.slice(0, 18)}</a> <button type="button" className="ml-1 text-slate-400 hover:text-rose-600" title="Rimuovi allegato" onClick={() => rimuoviAllegato(f)} data-testid={`estera-allegato-del-${f.id}`}>✕</button></span>
                         : <label className="cursor-pointer text-slate-500 hover:text-sky-700" data-testid={`estera-allegato-up-${f.id}`}><Paperclip className="inline h-3 w-3" /> carica PDF<input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => allegato(f, e)} /></label>}
                     </td>
-                    <td className="px-3 py-2 text-right"><button type="button" onClick={() => del(f)} className="text-slate-300 hover:text-rose-600" data-testid={`estera-del-${f.id}`}><Trash2 className="h-4 w-4" /></button></td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      <button type="button" onClick={() => modifica(f)} className="mr-2 text-slate-300 hover:text-sky-700" title="Modifica" data-testid={`estera-edit-${f.id}`}><Pencil className="h-4 w-4" /></button>
+                      <button type="button" onClick={() => del(f)} className="text-slate-300 hover:text-rose-600" title="Elimina" data-testid={`estera-del-${f.id}`}><Trash2 className="h-4 w-4" /></button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

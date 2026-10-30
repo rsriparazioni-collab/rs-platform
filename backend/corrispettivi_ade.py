@@ -1,14 +1,16 @@
 """Corrispettivi telematici AdE: import CSV/XLSX (consultazione) o ZIP/XML (download massivo), abbinati al negozio per matricola RT."""
 import io
-import re
+import logging
 import uuid
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
+
+logger = logging.getLogger("corrispettivi_ade")
 
 from fatture_ade import _rows, _num, _data
 
@@ -177,8 +179,45 @@ async def importa(request: Request, file: UploadFile = File(...), store_id: Opti
         else:
             await db.corrispettivi_ade.insert_one({**r, "id": str(uuid.uuid4()), "store_id": sid or "", "created_at": now, "created_by": user.get("name", "")})
             importate += 1
+    negozi_toccati = sorted({mappa.get(r["matricola"], "") for r in righe} - {""}) or ([store_id] if store_id else [])
+    mesi = sorted({(int(r["data"][:4]), int(r["data"][5:7])) for r in righe})
+    controllo = await _avvisa_differenze(negozi_toccati, mesi)
     return {"importate": importate, "aggiornate": aggiornate, "matricole_da_assegnare": sorted(senza_negozio), "giorni": len({r["data"] for r in righe}),
-            "giorni_caricati": sorted({r["data"] for r in righe}), "negozi": sorted({mappa.get(r["matricola"], "") for r in righe} - {""})}
+            "giorni_caricati": sorted({r["data"] for r in righe}), "negozi": negozi_toccati, "controllo": controllo}
+
+
+async def _avvisa_differenze(store_ids: list, mesi: list) -> dict:
+    """Dopo l'import: confronto automatico e, se ci sono differenze, WhatsApp al negozio con l'elenco (max 1 avviso al giorno per negozio/mese)."""
+    db = _d["db"]
+    problemi, avvisi = [], 0
+    for sid in store_ids:
+        store = await db.stores.find_one({"id": sid}, {"_id": 0, "id": 1, "nome": 1})
+        if not store:
+            continue
+        for anno, mese in mesi:
+            try:
+                items = [p for p in await _d["problemi_negozio"](store, anno, mese, False) if p["tipo"] in ("ade_differenza", "corrispettivo_mancante", "ade_assente") and p.get("data", "")[:7] == f"{anno:04d}-{mese:02d}"]
+            except Exception as e:
+                logger.warning(f"controllo AdE {sid}: {e}")
+                continue
+            problemi.extend(items)
+            if not items:
+                continue
+            key = f"ade-diff-{sid}-{anno}-{mese:02d}-{date.today().isoformat()}"
+            if await db.scadenze_alert_log.find_one({"key": key}):
+                continue
+            cfg = await db.contabilita_config.find_one({"store_id": sid}, {"_id": 0, "wa_numero": 1}) or {}
+            numero = cfg.get("wa_numero")
+            if not numero:
+                continue
+            testo = f"⚠️ *Controllo corrispettivi AdE – {store['nome']} {mese:02d}/{anno}*\n" + "\n".join(f"• {p['testo']}" for p in items[:12]) + (f"\n… e altri {len(items) - 12}" if len(items) > 12 else "") + "\n\nCorreggi nel gestionale → Contabilità → Cassa & Corrispettivi."
+            try:
+                await _d["wa_send"](numero, testo, session=sid, tipo="ade_differenze")
+                await db.scadenze_alert_log.insert_one({"key": key, "at": datetime.now(timezone.utc).isoformat(), "n": len(items)})
+                avvisi += 1
+            except Exception as e:
+                logger.warning(f"avviso AdE {sid}: {e}")
+    return {"problemi": len(problemi), "avvisi_whatsapp": avvisi, "dettaglio": [p["testo"] for p in problemi[:20]]}
 
 
 async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: list) -> dict:

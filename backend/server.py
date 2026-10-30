@@ -6493,7 +6493,7 @@ async def _centri_tutti():
 estere_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, store_id_by_name=store_id_by_name, centri_tutti=_centri_tutti, put_object=put_object, get_object=get_object, delete_object=delete_object)
 api_router.include_router(estere_module.router)
 import banche as banche_module
-banche_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti)
+banche_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, wa_send=wa_send, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE)
 api_router.include_router(banche_module.router)
 import report_commercialista as report_comm_module
 report_comm_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, pdp_calcolo=contabilita_module._pdp_calcolo,
@@ -6538,7 +6538,24 @@ chiusura_module.setup(db=db, centri_tutti=_centri_tutti, wa_send=wa_send, store_
                       scadenze=lambda centro_id, anno, mese: scadenzario_module.scadenze_centro(centro_id, anno, mese))
 api_router.include_router(chiusura_module.router)
 import corrispettivi_ade as corrispettivi_ade_module
-corrispettivi_ade_module.setup(db=db, get_current_user=get_current_user)
+import da_sistemare as da_sistemare_module
+import automazioni_contabilita as automazioni_contabilita_module
+da_sistemare_module.setup(db=db, mese_dati=contabilita_module._mese_dati, user=contabilita_module._user, store_completo=contabilita_module._store_completo,
+                          centri_tutti=_centri_tutti, scadenze=lambda centro_id, anno, mese: scadenzario_module.scadenze_centro(centro_id, anno, mese))
+api_router.include_router(da_sistemare_module.router)
+automazioni_contabilita_module.setup(db=db, user=contabilita_module._user, store_completo=contabilita_module._store_completo, wa_send=wa_send)
+api_router.include_router(automazioni_contabilita_module.router)
+corrispettivi_ade_module.setup(db=db, get_current_user=get_current_user, problemi_negozio=da_sistemare_module.problemi_negozio, wa_send=wa_send)
+
+@api_router.post("/cron/promemoria-ade")
+async def cron_promemoria_ade(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(automazioni_contabilita_module.promemoria_ade_primo_mese)
+    return {"status": "accepted"}
 api_router.include_router(corrispettivi_ade_module.router)
 import pdp_analisi as pdp_analisi_module
 pdp_analisi_module.setup(db=db, get_current_user=get_current_user, centro=contabilita_module._centro, pdp_calcolo=contabilita_module._pdp_calcolo, fatturato_mese=contabilita_module._fatturato_mese)

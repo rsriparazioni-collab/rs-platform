@@ -16,6 +16,11 @@ export const CorrispettiviAde = ({ storeId, anno, mese, confronto, stores, reloa
     try {
       const r = await api.post("/contabilita/corrispettivi-ade/importa", fd, { params: { store_id: storeId }, headers: { "Content-Type": "multipart/form-data" } });
       toast.success(`${r.data.importate} chiusure importate${r.data.aggiornate ? `, ${r.data.aggiornate} aggiornate` : ""} (${r.data.giorni} giorni)`);
+      const c = r.data.controllo;
+      if (c) {
+        if (c.problemi) toast.warning(`Controllo automatico: ${c.problemi} cos${c.problemi === 1 ? "a" : "e"} da sistemare${c.avvisi_whatsapp ? ` · avviso WhatsApp inviato al negozio` : ""}. Vedi il riquadro "Cose da sistemare".`, { duration: 8000 });
+        else toast.success("Controllo automatico: nessuna differenza con l'Agenzia delle Entrate ✓");
+      }
       setDaAssegnare(r.data.matricole_da_assegnare || []); reload();
     } catch (e) { toast.error(apiError(e)); }
   };
