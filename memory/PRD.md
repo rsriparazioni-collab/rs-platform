@@ -812,3 +812,8 @@ Vedi /app/memory/test_credentials.md
 - Spese fisse mensili (automazioni_contabilita.py): CRUD /contabilita/spese-ricorrenti, generazione idempotente per mese (ricorrente_mese), badge "automatica".
 - Automazioni: import AdE → controllo differenze + WhatsApp al negozio (1/giorno); upload estratto banca → fatture abbinate/non trovate + WhatsApp amministrazione (1/giorno); cron 1° del mese 8:00 /cron/promemoria-ade (promemoria scarico AdE + genera ricorrenti).
 - Fix: riporto automatico mese dopo ora usa contanti normalizzati (incluse fatture in contanti) → Morbegno set 110,60 = riporto ott 110,60.
+
+## 2026-10-30 – Giorno chiuso, affitti fissi, riepilogo lunedì
+- "Negozio chiuso" nel dialog del giorno (POST/DELETE /contabilita/corrispettivi/{store}/{data}/chiuso, coll. giorni_chiusi): il giorno non compare tra le cose da sistemare né nella chiusura mese; domeniche già escluse.
+- Spese fisse seed all'avvio (idempotente): Affitto negozio Morbegno 700 €, Gravedona 600 € il 1° del mese (NB: sono spese di CASSA → riducono i contanti da versare; se l'affitto si paga in banca, sospenderle).
+- Cron lunedì 8:00 /cron/riepilogo-da-sistemare → WhatsApp amministrazione con conteggio per negozio (mese corrente + precedente).

@@ -5963,6 +5963,11 @@ async def _seed_indexes():
     async for d in db.switcho_messaggi.aggregate([{"$group": {"_id": "$id", "n": {"$sum": 1}, "ids": {"$push": "$_id"}}}, {"$match": {"n": {"$gt": 1}}}]):
         await db.switcho_messaggi.delete_many({"_id": {"$in": d["ids"][1:]}})
     await db.switcho_messaggi.create_index("id", unique=True)
+    await db.giorni_chiusi.create_index([("store_id", 1), ("data", 1)], unique=True)
+    try:
+        await automazioni_contabilita_module.seed_affitti()
+    except Exception as e:
+        logging.getLogger("seed").warning(f"seed affitti: {e}")
     await db.login_attempts.create_index("identifier")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.password_reset_tokens.create_index("token_hash")
@@ -6544,7 +6549,8 @@ da_sistemare_module.setup(db=db, mese_dati=contabilita_module._mese_dati, user=c
                           centri_tutti=_centri_tutti, scadenze=lambda centro_id, anno, mese: scadenzario_module.scadenze_centro(centro_id, anno, mese),
                           conti=banche_module.CONTI_DEFAULT, entita_centro=banche_module.ENTITA_CENTRO)
 api_router.include_router(da_sistemare_module.router)
-automazioni_contabilita_module.setup(db=db, user=contabilita_module._user, store_completo=contabilita_module._store_completo, wa_send=wa_send)
+automazioni_contabilita_module.setup(db=db, user=contabilita_module._user, store_completo=contabilita_module._store_completo, wa_send=wa_send,
+                                     problemi_negozio=da_sistemare_module.problemi_negozio, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE, stores_visibili=contabilita_module._stores_visibili)
 api_router.include_router(automazioni_contabilita_module.router)
 corrispettivi_ade_module.setup(db=db, get_current_user=get_current_user, problemi_negozio=da_sistemare_module.problemi_negozio, wa_send=wa_send)
 
@@ -6556,6 +6562,16 @@ async def cron_promemoria_ade(request: Request, background_tasks: BackgroundTask
     if not token or not secret or not hmac.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
     background_tasks.add_task(automazioni_contabilita_module.promemoria_ade_primo_mese)
+    return {"status": "accepted"}
+
+@api_router.post("/cron/riepilogo-da-sistemare")
+async def cron_riepilogo_da_sistemare(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(automazioni_contabilita_module.riepilogo_settimanale)
     return {"status": "accepted"}
 api_router.include_router(corrispettivi_ade_module.router)
 import pdp_analisi as pdp_analisi_module

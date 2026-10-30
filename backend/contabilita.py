@@ -245,11 +245,12 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     pref = f"{anno:04d}-{mese:02d}"
     giorni = {c["data"]: _norm(c) async for c in db.corrispettivi.find({"store_id": store_id, "data": {"$regex": f"^{pref}"}}, {"_id": 0})}
     spese = await db.spese_cassa.find({"store_id": store_id, "data": {"$regex": f"^{pref}"}}, {"_id": 0}).sort("data", 1).to_list(500)
+    chiusi = {c["data"]: c async for c in db.giorni_chiusi.find({"store_id": store_id, "data": {"$regex": f"^{pref}"}}, {"_id": 0})}
     n = monthrange(anno, mese)[1]
     righe = []
     for g in range(1, n + 1):
         d = f"{pref}-{g:02d}"
-        righe.append(giorni.get(d) or {"data": d, "vuoto": True})
+        righe.append(giorni.get(d) or ({"data": d, "vuoto": True, "chiuso": True, "chiuso_motivo": chiusi[d].get("motivo") or ""} if d in chiusi else {"data": d, "vuoto": True}))
     keys = ("riparazioni", "merce", "art74", "fatture", "scontrini", "totale", "contanti", "pos", "incassato", "versati", "non_riscosso", "fatture_pos", "fatture_contanti")
     tot = {k: round(sum(_f(c.get(k)) for c in giorni.values()), 2) for k in keys}
     tot["spese_contanti"] = round(sum(_f(s.get("importo")) for s in spese), 2)
@@ -333,6 +334,33 @@ async def avviso_quadratura(store_id: str, c: dict) -> None:
         logger.warning("Avviso quadratura %s non inviato: %s", s["nome"], e)
 
 
+class GiornoChiusoInput(BaseModel):
+    motivo: str = ""
+
+
+@router.post("/corrispettivi/{store_id}/{data}/chiuso")
+async def segna_giorno_chiuso(store_id: str, data: str, body: GiornoChiusoInput, request: Request):
+    """Giorno di chiusura (festività, ferie): niente corrispettivo atteso, non compare tra le cose da sistemare."""
+    user = await _user(request)
+    await _store_completo(user, store_id)
+    try:
+        date.fromisoformat(data)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data non valida")
+    if await _d["db"].corrispettivi.find_one({"store_id": store_id, "data": data}, {"_id": 0, "id": 1}):
+        raise HTTPException(status_code=400, detail="Questo giorno ha già un corrispettivo: eliminalo prima di segnarlo come chiuso")
+    await _d["db"].giorni_chiusi.update_one({"store_id": store_id, "data": data}, {"$set": {"motivo": body.motivo[:80], "da": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    return {"ok": True}
+
+
+@router.delete("/corrispettivi/{store_id}/{data}/chiuso")
+async def togli_giorno_chiuso(store_id: str, data: str, request: Request):
+    user = await _user(request)
+    await _store_completo(user, store_id)
+    await _d["db"].giorni_chiusi.delete_one({"store_id": store_id, "data": data})
+    return {"ok": True}
+
+
 @router.put("/corrispettivi/{store_id}/{data}")
 async def put_corrispettivo(store_id: str, data: str, body: CorrispettivoInput, request: Request):
     user = await _user(request)
@@ -341,6 +369,7 @@ async def put_corrispettivo(store_id: str, data: str, body: CorrispettivoInput, 
         date.fromisoformat(data)
     except ValueError:
         raise HTTPException(status_code=400, detail="Data non valida")
+    await _d["db"].giorni_chiusi.delete_one({"store_id": store_id, "data": data})
     raw = body.model_dump()
     raw["contanti_inseriti"], raw["pos_inseriti"] = raw.get("contanti") or 0, raw.get("pos") or 0
     doc = _norm(raw)

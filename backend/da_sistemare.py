@@ -38,7 +38,7 @@ async def problemi_negozio(store: dict, anno: int, mese: int, is_admin: bool) ->
     ade_giorni = {g["data"]: g for g in ade.get("giorni_diff") or []}
 
     # 1. giorni senza chiusura (non domenica, già passati)
-    mancanti = [r["data"] for r in dati["righe"] if r.get("vuoto") and int(r["data"][8:]) <= fine and date.fromisoformat(r["data"]).weekday() != 6]
+    mancanti = [r["data"] for r in dati["righe"] if r.get("vuoto") and not r.get("chiuso") and int(r["data"][8:]) <= fine and date.fromisoformat(r["data"]).weekday() != 6]
     for d in mancanti:
         a = ade_giorni.get(d) or {}
         if a.get("ade") is not None:

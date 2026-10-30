@@ -111,16 +111,64 @@ async def promemoria_ade_primo_mese() -> dict:
     if await db.scadenze_alert_log.find_one({"key": key}):
         return {"inviati": 0, "motivo": "già inviato", **ricorrenti}
     inviati = 0
-    async for cfg in db.contabilita_config.find({"wa_numero": {"$nin": ["", None]}}, {"_id": 0, "store_id": 1, "wa_numero": 1}):
-        store = await db.stores.find_one({"id": cfg["store_id"]}, {"_id": 0, "nome": 1})
-        if not store:
+    for store, cfg, completo in await _d["stores_visibili"]({"role": "admin", "store_ids": []}):
+        if not completo or not cfg.get("wa_numero"):
             continue
         testo = (f"📥 *Corrispettivi {MESI[mese]} – {store['nome']}*\nÈ il momento di scaricare dal portale Agenzia delle Entrate (Fatture e Corrispettivi → Consultazione → Corrispettivi) il file del mese di {MESI[mese]} "
                  f"e caricarlo nel gestionale: Contabilità → Cassa & Corrispettivi → Confronto AdE.\nIl gestionale controlla da solo giorno per giorno e ti dice se c'è qualcosa da sistemare.")
         try:
-            await _d["wa_send"](cfg["wa_numero"], testo, session=cfg["store_id"], tipo="promemoria_ade")
+            await _d["wa_send"](cfg["wa_numero"], testo, session=store["id"], tipo="promemoria_ade")
             inviati += 1
         except Exception as e:
             logger.warning(f"promemoria AdE {cfg['store_id']}: {e}")
     await db.scadenze_alert_log.insert_one({"key": key, "at": datetime.now(timezone.utc).isoformat(), "n": inviati})
     return {"inviati": inviati, **ricorrenti}
+
+
+AFFITTI_DEFAULT = [("Morbegno", 700.0), ("Gravedona", 600.0)]
+
+
+async def seed_affitti() -> int:
+    """All'avvio (idempotente): spesa fissa 'Affitto negozio' per Morbegno 700 € e Gravedona 600 €, se non esiste già."""
+    db = _d["db"]
+    creati = 0
+    for nome, importo in AFFITTI_DEFAULT:
+        store = await db.stores.find_one({"nome": nome}, {"_id": 0, "id": 1})
+        if not store or await db.spese_ricorrenti.find_one({"store_id": store["id"], "motivo": {"$regex": "^affitto", "$options": "i"}}, {"_id": 0, "id": 1}):
+            continue
+        await db.spese_ricorrenti.insert_one({"id": str(uuid.uuid4()), "store_id": store["id"], "motivo": "Affitto negozio", "importo": importo, "giorno": 1, "riferimento": "", "attiva": True,
+                                              "created_at": datetime.now(timezone.utc).isoformat(), "created_by": "impostazione iniziale"})
+        creati += 1
+    if creati:
+        await genera_mese(date.today().year, date.today().month)
+    return creati
+
+
+async def riepilogo_settimanale() -> dict:
+    """Cron del lunedì 8:00: WhatsApp all'amministrazione con il numero di cose da sistemare per negozio (mese corrente + mese precedente)."""
+    db = _d["db"]
+    oggi = date.today()
+    key = f"riepilogo-da-sistemare-{oggi.isoformat()}"
+    if await db.scadenze_alert_log.find_one({"key": key}):
+        return {"inviato": False, "motivo": "già inviato"}
+    prev = (oggi.year, oggi.month - 1) if oggi.month > 1 else (oggi.year - 1, 12)
+    righe, tot = [], 0
+    for store, cfg, completo in await _d["stores_visibili"]({"role": "admin", "store_ids": []}):
+        if not completo:
+            continue
+        try:
+            cur = await _d["problemi_negozio"](store, oggi.year, oggi.month, True)
+            pre = await _d["problemi_negozio"](store, prev[0], prev[1], True)
+        except Exception as e:
+            logger.warning(f"riepilogo {store['nome']}: {e}")
+            continue
+        urg = sum(1 for p in cur + pre if p["livello"] == "alto")
+        n = len(cur) + len(pre)
+        tot += n
+        righe.append(f"• *{store['nome']}*: {n} da sistemare" + (f" ({urg} urgent{'e' if urg == 1 else 'i'})" if urg else "") + (f" — {MESI[oggi.month]} {len(cur)}, {MESI[prev[1]]} {len(pre)}" if n else " ✓"))
+    if not righe:
+        return {"inviato": False, "motivo": "nessun negozio"}
+    testo = f"📋 *Contabilità – cose da sistemare* (lunedì {oggi.strftime('%d/%m')})\n" + "\n".join(righe) + ("\n\nTutto in ordine 👍" if not tot else "\n\nApri Contabilità → Cassa & Corrispettivi: il riquadro in alto ti guida voce per voce.")
+    await _d["wa_send"](_d["numero_amministrazione"], testo, session=await _d["store_id_by_name"]("Sondrio") or "default", tipo="riepilogo_da_sistemare")
+    await db.scadenze_alert_log.insert_one({"key": key, "at": datetime.now(timezone.utc).isoformat(), "n": tot})
+    return {"inviato": True, "negozi": len(righe), "totale": tot}

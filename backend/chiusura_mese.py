@@ -42,6 +42,8 @@ async def calcola(entita: str, anno: int, mese: int) -> dict:
     presenti = set()
     async for c in db.corrispettivi.find({"store_id": {"$in": centro["store_ids"]}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "store_id": 1}):
         presenti.add((c["store_id"], c["data"]))
+    async for c in db.giorni_chiusi.find({"store_id": {"$in": centro["store_ids"]}, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "data": 1, "store_id": 1}):
+        presenti.add((c["store_id"], c["data"]))
     mancanti = []
     for sid, nome in stores.items():
         for g in range(1, fine + 1):
