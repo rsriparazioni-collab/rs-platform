@@ -81,14 +81,30 @@ export default function Magazzino() {
     }
   };
 
+  const puoMuovere = (m) => canSeeAll || (user.store_ids || []).includes(m.store_id);
+
   const movimento = async (m, delta) => {
+    if (!puoMuovere(m)) { toast.error(`Articolo del negozio ${m.store_name || "di un altro negozio"}: puoi modificare solo il tuo magazzino`); return; }
     try {
       const r = await api.post(`/magazzino/${m.id}/movimento`, { delta, motivo: delta > 0 ? "carico" : "scarico manuale" });
       if (r.data.riparazioni_sbloccate?.length) toast.success(`Arrivo registrato: riparazioni ${r.data.riparazioni_sbloccate.join(", ")} passate in lavorazione`);
+      else toast.success(`${delta > 0 ? "Caricati" : "Scaricati"} ${Math.abs(delta)} pz · giacenza ${r.data.quantita ?? ""} pz`);
       load(); setDaOrdinareKey((k) => k + 1);
     } catch (e) {
       toast.error(apiError(e));
     }
+  };
+
+  const [mov, setMov] = useState(null);
+  const [movQta, setMovQta] = useState("1");
+  const apriMov = (m, segno) => { setMov({ item: m, segno }); setMovQta("1"); };
+  const confermaMov = async (e) => {
+    e.preventDefault();
+    const n = parseInt(movQta, 10);
+    if (!n || n < 1) { toast.error("Inserisci una quantità valida"); return; }
+    if (mov.segno < 0 && n > (mov.item.quantita || 0) && !mov.item.in_ordine) { toast.error(`In giacenza ci sono solo ${mov.item.quantita || 0} pz`); return; }
+    await movimento(mov.item, mov.segno * n);
+    setMov(null);
   };
 
   const [vendita, setVendita] = useState(null);
@@ -231,10 +247,10 @@ export default function Magazzino() {
                           <BadgeEuro className="h-3.5 w-3.5" /> Venduto
                         </Button>
                       )}
-                      <Button variant="ghost" size="icon" title="Scarica 1 pz" onClick={() => movimento(m, -1)} data-testid={`magazzino-meno-${i}`}>
+                      <Button variant="ghost" size="icon" title="Scarica pezzi" disabled={!puoMuovere(m) || (!(m.quantita > 0) && !m.in_ordine)} onClick={() => apriMov(m, -1)} data-testid={`magazzino-meno-${i}`}>
                         <Minus className="h-4 w-4 text-rose-500" />
                       </Button>
-                      <Button variant="ghost" size="icon" title="Carica 1 pz" onClick={() => movimento(m, 1)} data-testid={`magazzino-piu-${i}`}>
+                      <Button variant="ghost" size="icon" title="Carica pezzi" disabled={!puoMuovere(m)} onClick={() => apriMov(m, 1)} data-testid={`magazzino-piu-${i}`}>
                         <PlusCircle className="h-4 w-4 text-emerald-600" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(m)} data-testid={`magazzino-edit-${i}`}>
@@ -283,6 +299,30 @@ export default function Magazzino() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!mov} onOpenChange={(o) => !o && setMov(null)}>
+        <DialogContent className="max-w-sm" data-testid="magazzino-mov-dialog">
+          <DialogHeader><DialogTitle className="font-heading text-xl">{mov?.segno > 0 ? "Carica pezzi" : "Scarica pezzi"}</DialogTitle></DialogHeader>
+          {mov && (
+            <form onSubmit={confermaMov} className="space-y-4">
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                <p className="font-medium text-slate-900">{mov.item.nome}</p>
+                <p className="text-xs text-slate-500">Giacenza attuale: {mov.item.quantita || 0} pz{mov.item.store_name ? ` · ${mov.item.store_name}` : ""}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Quanti pezzi {mov.segno > 0 ? "aggiungere" : "togliere"}?</Label>
+                <Input required type="number" min="1" step="1" autoFocus value={movQta} onChange={(e) => setMovQta(e.target.value)} data-testid="magazzino-mov-qta" />
+                <p className="text-xs text-slate-500">Nuova giacenza: {Math.max(0, (mov.item.quantita || 0) + mov.segno * (parseInt(movQta, 10) || 0))} pz</p>
+              </div>
+              <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
+                <Button type="button" variant="outline" onClick={() => setMov(null)} data-testid="magazzino-mov-cancel">Annulla</Button>
+                <Button type="submit" className={mov.segno > 0 ? "bg-emerald-700 hover:bg-emerald-800" : "bg-rose-700 hover:bg-rose-800"} data-testid="magazzino-mov-submit">{mov.segno > 0 ? "Carica" : "Scarica"}</Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
 
       <Dialog open={formOpen} onOpenChange={(o) => !o && setFormOpen(false)}>
         <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto" data-testid="magazzino-form-dialog">
