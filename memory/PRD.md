@@ -853,3 +853,7 @@ Vedi /app/memory/test_credentials.md
 - Periodi di inattività del file AdE → giorni_chiusi automatici "inattività registratore (AdE)" (se nessun corrispettivo, domeniche escluse); risposta import giorni_chiusi_auto.
 - Test con file reale + inserimenti 5/10 (670+50 ric.), 29/10 (235,40): entrambi ✓; 4 giorni inattività chiusi.
 - NB produzione: i giorni a doppia chiusura (5,12,14,21,28/10) hanno in DB la riga a 0 (sovrascritta dal vecchio import) → serve ricaricare il file una volta dopo il deploy.
+
+## 2026-10-30 – RCA produzione Sondrio ottobre (deployer, sola lettura)
+- Build nuovo ONLINE, migrazione già applicata: totale = imp+imposta ovunque, matricola senza apici, 1 riga/giorno. I rossi residui sono: (A) 5/12/14/21/28-10 con riga AdE a 0 salvata dal vecchio import (il valore vero non è recuperabile dal DB → serve ricaricare il file); (B) 15/17/26-10 la differenza era esattamente art74 ⇒ le ricariche PASSANO dal registratore → ripristinato confronto su riparazioni+merce+art74 (annullata l'esclusione art74). 29/10 → annullo 18,20 tollerato.
+- rt_matricole non aveva Sondrio: ora l'import con negozio scelto salva da solo la matricola→negozio.

@@ -200,6 +200,10 @@ async def importa(request: Request, file: UploadFile = File(...), store_id: Opti
     senza_negozio: set = set()
     for r in righe:
         sid = mappa.get(r["matricola"]) or (store_id if (store_id and not r["matricola"]) else "") or (store_id or "")
+        if sid and r["matricola"] and r["matricola"] not in mappa and store_id:
+            # il file è stato caricato scegliendo il negozio: ricordiamo la matricola, così il prossimo import va da solo
+            await db.rt_matricole.update_one({"matricola": r["matricola"]}, {"$set": {"store_id": sid, "updated_at": now, "da": user.get("name", "")}}, upsert=True)
+            mappa[r["matricola"]] = sid
         if not sid:
             senza_negozio.add(r["matricola"] or "(senza matricola)")
         key = {"matricola": r["matricola"], "data": r["data"]}
@@ -296,8 +300,8 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
             r["ade_totale"] = a
             if annulli.get(r["data"]):
                 r["ade_annulli"] = annulli[r["data"]]
-        # confronto con l'AdE: solo riparazioni + merce (le ricariche art. 74 non passano dal registratore telematico)
-        sc = 0.0 if r.get("vuoto") else round(_num(r.get("riparazioni")) + _num(r.get("merce")), 2)
+        # confronto con l'AdE: scontrini = riparazioni + merce + art. 74 (le ricariche passano dal registratore)
+        sc = 0.0 if r.get("vuoto") else round(_num(r.get("riparazioni")) + _num(r.get("merce")) + _num(r.get("art74")), 2)
         if not r.get("vuoto"):
             tot_man += sc
         if a is not None or not r.get("vuoto"):
