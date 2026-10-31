@@ -82,7 +82,7 @@ export const CorrispettiviAde = ({ storeId, anno, mese, confronto, stores, reloa
             )}
             {c.tot_annulli > 0 && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs" data-testid="ade-annulli">
-                <p className="font-medium text-slate-700">Scontrini annullati nel mese: {eur(c.tot_annulli)} <span className="font-normal text-slate-500">(ammontare vendite − imponibile+imposta: già esclusi dal confronto)</span></p>
+                <p className="font-medium text-slate-700">Scontrini annullati/resi nel mese: {eur(c.tot_annulli)} <span className="font-normal text-slate-500">(netto IVA: ammontare vendite − imponibile; già esclusi dal confronto)</span></p>
                 <p className="mt-1 text-slate-500">{c.giorni_annulli.map((g) => `${g.data.slice(8)}/${g.data.slice(5, 7)} ${eur(g.annulli)}`).join(" · ")}</p>
               </div>
             )}

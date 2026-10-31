@@ -63,7 +63,7 @@ def _parse_tabella(filename: str, content: bytes) -> list:
         imp, iva, amm = _num(get("imponibile")), _num(get("imposta")), _num(get("ammontare"))
         # totale giornata = imponibile vendite + imposta vendite ("Ammontare delle vendite" include anche gli scontrini annullati: solo informativo)
         tot = round(imp + iva, 2) if ("imponibile" in m or "imposta" in m) else (_num(get("totale")) if "totale" in m else round(amm, 2))
-        out.append({"matricola": str(get("matricola") or "").strip()[:40], "data": data, "imponibile": round(imp, 2), "imposta": round(iva, 2), "ammontare": round(amm, 2), "totale": tot})
+        out.append({"matricola": str(get("matricola") or "").strip().strip("'\"").strip()[:40], "data": data, "imponibile": round(imp, 2), "imposta": round(iva, 2), "ammontare": round(amm, 2), "totale": tot})
     return out
 
 
@@ -255,9 +255,9 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
         dt["imposta"] = round(dt["imposta"] + _num(r.get("imposta")), 2)
         dt["chiusure"] += 1
         dt["matricole"].add(r.get("matricola") or "")
-        # scontrini annullati = ammontare delle vendite − (imponibile + imposta)
+        # scontrini annullati/resi (netto IVA) = ammontare delle vendite − imponibile (es. 29/10: 209,18 − 194,26 = 14,92 → 18,20 lordo)
         if r.get("ammontare"):
-            annulli[r["data"]] = round(annulli.get(r["data"], 0.0) + max(0.0, r["ammontare"] - r["totale"]), 2)
+            annulli[r["data"]] = round(annulli.get(r["data"], 0.0) + max(0.0, r["ammontare"] - _num(r.get("imponibile"))), 2)
     tot_ade = round(sum(ade.values()), 2)
     tot_annulli = round(sum(annulli.values()), 2)
     ade_min, ade_max = (min(ade), max(ade)) if ade else ("", "")
@@ -307,6 +307,11 @@ async def ricalcola_totali_importati() -> int:
             if not r.get("ammontare") and _num(r.get("totale")) > giusto:
                 upd["ammontare"] = _num(r.get("totale"))
             await db.corrispettivi_ade.update_one({"id": r["id"]}, {"$set": upd})
+            n += 1
+    # matricole salvate con gli apici del CSV AdE ('1BENI099492') → senza apici, così corrispondono ai negozi assegnati
+    for coll in (db.corrispettivi_ade, db.rt_matricole):
+        async for r in coll.find({"matricola": {"$regex": "^['\"]|['\"]$"}}, {"_id": 1, "matricola": 1}):
+            await coll.update_one({"_id": r["_id"]}, {"$set": {"matricola": r["matricola"].strip().strip("'\"").strip()}})
             n += 1
     # doppie chiusure già salvate (stesso negozio/giorno, una a 0): si tiene solo quella col totale
     tolte = 0

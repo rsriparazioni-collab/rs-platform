@@ -840,3 +840,9 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-30 – Telefonia: avviso scadenza a 7 giorni
 - VINCOLO_PREAVVISO_GIORNI 30 → 7 (server.py): WhatsApp scadenza vincolo / offerta annuale parte 7 giorni prima; testo in Telefonia.jsx aggiornato. Il preavviso energia (60 gg) non cambia.
+
+## 2026-10-30 – Verifica su file AdE reale Sondrio (corr so (1).csv)
+- Struttura: 'Id invio';'Matricola' (con apici);Data rilevazione;Data trasmissione;Ammontare delle vendite (totale in euro);Imponibile vendite (totale in euro);Imposta vendite (totale in euro);inattività da/a.
+- CAUSA dei falsi errori: l'alias "totale" agganciava la colonna "Ammontare … (totale in euro)" → totale = ammontare (es. 1/10 81,97 invece di 100). Ora totale = imponibile + imposta (tutti i 23 giorni corretti: 1/10=100, 5/10=670, 12/10=95, 28/10=420, 29/10=217,20).
+- Righe a 0 (inattività / doppie chiusure, 22/10 tre righe) unificate. Matricola salvata senza apici (migrazione anche su rt_matricole).
+- Annulli (netto) = ammontare − imponibile: 29/10 → 14,92 (= 18,20 lordo).
