@@ -837,3 +837,6 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-30 – Doppie chiusure AdE (5/10, 12/10)
 - Import: _unisci_doppie_chiusure → per (matricola, data) si tiene solo la riga col totale (quella a 0 è una doppia chiusura). Risposta import: doppie_chiusure_unificate.
 - Startup: ricalcola_totali_importati rimuove anche le righe a 0 già salvate quando esiste una riga col totale per lo stesso negozio/giorno.
+
+## 2026-10-30 – Telefonia: avviso scadenza a 7 giorni
+- VINCOLO_PREAVVISO_GIORNI 30 → 7 (server.py): WhatsApp scadenza vincolo / offerta annuale parte 7 giorni prima; testo in Telefonia.jsx aggiornato. Il preavviso energia (60 gg) non cambia.

@@ -150,7 +150,7 @@ export default function Telefonia() {
 
       {tab === "vincoli" && (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="vincoli-table">
-          <p className="border-b border-slate-200 px-4 py-3 text-xs text-slate-500">30 giorni prima della scadenza (vincolo, oppure anniversario annuale se vincolo 0) il cliente riceve automaticamente un WhatsApp con l'invito a passare in negozio. In evidenza quelli entro 60 giorni o già scaduti.</p>
+          <p className="border-b border-slate-200 px-4 py-3 text-xs text-slate-500">7 giorni prima della scadenza (vincolo, oppure anniversario annuale se vincolo 0) il cliente riceve automaticamente un WhatsApp con l'invito a passare in negozio. In evidenza quelli entro 60 giorni o già scaduti.</p>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">

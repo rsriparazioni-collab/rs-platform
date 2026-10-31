@@ -5381,7 +5381,7 @@ async def invia_promemoria_ritiro() -> dict:
         await db.cron_log.insert_one({"job": "promemoria-ritiro", "at": datetime.now(timezone.utc).isoformat(), "report": report})
     return {"report": report}
 
-VINCOLO_PREAVVISO_GIORNI = 30
+VINCOLO_PREAVVISO_GIORNI = 7  # telefonia: avviso al cliente 7 giorni prima della scadenza
 
 async def invia_avvisi_vincolo() -> dict:
     svcs = await db.servizi.find({"tipo": {"$in": ["sim", "internet", "fisso"]}, "data_attivazione": {"$nin": [None, ""]}},
