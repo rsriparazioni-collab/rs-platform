@@ -15,7 +15,7 @@ export const CorrispettiviAde = ({ storeId, anno, mese, confronto, stores, reloa
     const fd = new FormData(); fd.append("file", file);
     try {
       const r = await api.post("/contabilita/corrispettivi-ade/importa", fd, { params: { store_id: storeId }, headers: { "Content-Type": "multipart/form-data" } });
-      toast.success(`${r.data.importate} chiusure importate${r.data.aggiornate ? `, ${r.data.aggiornate} aggiornate` : ""} (${r.data.giorni} giorni)${r.data.doppie_chiusure_unificate ? ` · ${r.data.doppie_chiusure_unificate} doppie chiusure unificate (tenuta quella col totale)` : ""}`);
+      toast.success(`${r.data.importate} chiusure importate${r.data.aggiornate ? `, ${r.data.aggiornate} aggiornate` : ""} (${r.data.giorni} giorni)${r.data.doppie_chiusure_unificate ? ` · ${r.data.doppie_chiusure_unificate} doppie chiusure unificate (tenuta quella col totale)` : ""}${r.data.giorni_chiusi_auto ? ` · ${r.data.giorni_chiusi_auto} giorni di inattività segnati "negozio chiuso"` : ""}`);
       const c = r.data.controllo;
       if (c) {
         if (c.problemi) toast.warning(`Controllo automatico: ${c.problemi} cos${c.problemi === 1 ? "a" : "e"} da sistemare${c.avvisi_whatsapp ? ` · avviso WhatsApp inviato al negozio` : ""}. Vedi il riquadro "Cose da sistemare".`, { duration: 8000 });
@@ -74,7 +74,7 @@ export const CorrispettiviAde = ({ storeId, anno, mese, confronto, stores, reloa
                 {c.giorni_diff.map((g) => (
                   <li key={g.data} className="flex items-center justify-between px-3 py-1.5">
                     <span className="font-medium">{g.data.slice(8)}/{g.data.slice(5, 7)}</span>
-                    <span className="text-slate-600">inserito {eur(g.scontrini)} · AdE {g.ade == null ? "—" : eur(g.ade)}{g.ade != null && (g.imponibile || g.imposta) ? <span className="ml-1 text-slate-400" data-testid={`ade-dettaglio-${g.data}`}>(imponibile {eur(g.imponibile)} + imposta {eur(g.imposta)}{g.chiusure > 1 ? ` · ${g.chiusure} chiusure${g.matricole?.length > 1 ? ` da ${g.matricole.length} registratori` : ""}` : ""})</span> : null}{g.annulli > 0 && <span className="ml-1 text-slate-400" data-testid={`ade-annulli-${g.data}`}>· annullati {eur(g.annulli)}</span>}</span>
+                    <span className="text-slate-600">inserito {eur(g.scontrini)}{g.art74 > 0 && <span className="text-slate-400"> (+ ricariche {eur(g.art74)} non in AdE)</span>} · AdE {g.ade == null ? "—" : eur(g.ade)}{g.ade != null && (g.imponibile || g.imposta) ? <span className="ml-1 text-slate-400" data-testid={`ade-dettaglio-${g.data}`}>(imponibile {eur(g.imponibile)} + imposta {eur(g.imposta)}{g.chiusure > 1 ? ` · ${g.chiusure} chiusure${g.matricole?.length > 1 ? ` da ${g.matricole.length} registratori` : ""}` : ""})</span> : null}{g.annulli > 0 && <span className="ml-1 text-slate-400" data-testid={`ade-annulli-${g.data}`}>· annullati {eur(g.annulli)}</span>}</span>
                     <span className={`font-semibold tabular-nums ${g.diff == null ? "text-amber-700" : "text-rose-700"}`}>{g.diff == null ? "manca chiusura AdE" : `${g.diff > 0 ? "+" : ""}${eur(g.diff)}`}</span>
                   </li>
                 ))}

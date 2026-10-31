@@ -4,7 +4,7 @@ import logging
 import uuid
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
@@ -25,6 +25,8 @@ KEYS = {
     # AdE: "Ammontare delle vendite" comprende anche gli scontrini annullati → solo informativo, NON è il totale
     "ammontare": ("ammontare delle vendite", "ammontare vendite", "ammontare"),
     "totale": ("totale corrispettivi", "totale corrispettivo", "importo totale", "totale"),
+    "inatt_da": ("periodo di inattivita' da", "periodo di inattività da", "inattivita' da", "inattività da"),
+    "inatt_a": ("periodo di inattivita' a", "periodo di inattività a", "inattivita' a", "inattività a"),
 }
 
 
@@ -63,7 +65,8 @@ def _parse_tabella(filename: str, content: bytes) -> list:
         imp, iva, amm = _num(get("imponibile")), _num(get("imposta")), _num(get("ammontare"))
         # totale giornata = imponibile vendite + imposta vendite ("Ammontare delle vendite" include anche gli scontrini annullati: solo informativo)
         tot = round(imp + iva, 2) if ("imponibile" in m or "imposta" in m) else (_num(get("totale")) if "totale" in m else round(amm, 2))
-        out.append({"matricola": str(get("matricola") or "").strip().strip("'\"").strip()[:40], "data": data, "imponibile": round(imp, 2), "imposta": round(iva, 2), "ammontare": round(amm, 2), "totale": tot})
+        out.append({"matricola": str(get("matricola") or "").strip().strip("'\"").strip()[:40], "data": data, "imponibile": round(imp, 2), "imposta": round(iva, 2), "ammontare": round(amm, 2), "totale": tot,
+                    "inatt_da": _data(get("inatt_da")) if "inatt_da" in m else None, "inatt_a": _data(get("inatt_a")) if "inatt_a" in m else None})
     return out
 
 
@@ -113,14 +116,22 @@ def parse_corrispettivi(filename: str, content: bytes) -> list:
 def _unisci_doppie_chiusure(righe: list) -> list:
     """Doppia chiusura dello stesso registratore nello stesso giorno (una a 0 e una col totale, o un rinvio): vale UNA sola riga, quella col totale."""
     best: dict = {}
+    inattivita: dict = {}
     for r in righe:
+        if r.get("inatt_da") and r.get("inatt_a"):
+            inattivita.setdefault(r["matricola"], set()).add((r["inatt_da"], r["inatt_a"]))
         k = (r["matricola"], r["data"])
         cur = best.get(k)
         if cur is None or r["totale"] > cur["totale"] or (r["totale"] == cur["totale"] and r.get("ammontare", 0) > cur.get("ammontare", 0)):
             best[k] = {**r, "chiusure_nel_file": (cur or {}).get("chiusure_nel_file", 0) + 1}
         else:
             cur["chiusure_nel_file"] = cur.get("chiusure_nel_file", 1) + 1
-    return sorted(best.values(), key=lambda x: (x["data"], x["matricola"]))
+    out = sorted(best.values(), key=lambda x: (x["data"], x["matricola"]))
+    for r in out:
+        r.pop("inatt_da", None)
+        r.pop("inatt_a", None)
+        r["inattivita"] = sorted(inattivita.get(r["matricola"], set()))
+    return out
 
 
 def _parse_grezzo(filename: str, content: bytes) -> list:
@@ -200,10 +211,26 @@ async def importa(request: Request, file: UploadFile = File(...), store_id: Opti
             await db.corrispettivi_ade.insert_one({**r, "id": str(uuid.uuid4()), "store_id": sid or "", "created_at": now, "created_by": user.get("name", "")})
             importate += 1
     negozi_toccati = sorted({mappa.get(r["matricola"], "") for r in righe} - {""}) or ([store_id] if store_id else [])
+    # giorni di inattività dichiarati dal registratore → "negozio chiuso" automatico (solo se non c'è un corrispettivo inserito)
+    chiusi = 0
+    visti: set = set()
+    for r in righe:
+        sid = mappa.get(r["matricola"]) or store_id or ""
+        for da, a in r.get("inattivita") or []:
+            if not sid or (sid, da, a) in visti:
+                continue
+            visti.add((sid, da, a))
+            g = date.fromisoformat(da)
+            while g <= date.fromisoformat(a):
+                d = g.isoformat()
+                if g.weekday() != 6 and not await db.corrispettivi.find_one({"store_id": sid, "data": d}, {"_id": 0, "id": 1}):
+                    res = await db.giorni_chiusi.update_one({"store_id": sid, "data": d}, {"$setOnInsert": {"motivo": "inattività registratore (AdE)", "da": "automatico", "at": now}}, upsert=True)
+                    chiusi += 1 if res.upserted_id else 0
+                g += timedelta(days=1)
     mesi = sorted({(int(r["data"][:4]), int(r["data"][5:7])) for r in righe})
     controllo = await _avvisa_differenze(negozi_toccati, mesi)
     doppie = sum(1 for r in righe if r.get("chiusure_nel_file", 1) > 1)
-    return {"importate": importate, "aggiornate": aggiornate, "doppie_chiusure_unificate": doppie, "matricole_da_assegnare": sorted(senza_negozio), "giorni": len({r["data"] for r in righe}),
+    return {"importate": importate, "aggiornate": aggiornate, "doppie_chiusure_unificate": doppie, "giorni_chiusi_auto": chiusi, "matricole_da_assegnare": sorted(senza_negozio), "giorni": len({r["data"] for r in righe}),
             "giorni_caricati": sorted({r["data"] for r in righe}), "negozi": negozi_toccati, "controllo": controllo}
 
 
@@ -269,15 +296,21 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
             r["ade_totale"] = a
             if annulli.get(r["data"]):
                 r["ade_annulli"] = annulli[r["data"]]
-        sc = 0.0 if r.get("vuoto") else round(_num(r.get("riparazioni")) + _num(r.get("merce")) + _num(r.get("art74")), 2)
+        # confronto con l'AdE: solo riparazioni + merce (le ricariche art. 74 non passano dal registratore telematico)
+        sc = 0.0 if r.get("vuoto") else round(_num(r.get("riparazioni")) + _num(r.get("merce")), 2)
         if not r.get("vuoto"):
             tot_man += sc
         if a is not None or not r.get("vuoto"):
             d = round(sc - (a or 0.0), 2) if a is not None else None
+            # scontrino annullato: l'RT lo conta nell'ammontare, l'AdE no → se la differenza è proprio l'annullo (lordo 22 %) non è un errore
+            ann_lordo = round(annulli.get(r["data"], 0.0) * 1.22, 2)
+            if d is not None and ann_lordo and abs(d - ann_lordo) < 0.05:
+                r["ade_annullo_spiega"] = ann_lordo
+                d = 0.0
             r["ade_diff"] = d
             if d is not None and abs(d) >= 0.01:
                 dt = dettaglio.get(r["data"]) or {}
-                diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": a, "diff": d, "annulli": annulli.get(r["data"], 0.0), "imponibile": dt.get("imponibile", 0.0), "imposta": dt.get("imposta", 0.0),
+                diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": a, "diff": d, "annulli": annulli.get(r["data"], 0.0), "art74": _num(r.get("art74")), "imponibile": dt.get("imponibile", 0.0), "imposta": dt.get("imposta", 0.0),
                                     "chiusure": dt.get("chiusure", 0), "matricole": sorted(dt.get("matricole") or [])})
             elif a is None and not r.get("vuoto") and ade and ade_min <= r["data"] <= ade_max:
                 diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": None, "diff": None})

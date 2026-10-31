@@ -846,3 +846,10 @@ Vedi /app/memory/test_credentials.md
 - CAUSA dei falsi errori: l'alias "totale" agganciava la colonna "Ammontare … (totale in euro)" → totale = ammontare (es. 1/10 81,97 invece di 100). Ora totale = imponibile + imposta (tutti i 23 giorni corretti: 1/10=100, 5/10=670, 12/10=95, 28/10=420, 29/10=217,20).
 - Righe a 0 (inattività / doppie chiusure, 22/10 tre righe) unificate. Matricola salvata senza apici (migrazione anche su rt_matricole).
 - Annulli (netto) = ammontare − imponibile: 29/10 → 14,92 (= 18,20 lordo).
+
+## 2026-10-30 – Confronto AdE senza falsi rossi + inattività automatica
+- Confronto AdE = riparazioni + merce (art. 74 ricariche escluse: non passano dall'RT); tooltip e lista differenze mostrano "+ ricariche X non in AdE".
+- Scontrino annullato: se differenza == annulli netto × 1,22 (±0,05) → ✓ "(annullo 18,20)" (campo ade_annullo_spiega), non rosso.
+- Periodi di inattività del file AdE → giorni_chiusi automatici "inattività registratore (AdE)" (se nessun corrispettivo, domeniche escluse); risposta import giorni_chiusi_auto.
+- Test con file reale + inserimenti 5/10 (670+50 ric.), 29/10 (235,40): entrambi ✓; 4 giorni inattività chiusi.
+- NB produzione: i giorni a doppia chiusura (5,12,14,21,28/10) hanno in DB la riga a 0 (sovrascritta dal vecchio import) → serve ricaricare il file una volta dopo il deploy.
