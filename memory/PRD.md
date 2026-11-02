@@ -866,3 +866,6 @@ Vedi /app/memory/test_credentials.md
 - Causa: il riporto automatico non veniva salvato, quindi il mese successivo leggeva solo contanti−spese−versati del mese prima (senza il SUO riporto) e i mesi vuoti azzeravano tutto.
 - Fix: _riporto_mese(store, anno, mese) ricorsivo = da_versare del mese precedente; riporto manuale/foglio vince; mesi vuoti lasciano passare; stop solo se non c'è mai stato nulla (corrispettivi, riporti, spese). Ammanco (negativo) non si riporta (0).
 - Verificato: Gravedona ago→dic catena corretta; Morbegno set 833 manuale → ott 110,60 → nov 5970,50; Sondrio 8,90 passa su nov/dic.
+
+## 2026-10-30 – Ricariche su scontrino con IVA 0 (confermato utente)
+- Confronto AdE resta sul totale (rip+merce+art74 vs imponibile+imposta). Nella lista differenze aggiunto lo spacchettamento: 'con IVA' (imposta/0,22×1,22) vs rip+merce, 'esenti/ricariche' vs art74, con la parte sbagliata in rosso. Settembre Morbegno: 04 → rip+merce 360 vs 280; 09 → ricariche 95 vs 70; 17 → 69 vs 60.

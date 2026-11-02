@@ -316,7 +316,9 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
             r["ade_diff"] = d
             if d is not None and abs(d) >= 0.10:  # sotto i 10 centesimi è solo arrotondamento AdE (imponibile+imposta per aliquota)
                 dt = dettaglio.get(r["data"]) or {}
-                diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": a, "diff": d, "annulli": annulli.get(r["data"], 0.0), "art74": _num(r.get("art74")), "imponibile": dt.get("imponibile", 0.0), "imposta": dt.get("imposta", 0.0),
+                ade22 = round(dt.get("imposta", 0.0) / 0.22 * 1.22, 2) if dt.get("imposta") else 0.0
+                diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": a, "diff": d, "annulli": annulli.get(r["data"], 0.0), "art74": _num(r.get("art74")), "rip_merce": round(_num(r.get("riparazioni")) + _num(r.get("merce")), 2),
+                                    "ade_22": ade22, "ade_esenti": round((a or 0.0) - ade22, 2), "imponibile": dt.get("imponibile", 0.0), "imposta": dt.get("imposta", 0.0),
                                     "chiusure": dt.get("chiusure", 0), "matricole": sorted(dt.get("matricole") or [])})
             elif a is None and not r.get("vuoto") and ade and ade_min <= r["data"] <= ade_max:
                 diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": None, "diff": None})
