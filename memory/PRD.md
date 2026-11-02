@@ -857,3 +857,7 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-30 – RCA produzione Sondrio ottobre (deployer, sola lettura)
 - Build nuovo ONLINE, migrazione già applicata: totale = imp+imposta ovunque, matricola senza apici, 1 riga/giorno. I rossi residui sono: (A) 5/12/14/21/28-10 con riga AdE a 0 salvata dal vecchio import (il valore vero non è recuperabile dal DB → serve ricaricare il file); (B) 15/17/26-10 la differenza era esattamente art74 ⇒ le ricariche PASSANO dal registratore → ripristinato confronto su riparazioni+merce+art74 (annullata l'esclusione art74). 29/10 → annullo 18,20 tollerato.
 - rt_matricole non aveva Sondrio: ora l'import con negozio scelto salva da solo la matricola→negozio.
+
+## 2026-10-30 – KPI voci dinamiche + tolleranza AdE
+- KPI: voci_tutte() = voci fisse + "Lavorazioni per <negozio>" per ogni negozio (auto, escl. Gravedona=Kevin) + voci custom (settings kpi_voci_custom; POST/DELETE /kpi/voci, admin, tasto "Aggiungi voce" in pagina KPI).
+- Confronto AdE: differenze < 0,10 € = arrotondamento AdE → verde; "nessuna chiusura AdE quel giorno" = informativo (basso), non errore. Residui settembre (preview): Morbegno 04/09 +80, 09/09 +25, 17/09 +9; Gravedona 17/09 +250, 19/09 −30 = differenze reali (ricariche/ventilazione).

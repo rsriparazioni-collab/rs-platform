@@ -52,7 +52,7 @@ async def problemi_negozio(store: dict, anno: int, mese: int, is_admin: bool) ->
             continue
         if g.get("ade") is None:
             if int(g["data"][8:]) <= fine and g.get("scontrini"):
-                out.append({"livello": "medio", "testo": f"Il {_dmy(g['data'])} {nome} ha inserito {_eur(g['scontrini'])} di scontrini ma dall'Agenzia delle Entrate non risulta nessuna chiusura di cassa: controlla che il registratore abbia trasmesso.", "tab": "cassa", "data": g["data"], "tipo": "ade_assente"})
+                out.append({"livello": "basso", "testo": f"Il {_dmy(g['data'])} {nome} ha inserito {_eur(g['scontrini'])} di scontrini ma nel file AdE non c'è la chiusura di quel giorno (potrebbe essere stata trasmessa con un'altra data o il file non la contiene): non è un errore di cassa.", "tab": "cassa", "data": g["data"], "tipo": "ade_assente"})
         elif g.get("diff") is not None and abs(g["diff"]) >= 0.01:
             segno = "in più" if g["diff"] > 0 else "in meno"
             out.append({"livello": "alto", "testo": f"Il {_dmy(g['data'])} {nome} ha {_eur(abs(g['diff']))} {segno} rispetto all'Agenzia delle Entrate (inserito {_eur(g['scontrini'])}, AdE {_eur(g['ade'])}): correggi la chiusura del giorno.", "tab": "cassa", "data": g["data"], "tipo": "ade_differenza"})

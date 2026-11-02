@@ -308,11 +308,13 @@ async def confronto_mese(store_id: str, anno: int, mese: int, righe_manuali: lis
             d = round(sc - (a or 0.0), 2) if a is not None else None
             # scontrino annullato: l'RT lo conta nell'ammontare, l'AdE no → se la differenza è proprio l'annullo (lordo 22 %) non è un errore
             ann_lordo = round(annulli.get(r["data"], 0.0) * 1.22, 2)
-            if d is not None and ann_lordo and abs(d - ann_lordo) < 0.05:
+            if d is not None and ann_lordo and abs(d - ann_lordo) < 0.10:
                 r["ade_annullo_spiega"] = ann_lordo
                 d = 0.0
+            if d is not None and abs(d) < 0.10:
+                d = 0.0
             r["ade_diff"] = d
-            if d is not None and abs(d) >= 0.01:
+            if d is not None and abs(d) >= 0.10:  # sotto i 10 centesimi è solo arrotondamento AdE (imponibile+imposta per aliquota)
                 dt = dettaglio.get(r["data"]) or {}
                 diff_giorni.append({"data": r["data"], "scontrini": sc, "ade": a, "diff": d, "annulli": annulli.get(r["data"], 0.0), "art74": _num(r.get("art74")), "imponibile": dt.get("imponibile", 0.0), "imposta": dt.get("imposta", 0.0),
                                     "chiusure": dt.get("chiusure", 0), "matricole": sorted(dt.get("matricole") or [])})

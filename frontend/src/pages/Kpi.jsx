@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { BarChart3, FileDown, ArrowUpRight, ArrowDownRight, Minus, BellRing, Target } from "lucide-react";
+import { BarChart3, FileDown, ArrowUpRight, ArrowDownRight, Minus, BellRing, Target, Plus } from "lucide-react";
 import ObiettiviDialog, { BarraObiettivo } from "../components/ObiettiviDialog";
 import { ReportInserimenti } from "../components/ReportInserimenti";
 import { IncentiviMio } from "../components/incentivi/IncentiviMio";
@@ -39,6 +39,18 @@ export default function Kpi() {
   useEffect(() => { load(); }, [load]);
 
   const giorni = data ? Array.from({ length: data.giorni }, (_, i) => i + 1) : [];
+  const aggiungiVoce = async () => {
+    const label = window.prompt('Nome della nuova voce manuale (es. "Lavorazioni per Chiavenna"):');
+    if (!label || !label.trim()) return;
+    const scelta = window.prompt("Area: 1 = Energia, 2 = Telefonia, 3 = Internet, 4 = Chiamate, 5 = Generale", "1") || "1";
+    const area = { 1: "energia", 2: "telefonia", 3: "internet", 4: "chiamate", 5: "generale" }[scelta.trim()] || "energia";
+    try {
+      await api.post("/kpi/voci", { label: label.trim(), area });
+      toast.success(`Voce "${label.trim()}" aggiunta: da ora compare nella griglia e nel Registro rapido`);
+      api.get("/kpi/voci").then((r) => setVoci(r.data.voci)).catch(() => {});
+      load();
+    } catch (e) { toast.error(apiError(e)); }
+  };
   const aree = data ? [...new Set(data.voci.map((v) => v.area))] : [];
 
   return (
@@ -59,6 +71,7 @@ export default function Kpi() {
           )}
           <Button variant="outline" className="gap-2" onClick={() => downloadBlob(`/kpi/export?anno=${anno}&mese=${mese}${userId ? `&user_id=${userId}` : ""}`, `kpi_${anno}_${String(mese).padStart(2, "0")}.xlsx`)} data-testid="kpi-export"><FileDown className="h-4 w-4" /> Excel</Button>
           {user.role === "admin" && <Button variant="outline" className="gap-2" onClick={() => setObOpen(true)} data-testid="kpi-obiettivi-btn"><Target className="h-4 w-4" /> Obiettivi</Button>}
+          {user.role === "admin" && <Button variant="outline" className="gap-2" onClick={aggiungiVoce} data-testid="kpi-aggiungi-voce-btn"><Plus className="h-4 w-4" /> Aggiungi voce</Button>}
           {user.role === "admin" && (
             <Button variant="ghost" className="gap-2 text-slate-600" title="Invia adesso complimenti per obiettivi raggiunti e promemoria metà mese (automatico ogni sera alle 19:00)" onClick={async () => { try { const r = await api.post("/kpi/obiettivi/controlla-ora?meta_mese=true"); toast.success(r.data.report.length ? r.data.report.map((x) => `${x.user}: ${x.tipo} (${x.esito})`).join(" · ") : "Nessun avviso da inviare"); } catch (e) { toast.error(apiError(e)); } }} data-testid="kpi-obiettivi-controlla">
               <Target className="h-4 w-4" /> Avvisi obiettivi ora

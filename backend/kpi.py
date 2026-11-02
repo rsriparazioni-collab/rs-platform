@@ -56,15 +56,32 @@ KPI_VOCI = [
     ("rip_senza_tipo", "Riparazioni chiuse senza tipo indicato", "riparazioni", "auto"),
 ]
 VOCI_IDS = {v[0] for v in KPI_VOCI}
-RIP_ESITI = {"normale": "rip_normale", "garanzia": "rip_garanzia", "ricambio_usato": "rip_ricambio_usato", "scheda_madre": "rip_scheda_madre",
-             "non_riparabile": "rip_non_riparabile", "preventivo_rifiutato": "rip_preventivo_rifiutato"}
-RIP_CHIUSI = ("pronto", "pronto_ritiro", "consegnato", "non_riparabile")
-MNP_OPERATORI = ["fastweb", "ho", "kena", "iliad", "very", "wind3", "tim", "vodafone", "altro"]
-ENEL_MAP = {"swa": "swa", "voltura_swa": "swa", "voltura": "voltura", "subentro": "subentro", "allaccio": "allaccio", "prima_attivazione": "prima_attivazione"}
 
 
-def setup(**deps):
-    _d.update(deps)
+async def voci_tutte() -> list:
+    """Voci fisse + 'Lavorazioni per <negozio>' per ogni negozio (si aggiorna da sola quando nasce un negozio) + voci manuali aggiunte dall'admin."""
+    db = _d["db"]
+    out = list(KPI_VOCI)
+    idx = next(i for i, v in enumerate(out) if v[0] == "lavorazione_kevin") + 1
+    negozi = []
+    async for st in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1}).sort("nome", 1):
+        if (st.get("nome") or "").strip().lower() in ("gravedona",):
+            continue  # Gravedona = Kevin, già presente
+        negozi.append((f"lavorazione_negozio_{st['id']}", f"Lavorazioni per {st['nome']}", "energia", "manuale"))
+    out[idx:idx] = negozi
+    doc = await db.settings.find_one({"key": "kpi_voci_custom"}, {"_id": 0, "value": 1})
+    for c in (doc or {}).get("value") or []:
+        out.append((c["id"], c["label"], c.get("area") or "energia", "manuale"))
+    return out
+
+
+async def voci_ids() -> set:
+    return {v[0] for v in await voci_tutte()}
+
+
+@router.get("/kpi/voci")
+async def kpi_voci():
+    return {"voci": [{"id": i, "label": l, "area": a, "fonte": f, "custom": i.startswith("custom_")} for i, l, a, f in await voci_tutte()], "mnp_operatori": MNP_OPERATORI}
 
 
 async def _current_user(request: Request):
@@ -104,14 +121,54 @@ class AttivitaInput(BaseModel):
     data: str = ""
 
 
-@router.get("/kpi/voci")
-async def kpi_voci():
-    return {"voci": [{"id": i, "label": l, "area": a, "fonte": f} for i, l, a, f in KPI_VOCI], "mnp_operatori": MNP_OPERATORI}
+class VoceCustomInput(BaseModel):
+    label: str
+    area: str = "energia"
+
+
+@router.post("/kpi/voci")
+async def aggiungi_voce(input: VoceCustomInput, user: dict = Depends(_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    label = input.label.strip()
+    if len(label) < 2:
+        raise HTTPException(status_code=400, detail="Scrivi il nome della voce")
+    aree = {a for _, _, a, _ in KPI_VOCI}
+    if input.area not in aree:
+        raise HTTPException(status_code=400, detail="Area non valida")
+    if any(v[1].lower() == label.lower() for v in await voci_tutte()):
+        raise HTTPException(status_code=400, detail="Esiste già una voce con questo nome")
+    db = _d["db"]
+    voce = {"id": f"custom_{uuid.uuid4().hex[:10]}", "label": label, "area": input.area, "da": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()}
+    await db.settings.update_one({"key": "kpi_voci_custom"}, {"$push": {"value": voce}}, upsert=True)
+    return voce
+
+
+@router.delete("/kpi/voci/{voce_id}")
+async def elimina_voce(voce_id: str, user: dict = Depends(_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Solo amministratore")
+    if not voce_id.startswith("custom_"):
+        raise HTTPException(status_code=400, detail="Si possono eliminare solo le voci aggiunte a mano")
+    db = _d["db"]
+    if await db.attivita.find_one({"voce": voce_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(status_code=400, detail="Questa voce ha già attività registrate: non si può eliminare")
+    await db.settings.update_one({"key": "kpi_voci_custom"}, {"$pull": {"value": {"id": voce_id}}})
+    return {"ok": True}
+RIP_ESITI = {"normale": "rip_normale", "garanzia": "rip_garanzia", "ricambio_usato": "rip_ricambio_usato", "scheda_madre": "rip_scheda_madre",
+             "non_riparabile": "rip_non_riparabile", "preventivo_rifiutato": "rip_preventivo_rifiutato"}
+RIP_CHIUSI = ("pronto", "pronto_ritiro", "consegnato", "non_riparabile")
+MNP_OPERATORI = ["fastweb", "ho", "kena", "iliad", "very", "wind3", "tim", "vodafone", "altro"]
+ENEL_MAP = {"swa": "swa", "voltura_swa": "swa", "voltura": "voltura", "subentro": "subentro", "allaccio": "allaccio", "prima_attivazione": "prima_attivazione"}
+
+
+def setup(**deps):
+    _d.update(deps)
 
 
 @router.post("/attivita")
 async def registra_attivita(input: AttivitaInput, user: dict = Depends(_current_user)):
-    if input.voce not in VOCI_IDS:
+    if input.voce not in await voci_ids():
         raise HTTPException(status_code=400, detail="Voce non valida")
     if not 1 <= input.quantita <= 50:
         raise HTTPException(status_code=400, detail="Quantità non valida")
@@ -170,8 +227,8 @@ async def _kpi_start() -> str:
     return (doc or {}).get("value") or KPI_START_DEFAULT
 
 
-def _griglia_vuota(anno: int, mese: int, ndays: int, kpi_start: str, solo_rip: bool = False) -> dict:
-    voci = [{"id": i, "label": l, "area": a, "fonte": f, "giorni": {}, "totale": 0, "fonti_usate": []} for i, l, a, f in KPI_VOCI]
+async def _griglia_vuota(anno: int, mese: int, ndays: int, kpi_start: str, solo_rip: bool = False) -> dict:
+    voci = [{"id": i, "label": l, "area": a, "fonte": f, "giorni": {}, "totale": 0, "fonti_usate": []} for i, l, a, f in await voci_tutte()]
     if solo_rip:
         voci = [v for v in voci if v["area"] == "riparazioni"]
     return {"anno": anno, "mese": mese, "giorni": ndays, "voci": voci, "totale_mese": 0, "kpi_start": kpi_start, "prima_inizio": True, "solo_riparazioni": solo_rip}
@@ -208,7 +265,7 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
     kpi_start = await _kpi_start()
     target = await db.users.find_one({"id": user_id}, {"_id": 0, "role": 1, "store_ids": 1})
     if kpi_start >= end:
-        return _griglia_vuota(anno, mese, ndays, kpi_start, bool(target and target.get("role") == "tecnico"))
+        return await _griglia_vuota(anno, mese, ndays, kpi_start, bool(target and target.get("role") == "tecnico"))
     if kpi_start > start:
         rng["$gte"] = kpi_start
     grid = defaultdict(lambda: defaultdict(int))
@@ -304,7 +361,7 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
     for g, n in grid.pop("clienti_serviti_extra", {}).items():
         grid["clienti_serviti"][g] += n
     out = []
-    for vid, label, area, fonte in KPI_VOCI:
+    for vid, label, area, fonte in await voci_tutte():
         giorni = {str(g): n for g, n in grid.get(vid, {}).items()}
         out.append({"id": vid, "label": label, "area": area, "fonte": fonte, "giorni": giorni, "totale": sum(giorni.values()),
                     "fonti_usate": sorted(fonti.get(vid, []))})
@@ -355,9 +412,9 @@ class ObiettivoInput(BaseModel):
     bonus: float = 0
 
 
-def _voce_label(voce: str) -> str:
+def _voce_label(voce: str, voci: list | None = None) -> str:
     base, _, op = voce.partition(":")
-    lab = next((l for i, l, _, _ in KPI_VOCI if i == base), base)
+    lab = next((l for i, l, _, _ in (voci or KPI_VOCI) if i == base), base)
     if op:
         lab = {"sim_nuova": "SIM numero nuovo", "sim_mnp": "SIM MNP", "fisso": "Fisso/Internet"}.get(base, lab) + f" — {op}"
     return lab
@@ -372,9 +429,10 @@ async def _obiettivi_utente(user_id: str, anno: int, mese: int, kpi: dict | None
     kpi = kpi or await calcola_kpi(user_id, anno, mese)
     tot = {v["id"]: v["totale"] for v in kpi["voci"]}
     out = []
+    voci_all = await voci_tutte()
     for o in obs:
         att = tot.get(o["voce"], 0)
-        out.append({**o, "label": _voce_label(o["voce"]), "attuale": att, "pct": min(100, round(att * 100 / o["target"])) if o["target"] else 0,
+        out.append({**o, "label": _voce_label(o["voce"], voci_all), "attuale": att, "pct": min(100, round(att * 100 / o["target"])) if o["target"] else 0,
                     "bonus_maturato": bool(o.get("bonus")) and att >= o["target"]})
     return out
 
@@ -393,7 +451,7 @@ async def crea_obiettivo(input: ObiettivoInput, user: dict = Depends(_current_us
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Solo admin")
     base = input.voce.split(":")[0]
-    if base not in VOCI_IDS:
+    if base not in await voci_ids():
         raise HTTPException(status_code=400, detail="Voce non valida")
     if input.target < 1:
         raise HTTPException(status_code=400, detail="Obiettivo deve essere almeno 1")
@@ -401,7 +459,7 @@ async def crea_obiettivo(input: ObiettivoInput, user: dict = Depends(_current_us
     doc = {"id": str(uuid.uuid4()), "user_id": input.user_id, "voce": voce, "target": input.target, "anno": input.anno, "mese": input.mese, "bonus": input.bonus,
            "created_by": user["name"], "created_at": datetime.now(timezone.utc).isoformat()}
     await _d["db"].kpi_obiettivi.update_one({"user_id": input.user_id, "voce": voce, "anno": input.anno, "mese": input.mese}, {"$set": doc}, upsert=True)
-    return {**doc, "label": _voce_label(voce)}
+    return {**doc, "label": _voce_label(voce, await voci_tutte())}
 
 
 @router.delete("/kpi/obiettivi/{obiettivo_id}")
