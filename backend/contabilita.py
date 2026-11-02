@@ -142,6 +142,37 @@ def _eur(v) -> str:
     return f"€ {s}"
 
 
+async def _riporto_mese(store_id: str, anno: int, mese: int, depth: int = 0) -> float:
+    """Contanti non versati che entrano nel mese (anno, mese): = 'da versare' del mese precedente, calcolato a catena.
+    Un riporto scritto a mano (o dal foglio) per un mese vince sulla catena; i mesi senza movimenti lasciano passare il riporto invariato."""
+    db = _d["db"]
+    if depth > 36:
+        return 0.0
+    prev_a, prev_m = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
+    prev_ex = await db.corrispettivi_mese.find_one({"store_id": store_id, "anno": prev_a, "mese": prev_m}, {"_id": 0, "riporto": 1, "riporto_fonte": 1, "versati_dopo": 1})
+    pref = f"{prev_a:04d}-{prev_m:02d}"
+    cont = vers = 0.0
+    n = 0
+    async for c in db.corrispettivi.find({"store_id": store_id, "data": {"$regex": f"^{pref}"}}, {"_id": 0}):
+        c = _norm(c)
+        cont += c["contanti"]
+        vers += c["versati"]
+        n += 1
+    spese = sum([_f(s.get("importo")) async for s in db.spese_cassa.find({"store_id": store_id, "data": {"$regex": f"^{pref}"}}, {"_id": 0, "importo": 1})])
+    vers += sum(_f(v.get("importo")) for v in ((prev_ex or {}).get("versati_dopo") or []))
+    if prev_ex and "riporto" in prev_ex and prev_ex.get("riporto_fonte") != "auto":
+        riporto_prev = _f(prev_ex["riporto"])
+    else:
+        if n == 0 and not spese and not vers:
+            # mese senza movimenti: il non versato passa oltre invariato (ma ci fermiamo se non c'è mai stato nulla)
+            if not await db.corrispettivi.find_one({"store_id": store_id, "data": {"$lt": pref}}, {"_id": 0, "id": 1}):
+                return 0.0
+            return await _riporto_mese(store_id, prev_a, prev_m, depth + 1)
+        riporto_prev = await _riporto_mese(store_id, prev_a, prev_m, depth + 1)
+    proposto = round(riporto_prev + cont - spese - vers, 2)
+    return proposto if proposto > 0 else 0.0
+
+
 def _norm(c: dict) -> dict:
     fatt = [{"numero": (x.get("numero") or "")[:30], "importo": _f(x.get("importo")), "pagamento": (x.get("pagamento") or "")[:20]} for x in (c.get("fatture_dettaglio") or []) if x.get("numero") or x.get("importo")]
     c["fatture_dettaglio"] = fatt
@@ -264,19 +295,9 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     import corrispettivi_ade
     confronto_ade = await corrispettivi_ade.confronto_mese(store_id, anno, mese, righe)
     prev_a, prev_m = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
-    prev_ex = await db.corrispettivi_mese.find_one({"store_id": store_id, "anno": prev_a, "mese": prev_m}, {"_id": 0, "riporto": 1, "versati_dopo": 1})
-    prev_pref = f"{prev_a:04d}-{prev_m:02d}"
-    prev_cont = 0.0
-    prev_vers = 0.0
-    async for c in db.corrispettivi.find({"store_id": store_id, "data": {"$regex": f"^{prev_pref}"}}, {"_id": 0}):
-        c = _norm(c)
-        prev_cont += _f(c.get("contanti"))
-        prev_vers += _f(c.get("versati"))
-    prev_spese = sum([_f(s.get("importo")) async for s in db.spese_cassa.find({"store_id": store_id, "data": {"$regex": f"^{prev_pref}"}}, {"_id": 0, "importo": 1})])
-    prev_vers += sum(_f(v.get("importo")) for v in ((prev_ex or {}).get("versati_dopo") or []))
-    riporto_proposto = round(_f((prev_ex or {}).get("riporto")) + prev_cont - prev_spese - prev_vers, 2) if (prev_cont or prev_ex) else 0.0
+    riporto_proposto = await _riporto_mese(store_id, anno, mese)
     riporto_auto = "riporto" not in extra or extra.get("riporto_fonte") == "auto"
-    if riporto_auto and riporto_proposto > 0:
+    if riporto_auto:
         tot["riporto"] = riporto_proposto
     tot["da_versare"] = round(tot["riporto"] + tot["cassa_netta"] - tot["versati_totale"], 2)
     return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "riporto": tot["riporto"], "confronto_ade": confronto_ade,
