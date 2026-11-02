@@ -165,7 +165,10 @@ async def _riporto_mese(store_id: str, anno: int, mese: int, depth: int = 0) -> 
     else:
         if n == 0 and not spese and not vers:
             # mese senza movimenti: il non versato passa oltre invariato (ma ci fermiamo se non c'è mai stato nulla)
-            if not await db.corrispettivi.find_one({"store_id": store_id, "data": {"$lt": pref}}, {"_id": 0, "id": 1}):
+            mai_nulla = not await db.corrispettivi.find_one({"store_id": store_id, "data": {"$lt": pref}}, {"_id": 1}) \
+                and not await db.corrispettivi_mese.find_one({"store_id": store_id, "riporto": {"$exists": True}, "$or": [{"anno": {"$lt": prev_a}}, {"anno": prev_a, "mese": {"$lte": prev_m}}]}, {"_id": 1}) \
+                and not await db.spese_cassa.find_one({"store_id": store_id, "data": {"$lt": pref}}, {"_id": 1})
+            if mai_nulla:
                 return 0.0
             return await _riporto_mese(store_id, prev_a, prev_m, depth + 1)
         riporto_prev = await _riporto_mese(store_id, prev_a, prev_m, depth + 1)

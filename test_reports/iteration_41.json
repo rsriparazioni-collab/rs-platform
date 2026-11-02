@@ -1,0 +1,19 @@
+{
+  "summary": "Verified the riporto chain fix (_riporto_mese). Backend: 4/4 pytest pass. Gravedona Aug-Dec: each month's riporto equals the previous month's da_versare (Sep 1278.84, Oct 3323.84, Nov and Dec 6368.84), riporto_auto=true. Morbegno: Sep has the manual 833 (riporto_auto=false), Oct 110.60, Nov 5970.50. Sondrio: Oct, Nov and Dec all 8.90. Tirano TEST scenario: corrispettivo 100 gives Nov da_versare=100 and Dec riporto=100; versato-dopo of 40 gives 60; manual 55 gives 55 with riporto_auto=false; DELETE goes back to 60. Cleanup done (Tirano DB empty again). Frontend: on Gravedona, October shows riporto 3323.84 with the note 'riporto automatico non versato Settembre 2026' and the AUTOMATICO badge, and 'Da versare € 6368,84'. November shows riporto 6368.84.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "_riporto_mese (contabilita.py)", "issue": "Edge case: if a store has a manual riporto in month X but NO corrispettivi ever, from X+2 onwards (with X+1 empty) the riporto drops to 0. The 'never had data' check only looks at db.corrispettivi, not corrispettivi_mese.riporto, spese or versati."},
+    {"endpoint": "_riporto_mese", "issue": "A negative balance (ammanco) in the previous month is clamped to 0, not carried as a negative. This looks intentional but differs from the literal rule 'riporto = da_versare M-1'. Recursion can do up to 36 levels x 3 queries per GET (performance)."}
+  ]},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [
+    {"screen": "Cassa & Corrispettivi", "issues": ["eur() amounts have no thousands separator: shows '€ 3323,84' instead of '€ 3.323,84' as in the request", "Date fields use the browser's native date input instead of the shadcn calendar"]}
+  ]},
+  "test_report_links": ["/app/backend/tests/test_iter41_riporto_catena.py", "/app/test_reports/pytest/pytest_iter41.xml"],
+  "action_items": ["(Optional) Format eur() with a thousands separator (it-IT)", "(Optional) Handle the edge case where a manual riporto has no corrispettivi before it"],
+  "critical_code_review_comments": ["Tirano does not share corrispettivi with admin (403). The test temporarily inserts contabilita_config{condividi_admin:true, TEST:true} and removes it in teardown.", "When test_iter40 and test_iter41 run in the same session, iter40 fails with login errors: the TOTP code is reused within the same 30 s window (replay protection). This is not a product bug; run the files separately or wait 30 s."],
+  "updated_files": ["/app/backend/tests/test_iter41_riporto_catena.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Only temporary TEST data on Tirano (corrispettivo 2026-11-03, versato-dopo, manual riporto, config doc), all removed. DB check confirms Tirano has 0 corrispettivi, 0 corrispettivi_mese, no config.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run with: pytest backend/tests/test_iter41_riporto_catena.py -n0. Admin login needs TOTP (pyotp). In the UI, periodo-anno is an input (fill), periodo-mese is a select, contabilita-store-select is a select. The riporto value is in the input data-testid=riporto-importo."
+}

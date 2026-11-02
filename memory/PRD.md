@@ -861,3 +861,8 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-30 – KPI voci dinamiche + tolleranza AdE
 - KPI: voci_tutte() = voci fisse + "Lavorazioni per <negozio>" per ogni negozio (auto, escl. Gravedona=Kevin) + voci custom (settings kpi_voci_custom; POST/DELETE /kpi/voci, admin, tasto "Aggiungi voce" in pagina KPI).
 - Confronto AdE: differenze < 0,10 € = arrotondamento AdE → verde; "nessuna chiusura AdE quel giorno" = informativo (basso), non errore. Residui settembre (preview): Morbegno 04/09 +80, 09/09 +25, 17/09 +9; Gravedona 17/09 +250, 19/09 −30 = differenze reali (ricariche/ventilazione).
+
+## 2026-10-30 – Riporto non versato a catena (bug fix, testato iteration_41)
+- Causa: il riporto automatico non veniva salvato, quindi il mese successivo leggeva solo contanti−spese−versati del mese prima (senza il SUO riporto) e i mesi vuoti azzeravano tutto.
+- Fix: _riporto_mese(store, anno, mese) ricorsivo = da_versare del mese precedente; riporto manuale/foglio vince; mesi vuoti lasciano passare; stop solo se non c'è mai stato nulla (corrispettivi, riporti, spese). Ammanco (negativo) non si riporta (0).
+- Verificato: Gravedona ago→dic catena corretta; Morbegno set 833 manuale → ott 110,60 → nov 5970,50; Sondrio 8,90 passa su nov/dic.
