@@ -1,0 +1,29 @@
+{
+  "summary": "Iter42 – Contabilità semplificata (A/B/C/D). Backend: 6/6 pytest passati (corrispettivi senza confronto_ade per mesi 9-10; da-sistemare mesi 8/9/10 contiene solo tipi corrispettivo_mancante/ammanco/da_versare, tab sempre 'cassa'; POST pagamento modo 'bonifico_xyz' → 400, 'non_dovuta' → 200 e la fattura passa in fatture_pagate_altro con modo non_dovuta, poi DELETE → 200 e la fattura torna tra le non trovate in banca, quindi dati ripristinati). Frontend (login admin 2FA, desktop): 4 tab presenti; Cassa ha esattamente 4 KPI (Incassato (scontrini + fatture)/Contanti/POS/Da versare), 0 elementi corrispettivi-ade, nessuna colonna AdE nell'intestazione tabella, riquadro da-sistemare presente. Scadenze: Scadenzario si carica in ~3 s (tabella visibile), Chiusura mese e <details> iva-dettaglio (chiuso di default) nella stessa pagina; clic sul summary lo apre e mostra IvaDashboard; contabilita-sub-scadenze non esiste. Analisi: sotto-menu pdp/report/altro; Altro → contabilita-sub-altro (Invii e impostazioni / Pianificazione fiscale), il contenuto cambia. I link 'Vai →' della chiusura (estratti→Banche, corrispettivi→Cassa, fatture→Analisi PdP) funzionano. Banche: sotto-menu 'Banca: estratti, fatture e scadenze'/'Fatture estere'; settembre 2026, ditta: 11 fatture aperte, ciascuna con i bottoni Contanti/Carta/Non dovuta/Altro (fatt-nondovuta-{id} presente, non cliccato). Regressione: Magazzino +/− aprono magazzino-mov-dialog; KPI: kpi-aggiungi-voce-btn visibile, righe 'Lavorazioni per Tirano/Morbegno…' visibili nella griglia dopo aver scelto un operatore. Nessun errore JS in pagina.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Cassa & Corrispettivi KPI", "issues": ["corrispettivi-totali usa ancora lg:grid-cols-7 con 4 riquadri: su desktop restano 3/7 di spazio vuoto a destra; meglio lg:grid-cols-4"]},
+      {"screen": "Scadenzario form", "issues": ["Il campo data della nuova scadenza è un <input type=date> nativo del browser invece del calendario shadcn"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter42_contabilita_semplificata.py", "/app/test_reports/pytest/pytest_iter42.xml"],
+  "action_items": [
+    "(Minore) Corrispettivi.jsx riga 61: cambiare lg:grid-cols-7 in lg:grid-cols-4",
+    "(Minore) Nessuna voce di chiusura_mese.py ha link 'impostazioni', quindi il percorso 'Vai → impostazioni' non si raggiunge dall'interfaccia. La mappatura in goTab (analisi→altro→impostazioni) è corretta nel codice ma non è testata end-to-end",
+    "(Pulizia) components/contabilita/CorrispettiviAde.jsx non è più importato da nessuna parte: si può eliminare"
+  ],
+  "critical_code_review_comments": [
+    "banche.py PagamentoInput: il commento dice ancora 'contanti | carta | altro', manca non_dovuta. Conviene usare Literal['contanti','carta','altro','non_dovuta'] così la validazione la fa Pydantic (422) invece del controllo manuale",
+    "Contabilita.jsx goTab: 'chiusura'/'iva'/'scadenzario' portano tutti a scadenze senza scorrere fino alla sezione: con la pagina unica l'utente deve scorrere a mano",
+    "da_sistemare.py docstring cita ancora 'avviso WhatsApp dopo l'import AdE', ma la logica AdE è stata rimossa: aggiornare il testo"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter42_contabilita_semplificata.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Nessuno. Il pagamento non_dovuta di test sulla fattura aperta [0] di settembre (ditta) è stato creato e poi annullato con DELETE nello stesso test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Data del server: 04/11/2026; il negozio di default nel menu della contabilità è Gravedona. Per il login 2FA in playwright aspettare una nuova finestra TOTP (31 - t%30 s) per evitare il blocco anti-replay. tok.sh fallisce se si riusa lo stesso codice TOTP subito dopo pytest. Le righe KPI 'Lavorazioni per <negozio>' compaiono solo dopo aver scelto un operatore (es. clic sulla card Deborah). La fattura aperta di esempio a settembre (ditta) è 2373237a-20a5-4bc2-b9fc-3f9ebeb8c415 (LANZI DIGITAL)."
+}

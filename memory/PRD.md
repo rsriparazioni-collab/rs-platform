@@ -873,3 +873,9 @@ Vedi /app/memory/test_credentials.md
 ## 2026-10-30 – Confronto AdE sui corrispettivi DISMESSO (richiesta utente: troppe variabili)
 - Rimossi da Cassa & Corrispettivi: riquadro Confronto AdE, colonna AdE, voci AdE in 'Cose da sistemare', avviso WhatsApp differenze, promemoria 1° mese (cron disabilitato; genera comunque spese ricorrenti/fisse PdP). _mese_dati non calcola più confronto_ade.
 - Resta l'import RT in IVA (IvaDashboard) perché serve al calcolo IVA corrispettivi, non al confronto.
+
+## 2026-10-30 – Contabilità semplificata A+B+C+D (test iteration_42 ok)
+- A) Cassa: 4 KPI (Incassato, Contanti, POS, Da versare); Cose da sistemare solo giorni mancanti/ammanco/non versato (rimossi scadenze/estere/estratti).
+- B) Banche: bottone "Non dovuta" (modo non_dovuta) accanto a Contanti/Carta; sotto-menu "Banca: estratti, fatture e scadenze" / Fatture estere.
+- C) Tab "Scadenze, Chiusura & IVA": Scadenzario + Chiusura mese + <details> Dettaglio IVA (IvaDashboard compatto) in un'unica pagina.
+- D) Analisi: Punto di pareggio / Report fatturato / Altro (Invii e impostazioni, Pianificazione fiscale). MAPPA_TAB aggiornata.
