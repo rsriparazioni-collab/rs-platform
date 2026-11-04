@@ -869,3 +869,7 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-10-30 – Ricariche su scontrino con IVA 0 (confermato utente)
 - Confronto AdE resta sul totale (rip+merce+art74 vs imponibile+imposta). Nella lista differenze aggiunto lo spacchettamento: 'con IVA' (imposta/0,22×1,22) vs rip+merce, 'esenti/ricariche' vs art74, con la parte sbagliata in rosso. Settembre Morbegno: 04 → rip+merce 360 vs 280; 09 → ricariche 95 vs 70; 17 → 69 vs 60.
+
+## 2026-10-30 – Confronto AdE sui corrispettivi DISMESSO (richiesta utente: troppe variabili)
+- Rimossi da Cassa & Corrispettivi: riquadro Confronto AdE, colonna AdE, voci AdE in 'Cose da sistemare', avviso WhatsApp differenze, promemoria 1° mese (cron disabilitato; genera comunque spese ricorrenti/fisse PdP). _mese_dati non calcola più confronto_ade.
+- Resta l'import RT in IVA (IvaDashboard) perché serve al calcolo IVA corrispettivi, non al confronto.

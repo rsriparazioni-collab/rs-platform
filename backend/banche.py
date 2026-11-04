@@ -491,7 +491,7 @@ class PagamentoInput(BaseModel):
 async def segna_pagamento(fattura_id: str, body: PagamentoInput, user: dict = Depends(require_admin)):
     """Segna una fattura ricevuta AdE come pagata fuori banca (contanti/carta/altro), opzionalmente agganciata a una spesa contanti delle chiusure."""
     db = _d["db"]
-    if body.modo not in ("contanti", "carta", "altro"):
+    if body.modo not in ("contanti", "carta", "altro", "non_dovuta"):
         raise HTTPException(status_code=400, detail="Modo non valido")
     f = await db.fatture_ade.find_one({"id": fattura_id}, {"_id": 0, "controparte": 1, "totale": 1})
     if not f:

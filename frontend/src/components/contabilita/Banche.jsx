@@ -96,6 +96,7 @@ export const Banche = ({ anno, mese, setAnno, setMese, centri = [] }) => {
                       <span className="flex shrink-0 items-center gap-1"><b>{eur(f.totale)}</b>
                         <button type="button" onClick={() => segnaPag(f, "contanti")} className="rounded bg-sky-600 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-sky-700" data-testid={`fatt-contanti-${f.id}`}>{f.suggerimento_contanti ? "Conferma contanti" : "Contanti"}</button>
                         <button type="button" onClick={() => segnaPag(f, "carta")} className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] hover:bg-slate-100" data-testid={`fatt-carta-${f.id}`}>Carta</button>
+                        <button type="button" onClick={() => segnaPag(f, "non_dovuta")} className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-100" title="Nota di credito, storno o fattura non da pagare" data-testid={`fatt-nondovuta-${f.id}`}>Non dovuta</button>
                         <button type="button" onClick={() => segnaPag(f, "altro")} className="rounded border border-slate-300 px-1.5 py-0.5 text-[10px] hover:bg-slate-100" title="Bonifico cumulativo / compensazione / altro" data-testid={`fatt-altro-btn-${f.id}`}>Altro</button></span>
                     </div>
                   ))}

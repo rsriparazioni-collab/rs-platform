@@ -295,15 +295,13 @@ async def _mese_dati(store_id: str, anno: int, mese: int) -> dict:
     tot["versati_totale"] = round(tot["versati"] + tot["versati_dopo"], 2)
     tot["riporto"] = _f(extra.get("riporto"))
     tot["giorni_inseriti"] = len(giorni)
-    import corrispettivi_ade
-    confronto_ade = await corrispettivi_ade.confronto_mese(store_id, anno, mese, righe)
     prev_a, prev_m = (anno - 1, 12) if mese == 1 else (anno, mese - 1)
     riporto_proposto = await _riporto_mese(store_id, anno, mese)
     riporto_auto = "riporto" not in extra or extra.get("riporto_fonte") == "auto"
     if riporto_auto:
         tot["riporto"] = riporto_proposto
     tot["da_versare"] = round(tot["riporto"] + tot["cassa_netta"] - tot["versati_totale"], 2)
-    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "riporto": tot["riporto"], "confronto_ade": confronto_ade,
+    return {"anno": anno, "mese": mese, "righe": righe, "spese": spese, "versati_dopo": versati_dopo, "riporto": tot["riporto"],
             "riporto_note": extra.get("riporto_note") or (f"riporto automatico non versato {MESI_IT[prev_m]} {prev_a}" if riporto_auto and tot["riporto"] else ""),
             "riporto_auto": riporto_auto, "riporto_proposto": riporto_proposto, "riporto_proposto_mese": f"{MESI_IT[prev_m]} {prev_a}", "totali": tot}
 

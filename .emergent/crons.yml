@@ -169,7 +169,7 @@ crons:
     timezone: "Europe/Rome"
     endpoint: "{{BASE_URL}}/api/cron/promemoria-ade"
     method: POST
-    enabled: true
+    enabled: false
   - name: riepilogo-da-sistemare
     description: "Ogni lunedì alle 8:00: WhatsApp all'amministrazione con il numero di cose da sistemare in contabilità per ogni negozio"
     cron: "0 8 * * 1"

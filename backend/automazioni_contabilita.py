@@ -109,8 +109,8 @@ async def promemoria_ade_primo_mese() -> dict:
     ricorrenti.update(await affitti_pdp_mese(oggi.year, oggi.month))
     anno, mese = (oggi.year, oggi.month - 1) if oggi.month > 1 else (oggi.year - 1, 12)
     key = f"promemoria-ade-{anno}-{mese:02d}"
-    if await db.scadenze_alert_log.find_one({"key": key}):
-        return {"inviati": 0, "motivo": "già inviato", **ricorrenti}
+    if await db.scadenze_alert_log.find_one({"key": key}) or True:  # confronto AdE dismesso: niente promemoria, restano spese ricorrenti e fisse PdP
+        return {"inviati": 0, "motivo": "promemoria AdE disattivato", **ricorrenti}
     inviati = 0
     for store, cfg, completo in await _d["stores_visibili"]({"role": "admin", "store_ids": []}):
         if not completo or not cfg.get("wa_numero"):

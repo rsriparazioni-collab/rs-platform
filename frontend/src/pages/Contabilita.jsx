@@ -16,7 +16,7 @@ import { NuovoNegozioDialog } from "../components/contabilita/NuovoNegozioDialog
 
 const oggi = new Date();
 // vecchie schede → nuova scheda (per i link "Vai" della chiusura mese e del riquadro Cose da sistemare)
-const MAPPA_TAB = { corrispettivi: ["cassa", "corrispettivi"], pdp: ["analisi", "pdp"], iva: ["scadenze", "iva"], estere: ["banche", "estere"], banche: ["banche", "banche"], scadenzario: ["scadenze", "scadenzario"], chiusura: ["scadenze", "chiusura"], fiscale: ["analisi", "fiscale"], report: ["analisi", "report"], impostazioni: ["analisi", "impostazioni"] };
+const MAPPA_TAB = { corrispettivi: ["cassa", "corrispettivi"], pdp: ["analisi", "pdp"], iva: ["scadenze", null], estere: ["banche", "estere"], banche: ["banche", "banche"], scadenzario: ["scadenze", null], chiusura: ["scadenze", null], fiscale: ["analisi", "fiscale"], report: ["analisi", "report"], impostazioni: ["analisi", "impostazioni"] };
 
 const SottoMenu = ({ voci, valore, onChange, testid }) => (
   <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1" data-testid={testid}>
@@ -44,7 +44,7 @@ export default function Contabilita() {
   const goTab = (vecchia) => {
     const [t, s] = MAPPA_TAB[vecchia] || [vecchia, null];
     setTab(t);
-    if (s) setSub((cur) => ({ ...cur, [t]: s }));
+    if (s) setSub((cur) => ({ ...cur, [t]: s, ...(s === "fiscale" || s === "impostazioni" ? { analisi: "altro", altro: s } : {}) }));
   };
 
   if (!meta) return <div className="p-6 text-sm text-slate-500" data-testid="contabilita-loading">Caricamento…</div>;
@@ -84,7 +84,7 @@ export default function Contabilita() {
           <TabsList className="h-auto flex-wrap">
             <TabsTrigger value="cassa" className="gap-1.5 px-4 py-2" data-testid="contabilita-tab-cassa"><Receipt className="h-4 w-4" /> Cassa & Corrispettivi</TabsTrigger>
             {adm && <TabsTrigger value="banche" className="gap-1.5 px-4 py-2" data-testid="contabilita-tab-banche"><Landmark className="h-4 w-4" /> Banche & Fatture</TabsTrigger>}
-            <TabsTrigger value="scadenze" className="gap-1.5 px-4 py-2" data-testid="contabilita-tab-scadenze"><CalendarClock className="h-4 w-4" /> Scadenze & Chiusura</TabsTrigger>
+            <TabsTrigger value="scadenze" className="gap-1.5 px-4 py-2" data-testid="contabilita-tab-scadenze"><CalendarClock className="h-4 w-4" /> Scadenze, Chiusura & IVA</TabsTrigger>
             <TabsTrigger value="analisi" className="gap-1.5 px-4 py-2" data-testid="contabilita-tab-analisi"><TrendingUp className="h-4 w-4" /> Analisi</TabsTrigger>
           </TabsList>
 
@@ -94,25 +94,32 @@ export default function Contabilita() {
 
           {adm && (
             <TabsContent value="banche" className="space-y-4">
-              <SottoMenu testid="contabilita-sub-banche" valore={sub.banche} onChange={setS("banche")} voci={[["banche", "Estratti conto & riconciliazione"], ["estere", "Fatture estere"]]} />
+              <SottoMenu testid="contabilita-sub-banche" valore={sub.banche} onChange={setS("banche")} voci={[["banche", "Banca: estratti, fatture e scadenze"], ["estere", "Fatture estere"]]} />
               {sub.banche === "banche" && <Banche anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} />}
               {sub.banche === "estere" && <FattureEstere anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} />}
             </TabsContent>
           )}
 
           <TabsContent value="scadenze" className="space-y-4">
-            <SottoMenu testid="contabilita-sub-scadenze" valore={sub.scadenze} onChange={setS("scadenze")} voci={[["scadenzario", "Scadenzario F24 & affitti"], ...(adm ? [["chiusura", "Chiusura mese"]] : []), ["iva", "IVA"]]} />
-            {sub.scadenze === "scadenzario" && <Scadenzario anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} isAdmin={adm} />}
-            {adm && sub.scadenze === "chiusura" && <ChiusuraMese anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} goTab={goTab} />}
-            {sub.scadenze === "iva" && <IvaDashboard {...periodo} isAdmin={adm} />}
+            <Scadenzario anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} centri={centriEstere} isAdmin={adm} />
+            {adm && <ChiusuraMese anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} goTab={goTab} />}
+            <details className="rounded-xl border border-slate-200 bg-white" data-testid="iva-dettaglio">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-900">Dettaglio IVA del mese <span className="text-xs font-normal text-slate-500">(corrispettivi RT, fatture emesse/ricevute, saldo)</span></summary>
+              <div className="border-t border-slate-100 p-4"><IvaDashboard {...periodo} isAdmin={adm} compatto /></div>
+            </details>
           </TabsContent>
 
           <TabsContent value="analisi" className="space-y-4">
-            <SottoMenu testid="contabilita-sub-analisi" valore={sub.analisi} onChange={setS("analisi")} voci={[["pdp", "Punto di pareggio"], ["fiscale", "Pianificazione fiscale"], ["report", "Report fatturato"], ["impostazioni", "Invii e impostazioni"]]} />
+            <SottoMenu testid="contabilita-sub-analisi" valore={sub.analisi} onChange={setS("analisi")} voci={[["pdp", "Punto di pareggio"], ["report", "Report fatturato"], ["altro", "Altro"]]} />
             {sub.analisi === "pdp" && <PuntoPareggio {...periodo} isAdmin={adm} />}
-            {sub.analisi === "fiscale" && <PianoFiscale anno={anno} setAnno={setAnno} isAdmin={adm} />}
             {sub.analisi === "report" && <ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} isAdmin={adm} />}
-            {sub.analisi === "impostazioni" && <ContabilitaImpostazioni meta={meta} storeId={storeId} reload={loadMeta} />}
+            {(sub.analisi === "altro" || sub.analisi === "fiscale" || sub.analisi === "impostazioni") && (
+              <div className="space-y-4">
+                <SottoMenu testid="contabilita-sub-altro" valore={sub.altro || "impostazioni"} onChange={setS("altro")} voci={[["impostazioni", "Invii e impostazioni"], ["fiscale", "Pianificazione fiscale"]]} />
+                {(sub.altro || "impostazioni") === "impostazioni" && <ContabilitaImpostazioni meta={meta} storeId={storeId} reload={loadMeta} />}
+                {sub.altro === "fiscale" && <PianoFiscale anno={anno} setAnno={setAnno} isAdmin={adm} />}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       )}
