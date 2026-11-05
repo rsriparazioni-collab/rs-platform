@@ -6435,6 +6435,20 @@ async def cron_auguri_compleanno(request: Request, background_tasks: BackgroundT
     background_tasks.add_task(documenti_module.classifica_notturna)
     return {"status": "accepted"}
 
+import social_followup as social_followup_module
+social_followup_module.setup(db=db, get_current_user=get_current_user, wa_send=wa_send, wa_session_cliente=wa_session_cliente)
+api_router.include_router(social_followup_module.router)
+
+@api_router.post("/cron/social-followup")
+async def cron_social_followup(request: Request, background_tasks: BackgroundTasks):
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    if not token or not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background_tasks.add_task(social_followup_module.invia_giornaliero)
+    return {"status": "accepted"}
+
 @api_router.post("/cron/riepilogo-lavorazioni")
 async def cron_riepilogo_lavorazioni(request: Request, background_tasks: BackgroundTasks):
     auth = request.headers.get("Authorization", "")

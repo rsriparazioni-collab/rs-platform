@@ -177,3 +177,10 @@ crons:
     endpoint: "{{BASE_URL}}/api/cron/riepilogo-da-sistemare"
     method: POST
     enabled: true
+  - name: social-followup
+    description: "Alle 10:00 (lun-sab): WhatsApp 'seguici sui social' 7 giorni dopo la chiusura, max N al giorno per marchio (CambiaOra / RS Riparazioni), dai più vecchi, una sola volta per numero; parte solo se acceso dal pannello"
+    cron: "0 10 * * 1-6"
+    timezone: "Europe/Rome"
+    endpoint: "{{BASE_URL}}/api/cron/social-followup"
+    method: POST
+    enabled: true

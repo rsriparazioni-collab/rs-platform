@@ -885,3 +885,8 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-11-05 — Riparazioni
 - Pagina Riparazioni divisa in 3 sezioni (pill in alto): Da lavorare (default, tutti gli stati tranne consegnato/non_riparabile), Consegnati (storico completo), Non riparabili. Filtro stato limitato alla sezione. Solo frontend (Riparazioni.jsx), nessuna modifica dati.
+
+## 2026-11-05 — Seguici sui social (7 giorni dopo)
+- Nuovo modulo backend/social_followup.py + pannello SocialFollowupPanel.jsx in Gestione Negozi (admin). Cron social-followup 10:00 lun-sab.
+- CambiaOra (clienti energia non Enel, data_contratto <= oggi-7) dal numero CambiaOra; RS (riparazioni consegnate, SIM/internet/fisso, accessori/vendite, ritiri, Enel) dal numero del negozio. N al giorno per marchio (default 5, max 10), dai piu vecchi, una sola volta per numero di telefono (db.social_followup_log). Esclusi no_recensioni/anonimizzati.
+- Parte SPENTO: si accende dallo switch nel pannello. Testi modificabili, tasto Invia ora. Test: dry-run con 5 invii simulati, coda scalata correttamente; nessun WhatsApp reale inviato.
