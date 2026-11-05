@@ -882,3 +882,6 @@ Vedi /app/memory/test_credentials.md
 
 ## 2026-11-05 — Dashboard
 - Rimosso il riquadro "Magazzino sotto scorta" dalla Dashboard (resta visibile solo in Magazzino). Il conteggio avvisi non include più i sottoscorta.
+
+## 2026-11-05 — Riparazioni
+- Pagina Riparazioni divisa in 3 sezioni (pill in alto): Da lavorare (default, tutti gli stati tranne consegnato/non_riparabile), Consegnati (storico completo), Non riparabili. Filtro stato limitato alla sezione. Solo frontend (Riparazioni.jsx), nessuna modifica dati.

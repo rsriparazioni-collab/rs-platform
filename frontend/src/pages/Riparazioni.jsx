@@ -20,6 +20,14 @@ export default function Riparazioni() {
   const ricordi = useRicordiPreview(servizi.map((s) => s.client_id));
   const [meta, setMeta] = useState({ stores: [], operators: [] });
   const [filters, setFilters] = useState({ q: "", stato: "all", venditore_id: "all" });
+  const [sezione, setSezione] = useState("lavorare");
+  const SEZIONI = [
+    { id: "lavorare", label: "Da lavorare", match: (s) => s.stato !== "consegnato" && s.stato !== "non_riparabile" },
+    { id: "consegnati", label: "Consegnati", match: (s) => s.stato === "consegnato" },
+    { id: "non_riparabili", label: "Non riparabili", match: (s) => s.stato === "non_riparabile" },
+  ];
+  const statiSezione = RIP_STATI.filter((st) => SEZIONI.find((z) => z.id === sezione).match({ stato: st.id }));
+  const visibili = servizi.filter(SEZIONI.find((z) => z.id === sezione).match);
   const [formOpen, setFormOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -56,7 +64,7 @@ export default function Riparazioni() {
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-900">Riparazioni</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {servizi.length} riparazioni {canSeeAll ? "in totale" : "del tuo negozio"}
+            {visibili.length} riparazioni {SEZIONI.find((z) => z.id === sezione).label.toLowerCase()} {canSeeAll ? "in totale" : "del tuo negozio"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -73,19 +81,35 @@ export default function Riparazioni() {
       </div>
       <ReportLaboratorio open={reportOpen} onClose={() => setReportOpen(false)} />
 
+      <div className="flex flex-wrap gap-2" data-testid="riparazioni-sezioni">
+        {SEZIONI.map((z) => {
+          const n = servizi.filter(z.match).length;
+          const attiva = sezione === z.id;
+          return (
+            <button key={z.id} type="button" data-testid={`riparazioni-sezione-${z.id}`}
+                    onClick={() => { setSezione(z.id); setFilters((f) => ({ ...f, stato: "all" })); }}
+                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition-colors ${attiva ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
+              {z.label} <span className={`ml-1 ${attiva ? "text-slate-300" : "text-slate-400"}`}>({n})</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="riparazioni-filters">
         <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input placeholder="Cerca cliente o dispositivo..." className="pl-9" value={filters.q}
                  onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))} data-testid="riparazioni-search" />
         </div>
+        {statiSezione.length > 1 && (
         <Select value={filters.stato} onValueChange={(v) => setFilters((f) => ({ ...f, stato: v }))}>
           <SelectTrigger className="w-[240px]" data-testid="riparazioni-stato-filter"><SelectValue /></SelectTrigger>
           <SelectContent className="max-h-72">
             <SelectItem value="all">Tutti gli stati</SelectItem>
-            {RIP_STATI.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+            {statiSezione.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
           </SelectContent>
         </Select>
+        )}
         {(user.role === "admin" || user.can_view_all) && (
           <Select value={filters.venditore_id} onValueChange={(v) => setFilters((f) => ({ ...f, venditore_id: v }))}>
             <SelectTrigger className="w-[200px]" data-testid="riparazioni-negozio-filter"><SelectValue /></SelectTrigger>
@@ -116,7 +140,7 @@ export default function Riparazioni() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {servizi.map((s, i) => (
+              {visibili.map((s, i) => (
                 <tr key={s.id} className="cursor-pointer transition-colors hover:bg-slate-50"
                     onClick={() => setDetailRow(s)} data-testid={`riparazione-row-${i}`}>
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-600" data-testid={`riparazione-numero-${i}`}>{s.numero_riparazione || "-"}</td>
@@ -150,7 +174,7 @@ export default function Riparazioni() {
                   </td>
                 </tr>
               ))}
-              {servizi.length === 0 && (
+              {visibili.length === 0 && (
                 <tr><td colSpan={10} className="px-4 py-12 text-center text-sm text-slate-500" data-testid="riparazioni-empty">
                   Nessuna riparazione trovata.
                 </td></tr>
