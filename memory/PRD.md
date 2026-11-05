@@ -879,3 +879,6 @@ Vedi /app/memory/test_credentials.md
 - B) Banche: bottone "Non dovuta" (modo non_dovuta) accanto a Contanti/Carta; sotto-menu "Banca: estratti, fatture e scadenze" / Fatture estere.
 - C) Tab "Scadenze, Chiusura & IVA": Scadenzario + Chiusura mese + <details> Dettaglio IVA (IvaDashboard compatto) in un'unica pagina.
 - D) Analisi: Punto di pareggio / Report fatturato / Altro (Invii e impostazioni, Pianificazione fiscale). MAPPA_TAB aggiornata.
+
+## 2026-11-05 — Dashboard
+- Rimosso il riquadro "Magazzino sotto scorta" dalla Dashboard (resta visibile solo in Magazzino). Il conteggio avvisi non include più i sottoscorta.

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRight, Wrench, Smartphone, CalendarClock, Package, MessageCircle, Link2 } from "lucide-react";
+import { Users, RefreshCw, Wallet, FileText, Zap, Flame, BellRing, Mail, ArrowRight, Wrench, Smartphone, CalendarClock, MessageCircle, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
 import MarginiChart from "../components/MarginiChart";
@@ -95,7 +95,7 @@ export default function Dashboard() {
   };
 
   const totalAlerts = alerts
-    ? alerts.rinnovi.length + alerts.pagamenti_clienti.length + alerts.pagamenti_negozi.length + (alerts.sotto_scorta?.length || 0)
+    ? alerts.rinnovi.length + alerts.pagamenti_clienti.length + alerts.pagamenti_negozi.length
     : 0;
 
   return (
@@ -234,27 +234,6 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {alerts?.sotto_scorta?.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 shadow-sm" data-testid="sotto-scorta-panel">
-          <div className="flex items-center gap-2 border-b border-amber-200 px-5 py-3">
-            <Package className="h-4 w-4 text-amber-600" />
-            <h2 className="font-heading text-base font-semibold text-amber-900">
-              Magazzino sotto scorta ({alerts.sotto_scorta.length})
-            </h2>
-            <Link to="/magazzino" className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:underline" data-testid="sotto-scorta-link">
-              Vai al magazzino <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
-          <div className="flex flex-wrap gap-2 p-4">
-            {alerts.sotto_scorta.map((a) => (
-              <span key={a.id} className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-800" data-testid={`sotto-scorta-${a.id}`}>
-                {a.nome} · {a.store_name} · <strong>{a.quantita} pz</strong>
-              </span>
-            ))}
           </div>
         </div>
       )}
