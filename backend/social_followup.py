@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 import uuid
 from datetime import datetime, timezone, date, timedelta
@@ -199,3 +200,58 @@ async def salva(body: SettingsInput, user: dict = Depends(_current_user)):
 async def invia_ora(user: dict = Depends(_current_user)):
     _admin(user)
     return await invia_giornaliero(forza=True, distanzia=False)
+
+
+class InboxTextInput(BaseModel):
+    sender: str
+    sender_is_lid: bool = False
+    push_name: str = ""
+    session: str = ""
+    message_id: str = ""
+    text: str
+    timestamp: Optional[str] = None
+
+
+@router.post("/whatsapp/inbox-text")
+async def inbox_text(body: InboxTextInput, request: Request):
+    """Testo privato ricevuto da un cliente: se ha avuto il messaggio social negli ultimi 30 giorni → risposta da mostrare in Dashboard."""
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    tok = request.headers.get("X-Webhook-Secret", "") or request.headers.get("Authorization", "")[7:]
+    if not secret or tok != secret:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db = _d["db"]
+    num = "".join(ch for ch in body.sender if ch.isdigit())
+    if len(num) < 9:
+        return {"status": "ignorato", "motivo": "mittente non identificabile"}
+    if body.message_id and await db.social_risposte.find_one({"message_id": body.message_id}):
+        return {"status": "ignorato", "motivo": "già ricevuto"}
+    da = (_now() - timedelta(days=30)).isoformat()
+    inviato = await db.social_followup_log.find_one({"ok": True, "tel": {"$regex": f"{num[-9:]}$"}, "at": {"$gte": da}}, {"_id": 0}, sort=[("at", -1)])
+    if not inviato:
+        return {"status": "ignorato", "motivo": "nessun messaggio social recente"}
+    doc = {"id": str(uuid.uuid4()), "message_id": body.message_id, "marchio": inviato["marchio"], "client_id": inviato["client_id"],
+           "client_name": inviato.get("client_name") or body.push_name, "tel": num, "session": body.session or inviato.get("session"),
+           "text": body.text[:2000], "at": body.timestamp or _now().isoformat(), "gestita": False}
+    await db.social_risposte.insert_one(doc)
+    doc.pop("_id", None)
+    return {"status": "salvata", "id": doc["id"]}
+
+
+def _scope_risposte(user: dict) -> dict:
+    if user["role"] == "admin" or user.get("can_view_all"):
+        return {}
+    return {"session": {"$in": user.get("store_ids", [])}}
+
+
+@router.get("/social-followup/risposte")
+async def risposte(user: dict = Depends(_current_user)):
+    f = {**_scope_risposte(user), "gestita": False}
+    return await _d["db"].social_risposte.find(f, {"_id": 0}).sort("at", -1).to_list(100)
+
+
+@router.post("/social-followup/risposte/{rid}/gestita")
+async def risposta_gestita(rid: str, user: dict = Depends(_current_user)):
+    r = await _d["db"].social_risposte.update_one({"id": rid, **_scope_risposte(user)}, {"$set": {"gestita": True, "gestita_da": user.get("email", ""), "gestita_at": _now().isoformat()}})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Risposta non trovata")
+    return {"ok": True}

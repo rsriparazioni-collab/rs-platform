@@ -118,7 +118,23 @@ async function initSession(sessionId) {
         } catch (e) { console.error(`[${sessionId}] media cliente:`, e.message); }
         continue;
       }
-      if (!jid.endsWith('@g.us')) continue;
+      if (!jid.endsWith('@g.us')) {
+        // Chat privata: testo di un cliente → il gestionale lo mostra in Dashboard se è una risposta ai nostri messaggi (es. "seguici sui social")
+        const t = msg.conversation || msg.extendedTextMessage?.text || '';
+        if (!t || jid.endsWith('@broadcast') || giaInoltrato(m.key?.id)) continue;
+        let from = String(jid).split('@')[0].split(':')[0];
+        if (jid.endsWith('@lid')) {
+          try { from = String((await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)) || m.key?.senderPn || '').split('@')[0].split(':')[0] || from; } catch (_) { /* ok */ }
+        }
+        try {
+          await fetch(`${CRM_URL}/api/whatsapp/inbox-text`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': CRM_WEBHOOK_SECRET },
+            body: JSON.stringify({ sender: from, sender_is_lid: jid.endsWith('@lid'), push_name: m.pushName || '', session: sessionId, message_id: m.key.id, text: t,
+                                   timestamp: new Date((Number(m.messageTimestamp) || Date.now() / 1000) * 1000).toISOString() }),
+          });
+        } catch (e) { console.error(`[${sessionId}] inbox-text:`, e.message); }
+        continue;
+      }
       const text = msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || msg.documentMessage?.caption || '';
       if (!text) continue;
       const participant = String(m.key?.participant || '');
