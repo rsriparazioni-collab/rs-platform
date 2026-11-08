@@ -6087,6 +6087,10 @@ async def startup():
     await migra_stati_clienti_non_energia()
     await compensi_module.seed()
     try:
+        await report_ritiri_module.seed_email_commercialista()
+    except Exception as e:
+        logger.error(f"seed email commercialista: {e}")
+    try:
         init_storage()
         logger.info("Object storage inizializzato")
     except Exception as e:

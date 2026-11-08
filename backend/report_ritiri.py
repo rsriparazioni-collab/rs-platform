@@ -235,6 +235,33 @@ async def invia_report_mensile(store_id: str, anno: int, mese: int, extra_to: Op
     return {"inviato": True, "to": to, "ritiri": len(rep["ritiri"]), "link_pdf": link_pdf, "link_zip": link_zip}
 
 
+EMAIL_COMMERCIALISTA_DEFAULT = {"morbegno": "info@paghesas.it", "gravedona": "info@paghesas.it", "sondrio": "marisa@ncservizi.it"}
+
+
+async def seed_email_commercialista() -> None:
+    """Imposta le email commercialista ritiri dei negozi se mancanti (idempotente)."""
+    db = _d["db"]
+    async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1, "email_commercialista": 1}):
+        email = EMAIL_COMMERCIALISTA_DEFAULT.get((s.get("nome") or "").strip().lower())
+        if email and not (s.get("email_commercialista") or "").strip():
+            await db.stores.update_one({"id": s["id"]}, {"$set": {"email_commercialista": email}})
+
+
+async def invia_report_tutti_mese(anno: int, mese: int, rinvia: bool = False) -> list:
+    db = _d["db"]
+    out = []
+    async for s in db.stores.find({"email_commercialista": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "nome": 1}).sort("nome", 1):
+        if not rinvia and await db.report_ritiri_log.find_one({"store_id": s["id"], "anno": anno, "mese": mese}):
+            out.append({"negozio": s["nome"], "inviato": False, "motivo": "Già inviato"})
+            continue
+        try:
+            r = await invia_report_mensile(s["id"], anno, mese)
+        except Exception as e:
+            r = {"inviato": False, "motivo": str(e)}
+        out.append({"negozio": s["nome"], **r})
+    return out
+
+
 def _mese_precedente(oggi: date) -> tuple:
     primo = oggi.replace(day=1) - timedelta(days=1)
     return primo.year, primo.month
@@ -358,6 +385,18 @@ class ReportInput(BaseModel):
     anno: int
     mese: int
     email_extra: str = ""
+
+
+class ReportTuttiInput(BaseModel):
+    anno: int
+    mese: int
+    rinvia: bool = False
+
+
+@router.post("/ritiri/report-mensile/invia-tutti")
+async def invia_report_tutti(input: ReportTuttiInput, user: dict = _user()):
+    _solo_ufficio(user)
+    return await invia_report_tutti_mese(input.anno, input.mese, rinvia=input.rinvia)
 
 
 def _solo_ufficio(user: dict) -> None:

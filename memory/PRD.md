@@ -891,3 +891,8 @@ Vedi /app/memory/test_credentials.md
 - CambiaOra (clienti energia non Enel, data_contratto <= oggi-7) dal numero CambiaOra; RS (riparazioni consegnate, SIM/internet/fisso, accessori/vendite, ritiri, Enel) dal numero del negozio. N al giorno per marchio (default 5, max 10), dai piu vecchi, una sola volta per numero di telefono (db.social_followup_log). Esclusi no_recensioni/anonimizzati.
 - Parte SPENTO: si accende dallo switch nel pannello. Testi modificabili, tasto Invia ora. Test: dry-run con 5 invii simulati, coda scalata correttamente; nessun WhatsApp reale inviato.
 - Risposte social: service.js inoltra i testi privati a POST /api/whatsapp/inbox-text (secret); il backend li salva in db.social_risposte solo se il numero ha ricevuto un messaggio social negli ultimi 30 gg. Dashboard: pannello RisposteSocial.jsx (link wa.me + Gestita). Negozi vedono solo le risposte arrivate sulla loro sessione. NOTA: richiede aggiornamento di service.js su Railway.
+
+## 2026-11-05 — Report ritiri commercialista
+- Email commercialista ritiri impostate automaticamente all avvio se vuote (report_ritiri.seed_email_commercialista): Morbegno+Gravedona -> info@paghesas.it, Sondrio -> marisa@ncservizi.it (modificabili in Gestione Negozi).
+- Nuovo POST /api/ritiri/report-mensile/invia-tutti {anno,mese,rinvia} + tasto "Invia a tutti i negozi" nel dialog Report commercialista (Ritiri). Salta negozi senza ritiri e mesi gia inviati.
+- Invio reale di settembre/ottobre da fare in PRODUZIONE dal gestionale (preview non ha i dati di ottobre).

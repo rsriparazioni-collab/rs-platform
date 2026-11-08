@@ -42,6 +42,23 @@ export default function ReportCommercialistaDialog({ stores }) {
     }
   };
 
+  const inviaTutti = async () => {
+    if (!window.confirm(`Invio il report di ${MESI[mese - 1]} ${anno} a tutti i negozi con email commercialista impostata. Confermi?`)) return;
+    setSending(true);
+    try {
+      const r = await api.post("/ritiri/report-mensile/invia-tutti", { anno, mese });
+      const ok = r.data.filter((x) => x.inviato);
+      const no = r.data.filter((x) => !x.inviato);
+      if (ok.length) toast.success(`Inviato: ${ok.map((x) => `${x.negozio} (${x.ritiri} ritiri → ${x.to.join(", ")})`).join(" · ")}`);
+      if (no.length) toast.message(`Non inviato: ${no.map((x) => `${x.negozio}: ${x.motivo}`).join(" · ")}`);
+      api.get(`/ritiri/report-mensile/anteprima?anno=${anno}&mese=${mese}`).then((a) => setAnteprima(a.data)).catch(() => {});
+    } catch (e) {
+      toast.error(apiError(e, "Invio fallito"));
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <>
       <Button variant="outline" onClick={() => setOpen(true)} className="gap-2" data-testid="report-commercialista-button">
@@ -124,6 +141,9 @@ export default function ReportCommercialistaDialog({ stores }) {
             <Button variant="outline" disabled={!storeId} className="gap-1.5" data-testid="report-download-zip"
                     onClick={() => downloadBlob(`/ritiri/report-mensile?${q}&formato=zip`, `Ritiri_${store?.nome}_${anno}-${String(mese).padStart(2, "0")}.zip`)}>
               <Archive className="h-4 w-4" /> ZIP bolle + documenti
+            </Button>
+            <Button variant="outline" disabled={sending} onClick={inviaTutti} className="gap-1.5" data-testid="report-send-all">
+              <Mail className="h-4 w-4" /> Invia a tutti i negozi ({MESI[mese - 1]})
             </Button>
             <Button disabled={!storeId || sending} onClick={invia} className="gap-1.5 bg-slate-900 hover:bg-slate-800" data-testid="report-send">
               <Mail className="h-4 w-4" /> {sending ? "Invio..." : "Invia ora via email"}
