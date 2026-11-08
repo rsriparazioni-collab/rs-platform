@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { PeriodoPicker, eur } from "./shared";
 
+const MESI_BREVI = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+
 const Num = ({ label, value, tone = "", sub, testid }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-3" data-testid={testid}>
     <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
@@ -54,8 +56,12 @@ const Classifica = ({ titolo, gruppi, categorie, onSet, testid, hint }) => {
 export const ContoEconomico = ({ anno, mese, setAnno, setMese }) => {
   const [entita, setEntita] = useState("ditta");
   const [d, setD] = useState(null);
+  const [conf, setConf] = useState([]);
   const [err, setErr] = useState("");
-  const load = useCallback(() => api.get("/margine/conto-economico", { params: { entita, anno, mese } }).then((r) => { setD(r.data); setErr(""); }).catch((e) => setErr(apiError(e))), [entita, anno, mese]);
+  const load = useCallback(() => {
+    api.get("/margine/conto-economico", { params: { entita, anno, mese } }).then((r) => { setD(r.data); setErr(""); }).catch((e) => setErr(apiError(e)));
+    api.get("/margine/confronto", { params: { entita, anno, mese, n: 3 } }).then((r) => setConf(r.data)).catch(() => setConf([]));
+  }, [entita, anno, mese]);
   useEffect(() => { load(); }, [load]);
 
   const setBanca = async (g, categoria) => {
@@ -100,6 +106,19 @@ export const ContoEconomico = ({ anno, mese, setAnno, setMese }) => {
                   <Riga label="Entrate" value={n.entrate} /><Riga label="− Merce (stimata in quota)" value={n.merce} indent /><Riga label="Margine lordo" value={n.margine_lordo} bold /><Riga label="− Costi fissi (in quota)" value={n.costi_fissi} indent /><Riga label="Risultato" value={n.risultato} bold />
                 </div>
               ))}
+            </div>
+          )}
+          {conf.length > 1 && (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white" data-testid="ce-confronto">
+              <div className="border-b px-4 py-2 text-sm font-semibold">Andamento ultimi {conf.length} mesi</div>
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-2 text-left">Voce</th>{conf.map((c) => <th key={`${c.anno}-${c.mese}`} className="px-4 py-2 text-right">{MESI_BREVI[c.mese - 1]} {c.anno}</th>)}</tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {[["Entrate", "entrate", ""], ["Merce e ricambi", "merce", "text-rose-700"], ["Margine lordo", "margine_lordo", "font-semibold"], ["Costi fissi", "costi_fissi", "text-rose-700"], ["Risultato", "risultato", "font-semibold"], ["Da classificare", "da_classificare", "text-amber-700"]].map(([l, k, cls]) => (
+                    <tr key={k} data-testid={`ce-confronto-${k}`}><td className={`px-4 py-1.5 ${cls}`}>{l}</td>{conf.map((c) => <td key={`${c.anno}-${c.mese}`} className={`px-4 py-1.5 text-right tabular-nums ${cls} ${k === "risultato" ? (c[k] >= 0 ? "text-emerald-700" : "text-rose-700") : ""}`}>{eur(c[k])}{k === "margine_lordo" && c.margine_lordo_pct !== null && <span className="ml-1 text-[10px] font-normal text-slate-400">{c.margine_lordo_pct}%</span>}</td>)}</tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
           <details className="rounded-xl border border-slate-200 bg-white" data-testid="ce-dettaglio">

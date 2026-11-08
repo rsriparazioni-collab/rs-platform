@@ -259,3 +259,18 @@ async def conto_economico(entita: str, anno: int, mese: int) -> dict:
 @router.get("/conto-economico")
 async def get_conto_economico(entita: str, anno: int, mese: int, user: dict = Depends(_admin)):
     return await conto_economico(entita, anno, mese)
+
+
+@router.get("/confronto")
+async def confronto(entita: str, anno: int, mese: int, n: int = 3, user: dict = Depends(_admin)):
+    """Ultimi n mesi affiancati (fino al mese scelto): entrate, merce, margine, costi fissi, risultato, da classificare."""
+    out = []
+    a, m = anno, mese
+    for _ in range(max(1, min(n, 6))):
+        ce = await conto_economico(entita, a, m)
+        out.append({"anno": a, "mese": m, "entrate": ce["entrate"]["totale"], "scontrini": ce["entrate"]["scontrini"], "fatture_emesse": ce["entrate"]["fatture_emesse"],
+                    "merce": ce["costi_variabili"]["merce"], "margine_lordo": ce["margine_lordo"], "margine_lordo_pct": ce["margine_lordo_pct"],
+                    "costi_fissi": ce["costi_fissi"]["totale"], "risultato": ce["risultato"], "da_classificare": ce["da_classificare"],
+                    "per_negozio": [{"nome": x["nome"], "entrate": x["entrate"], "margine_lordo": x["margine_lordo"], "risultato": x["risultato"]} for x in ce["per_negozio"]]})
+        a, m = (a, m - 1) if m > 1 else (a - 1, 12)
+    return list(reversed(out))

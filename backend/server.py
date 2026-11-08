@@ -6526,6 +6526,13 @@ import estere as estere_module_for_margine
 margine_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, entita_centro=banche_module.ENTITA_CENTRO, conti=banche_module.CONTI_DEFAULT,
                      mese_dati=contabilita_module._mese_dati, riconciliazione=banche_module.riconciliazione, estere_totale=estere_module_for_margine.totale_pdp)
 api_router.include_router(margine_module.router)
+async def _fatture_pagate_banca(centro_id: str, anno: int, mese: int) -> set:
+    entita = next((e for e, c in banche_module.ENTITA_CENTRO.items() if c == centro_id), None)
+    if not entita:
+        return set()
+    r = await banche_module.riconciliazione(entita, anno, mese, user={"role": "admin"})
+    return {p["fattura"]["id"] for p in r.get("fatture_pagate", [])}
+contabilita_module._d["fatture_pagate_banca"] = _fatture_pagate_banca
 import report_commercialista as report_comm_module
 report_comm_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, pdp_calcolo=contabilita_module._pdp_calcolo,
                          riconciliazione=lambda entita, anno, mese: banche_module.riconciliazione(entita, anno, mese, user={"role": "admin"}), send_email=send_email)

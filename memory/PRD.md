@@ -904,3 +904,5 @@ Vedi /app/memory/test_credentials.md
 - Per negozio (ditta): entrate esatte, costi ripartiti in quota scontrini.
 - Frontend: ContoEconomico.jsx (Analisi → Conto economico, admin), FattureAde spostato in Banche & Fatture (Banche.jsx). PuntoPareggio.jsx non piu usato nella UI (backend pdp resta per report commercialista).
 - Premi/incentivi NON toccati (richiesta utente).
+- 2026-11-08: Spesa cassa con fattura: GET /api/contabilita/spese/fatture-aperte?store_id&anno&mese (fatture ricevute del mese e precedente non pagate ne in banca); POST/PUT spese accettano fattura_id -> fatture_pagamenti (modo contanti, spesa_cassa_id); DELETE spesa rimuove il collegamento. UI SpeseCassa: select "Paga una fattura AdE?" + badge "fattura ✓".
+- Confronto mesi: GET /api/margine/confronto?entita&anno&mese&n=3 → tabella "Andamento ultimi 3 mesi" nel Conto economico.

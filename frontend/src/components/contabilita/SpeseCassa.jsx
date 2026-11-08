@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Trash2, Pencil, Check, X } from "lucide-react";
 import api, { apiError } from "../../lib/api";
@@ -9,11 +9,23 @@ import { Num, eur } from "./shared";
 const dmy = (d) => d.split("-").reverse().join("/");
 
 export const SpeseCassa = ({ storeId, anno, mese, spese, reload }) => {
-  const [f, setF] = useState({ data: new Date().toISOString().slice(0, 10), motivo: "", importo: "", riferimento: "" });
+  const [f, setF] = useState({ data: new Date().toISOString().slice(0, 10), motivo: "", importo: "", riferimento: "", fattura_id: "" });
   const [edit, setEdit] = useState(null);
+  const [aperte, setAperte] = useState([]);
+  useEffect(() => { api.get("/contabilita/spese/fatture-aperte", { params: { store_id: storeId, anno, mese } }).then((r) => setAperte(r.data)).catch(() => setAperte([])); }, [storeId, anno, mese, spese]);
+  const scegliFattura = (fid, setter, cur) => {
+    const ft = aperte.find((x) => x.id === fid);
+    setter({ ...cur, fattura_id: fid, ...(ft && !cur.motivo ? { motivo: ft.controparte } : {}), ...(ft && !cur.importo ? { importo: String(ft.totale) } : {}), ...(ft && !cur.riferimento ? { riferimento: ft.numero ? `Fatt. ${ft.numero}` : cur.riferimento } : {}) });
+  };
+  const SelFattura = ({ value, onChange, testid, spesaId }) => (
+    <select value={value || ""} onChange={(e) => onChange(e.target.value)} className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs" data-testid={testid} title="Se questa spesa paga una fattura AdE ricevuta, sceglila: risulterà pagata in contanti e non verrà contata due volte">
+      <option value="">Nessuna fattura (spesa senza fattura)</option>
+      {aperte.filter((x) => !x.spesa_cassa_id || x.spesa_cassa_id === spesaId).map((x) => <option key={x.id} value={x.id}>{x.controparte.slice(0, 28)} · {x.numero || "s/n"} · {eur(x.totale)} · {dmy(x.data)}</option>)}
+    </select>
+  );
   const add = async () => {
     if (!f.motivo || !f.importo) return toast.error("Scrivi il motivo e l'importo della spesa");
-    try { await api.post("/contabilita/spese", { ...f, store_id: storeId, importo: parseFloat(f.importo) }); setF({ ...f, motivo: "", importo: "", riferimento: "" }); toast.success("Spesa registrata"); reload(); }
+    try { await api.post("/contabilita/spese", { ...f, store_id: storeId, importo: parseFloat(f.importo) }); setF({ ...f, motivo: "", importo: "", riferimento: "", fattura_id: "" }); toast.success(f.fattura_id ? "Spesa registrata e fattura segnata pagata in contanti" : "Spesa registrata"); reload(); }
     catch (e) { toast.error(apiError(e)); }
   };
   const del = async (s) => {
@@ -22,7 +34,7 @@ export const SpeseCassa = ({ storeId, anno, mese, spese, reload }) => {
   };
   const salva = async () => {
     if (!edit.motivo || edit.importo === "") return toast.error("Scrivi il motivo e l'importo della spesa");
-    try { await api.put(`/contabilita/spese/${edit.id}`, { data: edit.data, motivo: edit.motivo, importo: parseFloat(edit.importo), riferimento: edit.riferimento || "" }); toast.success("Spesa modificata"); setEdit(null); reload(); }
+    try { await api.put(`/contabilita/spese/${edit.id}`, { data: edit.data, motivo: edit.motivo, importo: parseFloat(edit.importo), riferimento: edit.riferimento || "", fattura_id: edit.fattura_id || "" }); toast.success("Spesa modificata"); setEdit(null); reload(); }
     catch (e) { toast.error(apiError(e)); }
   };
   const tot = spese.reduce((a, s) => a + s.importo, 0);
@@ -36,6 +48,13 @@ export const SpeseCassa = ({ storeId, anno, mese, spese, reload }) => {
         <Input placeholder="N° fattura / ritiro" value={f.riferimento} onChange={(e) => setF({ ...f, riferimento: e.target.value })} className="h-8" data-testid="spesa-riferimento" />
         <Button size="sm" onClick={add} data-testid="spesa-add">Aggiungi</Button>
       </div>
+      {aperte.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-sky-50/40 px-4 py-2 text-xs text-slate-600" data-testid="spesa-fattura-wrap">
+          <span className="font-medium">Paga una fattura AdE?</span>
+          <div className="min-w-[320px] flex-1"><SelFattura value={f.fattura_id} onChange={(v) => scegliFattura(v, setF, f)} testid="spesa-fattura" /></div>
+          <span className="text-slate-400">{aperte.length} fattur{aperte.length === 1 ? "a" : "e"} ricevut{aperte.length === 1 ? "a" : "e"} ancora senza pagamento</span>
+        </div>
+      )}
       <table className="w-full text-sm">
         <tbody className="divide-y divide-slate-100">
           {spese.map((s) => edit?.id === s.id ? (
@@ -43,7 +62,7 @@ export const SpeseCassa = ({ storeId, anno, mese, spese, reload }) => {
               <td className="px-3 py-1.5"><Input type="date" value={edit.data} onChange={(e) => setEdit({ ...edit, data: e.target.value })} className="h-8" data-testid="spesa-edit-data" /></td>
               <td className="px-3 py-1.5"><Input value={edit.motivo} onChange={(e) => setEdit({ ...edit, motivo: e.target.value })} className="h-8" data-testid="spesa-edit-motivo" /></td>
               <td className="px-3 py-1.5"><Num value={edit.importo} onChange={(v) => setEdit({ ...edit, importo: v })} testid="spesa-edit-importo" /></td>
-              <td className="px-3 py-1.5"><Input value={edit.riferimento || ""} onChange={(e) => setEdit({ ...edit, riferimento: e.target.value })} className="h-8" placeholder="N° fattura / ritiro" data-testid="spesa-edit-riferimento" /></td>
+              <td className="px-3 py-1.5"><Input value={edit.riferimento || ""} onChange={(e) => setEdit({ ...edit, riferimento: e.target.value })} className="h-8" placeholder="N° fattura / ritiro" data-testid="spesa-edit-riferimento" /><div className="mt-1"><SelFattura value={edit.fattura_id} onChange={(v) => scegliFattura(v, setEdit, edit)} testid="spesa-edit-fattura" spesaId={edit.id} /></div></td>
               <td className="whitespace-nowrap px-3 py-1.5 text-right">
                 <button onClick={salva} className="mr-2 text-emerald-600 hover:text-emerald-800" title="Salva" data-testid="spesa-edit-save"><Check className="h-4 w-4" /></button>
                 <button onClick={() => setEdit(null)} className="text-slate-400 hover:text-slate-700" title="Annulla" data-testid="spesa-edit-cancel"><X className="h-4 w-4" /></button>
@@ -52,7 +71,7 @@ export const SpeseCassa = ({ storeId, anno, mese, spese, reload }) => {
           ) : (
             <tr key={s.id} data-testid={`spesa-row-${s.id}`}>
               <td className="px-5 py-1.5 text-slate-500">{dmy(s.data)}</td>
-              <td className="px-3 py-1.5">{s.motivo}{s.ricorrente_id && <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800" data-testid={`spesa-automatica-${s.id}`}>automatica</span>}{s.updated_by && <span className="ml-2 text-[10px] text-amber-700" title={`Modificata il ${s.updated_at?.slice(0, 10).split("-").reverse().join("/")}`} data-testid={`spesa-modificata-${s.id}`}>modificata da {s.updated_by}</span>}</td>
+              <td className="px-3 py-1.5">{s.motivo}{s.fattura_id && <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800" title="Paga una fattura AdE ricevuta: non viene contata due volte" data-testid={`spesa-fattura-badge-${s.id}`}>fattura ✓</span>}{s.ricorrente_id && <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800" data-testid={`spesa-automatica-${s.id}`}>automatica</span>}{s.updated_by && <span className="ml-2 text-[10px] text-amber-700" title={`Modificata il ${s.updated_at?.slice(0, 10).split("-").reverse().join("/")}`} data-testid={`spesa-modificata-${s.id}`}>modificata da {s.updated_by}</span>}</td>
               <td className="px-3 py-1.5 text-right tabular-nums">{eur(s.importo)}</td><td className="px-3 py-1.5 text-slate-500">{s.riferimento}</td>
               <td className="whitespace-nowrap px-3 py-1.5 text-right">
                 <button onClick={() => setEdit({ ...s, importo: String(s.importo) })} className="mr-2 text-slate-400 hover:text-sky-700" title="Modifica" data-testid={`spesa-edit-${s.id}`}><Pencil className="h-4 w-4" /></button>

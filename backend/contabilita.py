@@ -578,6 +578,58 @@ class SpesaInput(BaseModel):
     motivo: str
     importo: float
     riferimento: str = ""
+    fattura_id: str = ""
+
+
+async def _centro_id_di_store(store_id: str) -> Optional[str]:
+    for c in await _centri({"role": "admin", "store_ids": []}):
+        if store_id in c["store_ids"]:
+            return c["id"]
+    return None
+
+
+async def _collega_fattura(spesa: dict, fattura_id: str, user: dict) -> None:
+    """Spesa contanti che paga una fattura AdE ricevuta → la fattura risulta pagata in contanti (una sola fonte di costo)."""
+    db = _d["db"]
+    await db.fatture_pagamenti.delete_many({"spesa_cassa_id": spesa["id"]})
+    if not fattura_id:
+        return
+    f = await db.fatture_ade.find_one({"id": fattura_id, "direzione": "ricevute"}, {"_id": 0, "controparte": 1, "totale": 1})
+    if not f:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    doc = {"fattura_id": fattura_id, "modo": "contanti", "spesa_cassa_id": spesa["id"], "nota": "", "importo": f.get("totale"), "controparte": f.get("controparte"),
+           "spesa": {k: spesa.get(k) for k in ("data", "motivo", "importo")}, "by": user.get("name", ""), "at": datetime.now(timezone.utc).isoformat()}
+    await db.fatture_pagamenti.update_one({"fattura_id": fattura_id}, {"$set": doc}, upsert=True)
+
+
+@router.get("/spese/fatture-aperte")
+async def spese_fatture_aperte(store_id: str, anno: int, mese: int, request: Request):
+    """Fatture ricevute AdE del mese (e del precedente) non ancora pagate: da proporre quando si registra una spesa contanti."""
+    user = await _user(request)
+    await _store_completo(user, store_id)
+    db = _d["db"]
+    centro_id = await _centro_id_di_store(store_id)
+    if not centro_id:
+        return []
+    prev = (anno, mese - 1) if mese > 1 else (anno - 1, 12)
+    pagate = {p["fattura_id"]: p.get("spesa_cassa_id") async for p in db.fatture_pagamenti.find({}, {"_id": 0, "fattura_id": 1, "spesa_cassa_id": 1})}
+    in_banca = set()
+    if _d.get("fatture_pagate_banca"):
+        for a, m in ((anno, mese), prev):
+            try:
+                in_banca |= await _d["fatture_pagate_banca"](centro_id, a, m)
+            except Exception:
+                pass
+    out = []
+    async for f in db.fatture_ade.find({"centro_id": centro_id, "direzione": "ricevute", "$or": [{"anno": anno, "mese": mese}, {"anno": prev[0], "mese": prev[1]}]},
+                                       {"_id": 0, "id": 1, "controparte": 1, "numero": 1, "totale": 1, "data": 1}).sort("data", -1):
+        if f["id"] in in_banca:
+            continue
+        if f["id"] not in pagate:
+            out.append(f)
+        elif pagate[f["id"]]:
+            out.append({**f, "spesa_cassa_id": pagate[f["id"]]})
+    return out
 
 
 @router.post("/spese")
@@ -588,6 +640,8 @@ async def add_spesa(body: SpesaInput, request: Request):
     doc.update({"id": str(uuid.uuid4()), "importo": _f(body.importo), "created_at": datetime.now(timezone.utc).isoformat(), "created_by": user.get("name", "")})
     await _d["db"].spese_cassa.insert_one(doc)
     doc.pop("_id", None)
+    if body.fattura_id:
+        await _collega_fattura(doc, body.fattura_id, user)
     return doc
 
 
@@ -596,6 +650,7 @@ class SpesaEditInput(BaseModel):
     motivo: str
     importo: float
     riferimento: str = ""
+    fattura_id: str = ""
 
 
 @router.put("/spese/{spesa_id}")
@@ -611,9 +666,10 @@ async def edit_spesa(spesa_id: str, body: SpesaEditInput, request: Request):
         raise HTTPException(status_code=400, detail="Data non valida")
     if not body.motivo.strip():
         raise HTTPException(status_code=400, detail="Il motivo è obbligatorio")
-    upd = {"data": body.data, "motivo": body.motivo.strip(), "importo": _f(body.importo), "riferimento": body.riferimento,
+    upd = {"data": body.data, "motivo": body.motivo.strip(), "importo": _f(body.importo), "riferimento": body.riferimento, "fattura_id": body.fattura_id,
            "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("name", "")}
     await _d["db"].spese_cassa.update_one({"id": spesa_id}, {"$set": upd, "$push": {"storico": {"at": upd["updated_at"], "da": upd["updated_by"], "prima": {k: sp.get(k) for k in ("data", "motivo", "importo", "riferimento")}}}})
+    await _collega_fattura({**sp, **upd}, body.fattura_id, user)
     return {**sp, **upd}
 
 
@@ -625,6 +681,7 @@ async def del_spesa(spesa_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Spesa non trovata")
     await _store_completo(user, sp["store_id"])
     await _d["db"].spese_cassa.delete_one({"id": spesa_id})
+    await _d["db"].fatture_pagamenti.delete_many({"spesa_cassa_id": spesa_id})
     return {"ok": True}
 
 
