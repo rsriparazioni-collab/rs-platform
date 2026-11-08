@@ -1,0 +1,44 @@
+{
+  "summary": "Ho testato la funzione Conto economico (backend margine.py e UI ContoEconomico.jsx), lo spostamento del riquadro Fatture AdE in Banche & Fatture e la regressione del sotto-menu Analisi. Backend: 6/6 test pytest passati. Le formule dei totali sono coerenti. Per settembre 2026 (ditta): entrate 26.737,52 = scontrini 10.988 + fatture emesse 15.749,52; costi fissi 3.682,49; risultato 23.055,03; da classificare 28.157,82. Per negozio: Gravedona 24,4% e Morbegno 75,6%, e le entrate per negozio sommano il totale. L'auto-classificazione funziona come richiesto: affitto per Boffini e Caminada, tasse per delega, giroconto per anticipo transato pos, commissioni per tutte le chiavi con 'commission'. Regola banca kevin ghiani → stipendi: +2541,00 e auto=false. Regola fornitore sifar → merce: merce 0 → 2895,88 e il margine scende dello stesso importo. Categoria non valida → 400; srls → 200; entità xyz → 400; categorie OK. Frontend: tutte le card, i riquadri e i data-testid ci sono. Il dettaglio si apre. La select ce-banca-sel-kevin-ghiani mostra il toast, ricarica i dati e porta i costi fissi da 3682,49 a 6223,49. In Banche & Fatture il riquadro fatture-ade e i bottoni di upload sono visibili sotto le card dei conti e restano visibili cambiando entità. 'Punto di pareggio' non c'è più; Report fatturato e Altro funzionano. Ho cancellato tutte le regole create dai test: banca_regole=0 e fornitori_regole=0.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/margine/conto-economico (chiave_beneficiario)", "issue": "Gli addebiti diretti 'Pagamento ADUE [B2B] COD. DISP.: ... NOME: X' finiscono tutti sotto la stessa chiave 'adue cod disp': creditori diversi (MOONEY, Generali, WIND TRE, FASTWEB, GSM, NIMS) vengono uniti e classificati con un'unica regola. Lo stesso accade per 'Pagamento bolletta CBILL NOME AZIENDA X' → 'bolletta cbill nome' (Agenzia Entrate, Autostrada Pedemontana, Comune di Sondrio). La chiave andrebbe presa dal testo dopo 'NOME:' / 'NOME AZIENDA'."},
+      {"endpoint": "GET /api/margine/conto-economico (_auto_banca)", "issue": "'Costo Bonifico Istantaneo ...' (8 movimenti da 1 € l'uno) non viene classificato in automatico: la parola chiave è 'costo istantaneo', ma il testo reale è 'costo bonifico istantaneo'. Basta aggiungere 'bonifico istantaneo' oppure 'costo bonifico' ai termini delle commissioni."},
+      {"endpoint": "GET /api/margine/conto-economico", "issue": "Tutti i pagamenti POS con carta in uscita (carburante, Mooney, supermercati, esteri) finiscono in un solo gruppo 'pagamento pos con carta' (27 movimenti, 870,79 €), con la categoria presa dal primo movimento (setdefault). Inoltre la categoria banca 'pos' (etichetta 'Incasso POS (già nei corrispettivi)') compare nella select anche per le uscite, e l'etichetta è fuorviante."},
+      {"endpoint": "PUT /api/margine/regola-banca", "issue": "Il campo entita non viene validato rispetto a ENTITA_CENTRO, e regola-fornitore non valida centro_id: entrambi accettano valori qualsiasi e creano regole orfane."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Banche.jsx loadRic / FattureAde.jsx load (stesso schema in ContoEconomico.jsx load)", "issue": "Race condition su risposte vecchie: aprendo Banche & Fatture e cambiando subito il mese da Novembre a Settembre, l'intestazione mostrava '09/2026' ma i dati erano quelli di novembre (fatture 0 doc., POS 0, 'Nessun estratto caricato'). Le richieste del mese 11 arrivate dopo hanno sovrascritto quelle del mese 9. Con un'attesa prima del cambio funziona. Ogni richiesta viene anche inviata 2 volte. Soluzione: AbortController oppure un flag 'ignore' nel cleanup di useEffect.", "selector": "[data-testid=fatture-ade], [data-testid=banche-page]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Conto economico", "issues": [
+        "Il toast di classificazione banca mostra '\"Bonifico da Voi disposto a fav\" → Stipendi': il prefisso della descrizione viene troncato, meglio usare la chiave del beneficiario (es. 'kevin ghiani').",
+        "Formato numeri incoerente: '€ 3682,49' / '€ 6514,05' senza separatore delle migliaia accanto a '€ 26.737,52' (in Intl it-IT il raggruppamento scatta solo da 5 cifre); conviene impostare useGrouping 'always'.",
+        "Rischio doppio conteggio: le uscite banca verso fornitori che hanno anche fatture AdE (Distro srl 1245, Miwo Srl 975,17, Fastweb/Wind tramite ADUE) sono fra quelle 'da classificare'. Se l'utente sceglie 'Altri costi', il costo viene contato due volte; il suggerimento del riquadro dovrebbe indicare 'Pagamento fattura'."
+      ]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter43_conto_economico.py", "/app/test_reports/pytest/iter43.xml"],
+  "action_items": [
+    "Correggere la race condition sui caricamenti al cambio mese/entità in Banche.jsx, FattureAde.jsx e ContoEconomico.jsx (ignorare le risposte vecchie).",
+    "In chiave_beneficiario, ricavare la chiave da 'NOME: X' per ADUE/SDD e da 'NOME AZIENDA X' per CBILL.",
+    "Aggiungere 'bonifico istantaneo' alle parole chiave delle commissioni.",
+    "Validare entita e centro_id negli endpoint PUT delle regole.",
+    "Migliorare il testo del toast e il raggruppamento delle migliaia nei numeri."
+  ],
+  "critical_code_review_comments": [
+    "margine.py: in un gruppo la categoria auto viene presa solo dal primo movimento (setdefault); i movimenti successivi del gruppo con un'auto-categoria diversa vengono ignorati.",
+    "Il controllo admin c'è (_admin), ma il test non-admin con deborah ha restituito 403 per via dell'obbligo di attivare la 2FA, prima di arrivare al controllo di ruolo: il 403 dovuto al ruolo non è stato verificato in modo isolato.",
+    "Gli importi nelle chiamate di riconciliazione/conto economico vengono ricalcolati a ogni richiesta (riconciliazione completa): va bene per un mese, ma senza cache."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter43_conto_economico.py"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "95% (tutti i flussi richiesti OK; 1 race condition al cambio mese veloce)"},
+  "seed_data_creation": "Nessuna. Le regole temporanee (banca kevin ghiani, fornitore sifar) sono state create e poi cancellate; banca_regole e fornitori_regole sono di nuovo vuote.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login admin: POST /api/auth/login → mfa_token → /api/auth/login/mfa con codice TOTP. Un codice già usato viene rifiutato: aspettare la finestra di 30 s successiva per il secondo login nello stesso intervallo. Dati reali solo per settembre 2026, ditta (29 gruppi banca, 19 fornitori). Il test pytest va lanciato con -n 0. Valori di riferimento: entrate 26737.52, costi fissi 3682.49, risultato 23055.03, da classificare 28157.82."
+}
