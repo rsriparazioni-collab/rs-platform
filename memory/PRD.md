@@ -896,3 +896,4 @@ Vedi /app/memory/test_credentials.md
 - Email commercialista ritiri impostate automaticamente all avvio se vuote (report_ritiri.seed_email_commercialista): Morbegno+Gravedona -> info@paghesas.it, Sondrio -> marisa@ncservizi.it (modificabili in Gestione Negozi).
 - Nuovo POST /api/ritiri/report-mensile/invia-tutti {anno,mese,rinvia} + tasto "Invia a tutti i negozi" nel dialog Report commercialista (Ritiri). Salta negozi senza ritiri e mesi gia inviati.
 - Invio reale di settembre/ottobre da fare in PRODUZIONE dal gestionale (preview non ha i dati di ottobre).
+- Report ritiri automatico del 1° del mese: copia a rsriparazioni@gmail.com (COPIA_REPORT_AUTOMATICO in report_ritiri.py).

@@ -267,6 +267,9 @@ def _mese_precedente(oggi: date) -> tuple:
     return primo.year, primo.month
 
 
+COPIA_REPORT_AUTOMATICO = ["rsriparazioni@gmail.com"]
+
+
 async def invia_report_tutti_negozi() -> list:
     db = _d["db"]
     anno, mese = _mese_precedente(date.today())
@@ -275,7 +278,7 @@ async def invia_report_tutti_negozi() -> list:
         if await db.report_ritiri_log.find_one({"store_id": s["id"], "anno": anno, "mese": mese}):
             continue
         try:
-            r = await invia_report_mensile(s["id"], anno, mese)
+            r = await invia_report_mensile(s["id"], anno, mese, extra_to=COPIA_REPORT_AUTOMATICO)
         except Exception as e:
             r = {"inviato": False, "motivo": str(e)}
         out.append({"negozio": s["nome"], **r})
