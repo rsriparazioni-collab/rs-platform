@@ -6521,6 +6521,11 @@ import banche as banche_module
 banche_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, wa_send=wa_send, store_id_by_name=store_id_by_name, numero_amministrazione=contabilita_module.NUMERO_AMMINISTRAZIONE,
                     abbina_scadenze=lambda entita, dal, al: scadenzario_module.abbina_movimenti_banca(entita, dal, al))
 api_router.include_router(banche_module.router)
+import margine as margine_module
+import estere as estere_module_for_margine
+margine_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, entita_centro=banche_module.ENTITA_CENTRO, conti=banche_module.CONTI_DEFAULT,
+                     mese_dati=contabilita_module._mese_dati, riconciliazione=banche_module.riconciliazione, estere_totale=estere_module_for_margine.totale_pdp)
+api_router.include_router(margine_module.router)
 import report_commercialista as report_comm_module
 report_comm_module.setup(db=db, get_current_user=get_current_user, centri_tutti=_centri_tutti, pdp_calcolo=contabilita_module._pdp_calcolo,
                          riconciliazione=lambda entita, anno, mese: banche_module.riconciliazione(entita, anno, mese, user={"role": "admin"}), send_email=send_email)

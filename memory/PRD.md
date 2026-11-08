@@ -897,3 +897,10 @@ Vedi /app/memory/test_credentials.md
 - Nuovo POST /api/ritiri/report-mensile/invia-tutti {anno,mese,rinvia} + tasto "Invia a tutti i negozi" nel dialog Report commercialista (Ritiri). Salta negozi senza ritiri e mesi gia inviati.
 - Invio reale di settembre/ottobre da fare in PRODUZIONE dal gestionale (preview non ha i dati di ottobre).
 - Report ritiri automatico del 1° del mese: copia a rsriparazioni@gmail.com (COPIA_REPORT_AUTOMATICO in report_ritiri.py).
+
+## 2026-11-08 — Conto economico (nuovo, sostituisce Punto di pareggio in Analisi)
+- backend/margine.py: GET /api/margine/conto-economico?entita=ditta|srls&anno&mese; PUT /api/margine/regola-banca {entita,chiave,categoria}; PUT /api/margine/regola-fornitore {centro_id,chiave,categoria}; GET /api/margine/categorie. Collezioni: banca_regole, fornitori_regole.
+- Regola: ogni euro una sola fonte. Entrate = scontrini (corrispettivi) + fatture emesse AdE. Merce = fatture ricevute categoria merce (+estere). Costi fissi = banca (affitto/tasse/stipendi/commissioni/altro) + fatture utenze/servizi + spese cassa senza fattura. Esclusi: uscite banca che pagano una fattura AdE (riconciliazione), spese cassa collegate a fattura, giroconti/POS, passante, fatture non_dovute. Auto: affitti da beneficiari scadenze_f24, F24/delega, stipendi, commissioni, giroconti.
+- Per negozio (ditta): entrate esatte, costi ripartiti in quota scontrini.
+- Frontend: ContoEconomico.jsx (Analisi → Conto economico, admin), FattureAde spostato in Banche & Fatture (Banche.jsx). PuntoPareggio.jsx non piu usato nella UI (backend pdp resta per report commercialista).
+- Premi/incentivi NON toccati (richiesta utente).

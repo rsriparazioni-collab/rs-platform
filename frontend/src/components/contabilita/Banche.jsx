@@ -6,6 +6,9 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Checkbox } from "../ui/checkbox";
 import { PeriodoPicker, eur } from "./shared";
+import { FattureAde } from "./FattureAde";
+
+const ENTITA_CENTRO = { ditta: "morbegno+gravedona", srls: "store:abbe8ad2-8102-4951-b4f7-8db24634a205" };
 
 const ContoCard = ({ c, onUploaded }) => {
   const [busy, setBusy] = useState(false);
@@ -38,6 +41,7 @@ export const Banche = ({ anno, mese, setAnno, setMese, centri = [] }) => {
   const [ric, setRic] = useState(null);
   const [cfg, setCfg] = useState(null);
   const [anteprima, setAnteprima] = useState(null);
+  const centroId = ENTITA_CENTRO[entita];
   const loadConti = useCallback(() => api.get("/banche/conti").then((r) => setConti(r.data)).catch(() => {}), []);
   const loadRic = useCallback(() => api.get("/banche/riconciliazione", { params: { entita, anno, mese } }).then((r) => setRic(r.data)).catch((e) => toast.error(apiError(e))), [entita, anno, mese]);
   const loadCfg = useCallback(() => api.get("/report-commercialista/config").then((r) => setCfg(r.data)).catch(() => {}), []);
@@ -66,6 +70,7 @@ export const Banche = ({ anno, mese, setAnno, setMese, centri = [] }) => {
         </div>
       </div>
       <div className="grid gap-2 md:grid-cols-2">{conti.filter((c) => c.entita === entita).map((c) => <ContoCard key={c.id} c={c} onUploaded={() => { loadConti(); loadRic(); }} />)}</div>
+      {centroId && <FattureAde centroId={centroId} anno={anno} mese={mese} onChanged={loadRic} />}
       {ric && (
         <>
           <p className="text-xs text-slate-500">{ric.nota}</p>

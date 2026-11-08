@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Corrispettivi } from "../components/contabilita/Corrispettivi";
 import { IvaDashboard } from "../components/contabilita/IvaDashboard";
 import { PianoFiscale } from "../components/contabilita/PianoFiscale";
-import { PuntoPareggio } from "../components/contabilita/PuntoPareggio";
+import { ContoEconomico } from "../components/contabilita/ContoEconomico";
 import { ReportAnnuale } from "../components/contabilita/ReportAnnuale";
 import { ContabilitaImpostazioni } from "../components/contabilita/ContabilitaImpostazioni";
 import { NuovoNegozioDialog } from "../components/contabilita/NuovoNegozioDialog";
@@ -110,8 +110,8 @@ export default function Contabilita() {
           </TabsContent>
 
           <TabsContent value="analisi" className="space-y-4">
-            <SottoMenu testid="contabilita-sub-analisi" valore={sub.analisi} onChange={setS("analisi")} voci={[["pdp", "Punto di pareggio"], ["report", "Report fatturato"], ["altro", "Altro"]]} />
-            {sub.analisi === "pdp" && <PuntoPareggio {...periodo} isAdmin={adm} />}
+            <SottoMenu testid="contabilita-sub-analisi" valore={sub.analisi} onChange={setS("analisi")} voci={[["pdp", "Conto economico"], ["report", "Report fatturato"], ["altro", "Altro"]]} />
+            {sub.analisi === "pdp" && (adm ? <ContoEconomico anno={anno} mese={mese} setAnno={setAnno} setMese={setMese} /> : <p className="text-sm text-slate-500">Riservato all'amministrazione.</p>)}
             {sub.analisi === "report" && <ReportAnnuale storeId={storeId} anno={anno} setAnno={setAnno} isAdmin={adm} />}
             {(sub.analisi === "altro" || sub.analisi === "fiscale" || sub.analisi === "impostazioni") && (
               <div className="space-y-4">
