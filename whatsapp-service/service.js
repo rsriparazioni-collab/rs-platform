@@ -228,8 +228,8 @@ app.post('/send', async (req, res) => {
   const { phone, message, session, media } = req.body || {};
   if (!phone || (!message && !(Array.isArray(media) && media.length))) return res.status(400).json({ success: false, error: 'phone e message obbligatori' });
   let jid, num;
-  if (String(phone).endsWith('@g.us')) {
-    jid = String(phone); num = jid;
+  if (String(phone).trim().endsWith('@g.us')) {
+    jid = String(phone).replace(/\s+/g, '').replace(/^\+/, ''); num = jid;
   } else {
     num = String(phone).replace(/[^\d+]/g, '');
     if (num.startsWith('+')) num = num.slice(1);

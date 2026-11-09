@@ -57,9 +57,20 @@ async def require_addetto(user: dict = Depends(_current_user)):
     return user
 
 
+def pulisci_jid_gruppo(v: str) -> str:
+    """'+1203...@g.us', ' 1203... ' → '1203...@g.us' (WhatsApp non accetta '+' o spazi negli ID gruppo)."""
+    s = re.sub(r"\s+", "", (v or "")).lower()
+    if not s:
+        return ""
+    base = s.split("@")[0].lstrip("+")
+    return f"{base}@g.us" if base else ""
+
+
 async def cfg() -> dict:
     doc = await _d["db"].settings.find_one({"key": "switcho_cfg"}, {"_id": 0})
-    return {**DEFAULT_CFG, **((doc or {}).get("value") or {})}
+    c = {**DEFAULT_CFG, **((doc or {}).get("value") or {})}
+    c["gruppo_jid"] = pulisci_jid_gruppo(c.get("gruppo_jid"))
+    return c
 
 
 def _norm(s: str) -> str:
@@ -763,7 +774,9 @@ async def get_config(user: dict = Depends(require_addetto)):
 async def put_config(input: CfgInput, user: dict = Depends(require_addetto)):
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Solo amministratore")
-    await _d["db"].settings.update_one({"key": "switcho_cfg"}, {"$set": {"value": input.model_dump()}}, upsert=True)
+    val = input.model_dump()
+    val["gruppo_jid"] = pulisci_jid_gruppo(val.get("gruppo_jid"))
+    await _d["db"].settings.update_one({"key": "switcho_cfg"}, {"$set": {"value": val}}, upsert=True)
     return await cfg()
 
 

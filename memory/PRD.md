@@ -906,3 +906,4 @@ Vedi /app/memory/test_credentials.md
 - Premi/incentivi NON toccati (richiesta utente).
 - 2026-11-08: Spesa cassa con fattura: GET /api/contabilita/spese/fatture-aperte?store_id&anno&mese (fatture ricevute del mese e precedente non pagate ne in banca); POST/PUT spese accettano fattura_id -> fatture_pagamenti (modo contanti, spesa_cassa_id); DELETE spesa rimuove il collegamento. UI SpeseCassa: select "Paga una fattura AdE?" + badge "fattura ✓".
 - Confronto mesi: GET /api/margine/confronto?entita&anno&mese&n=3 → tabella "Andamento ultimi 3 mesi" nel Conto economico.
+- 2026-11-08: Switcho: ID gruppo pulito automaticamente (pulisci_jid_gruppo in switcho.py: toglie +/spazi, aggiunge @g.us) in lettura cfg e salvataggio; service.js /send pulisce il jid gruppo. Causa invii falliti al gruppo: ID salvato con "+" iniziale.
