@@ -142,8 +142,29 @@ def _classifica_regole(testo: str) -> str:
     return "altro"
 
 
+async def _client_ids_persona(client_id: str) -> list:
+    """Tutte le schede della stessa persona (stesso codice fiscale o stesso telefono): i documenti caricati su una valgono per tutte."""
+    db = _d["db"]
+    c = await db.clients.find_one({"id": client_id}, {"_id": 0, "codice_fiscale": 1, "telefono": 1})
+    if not c:
+        return [client_id]
+    ors = []
+    cf = (c.get("codice_fiscale") or "").strip().upper()
+    if len(cf) >= 11:
+        ors.append({"codice_fiscale": {"$regex": f"^{re.escape(cf)}$", "$options": "i"}})
+    tel = re.sub(r"\D", "", c.get("telefono") or "")
+    if len(tel) >= 9:
+        ors.append({"telefono": {"$regex": f"{tel[-9:]}\\D*$"}})
+    ids = {client_id}
+    if ors:
+        async for x in db.clients.find({"$or": ors}, {"_id": 0, "id": 1}):
+            ids.add(x["id"])
+    return list(ids)
+
+
 async def _documenti_cliente(client_id: str) -> list:
-    return await _d["db"].attachments.find({"client_id": client_id, "is_deleted": False}, {"_id": 0, "id": 1, "original_filename": 1, "tipo": 1, "created_at": 1}).to_list(50)
+    ids = await _client_ids_persona(client_id)
+    return await _d["db"].attachments.find({"client_id": {"$in": ids}, "is_deleted": False}, {"_id": 0, "id": 1, "original_filename": 1, "tipo": 1, "created_at": 1}).sort("created_at", -1).to_list(50)
 
 
 async def _applica(seg: dict, c: dict, user_name: str = "Switcho") -> dict:
@@ -338,8 +359,14 @@ async def _media_documenti(segs: list) -> list:
     db = _d["db"]
     media = []
     for s in segs:
-        atts = await db.attachments.find({"client_id": s["client_id"], "is_deleted": False}, {"_id": 0}).sort("created_at", -1).to_list(50)
+        atts = await db.attachments.find({"client_id": {"$in": await _client_ids_persona(s["client_id"])}, "is_deleted": False}, {"_id": 0}).sort("created_at", -1).to_list(50)
         scelti = [next((a for a in atts if a.get("tipo") == t), None) for t in ("bolletta", "documento")]
+        if not all(scelti):
+            def pare(a, parole):
+                n = (a.get("original_filename") or "").lower()
+                return a.get("tipo") not in ("bolletta", "documento") and any(p in n for p in parole)
+            scelti[0] = scelti[0] or next((a for a in atts if pare(a, ("bollett", "fattura", "enel", "eni", "a2a", "hera", "edison", "iren", "sorgenia"))), None)
+            scelti[1] = scelti[1] or next((a for a in atts if pare(a, ("document", "carta", "identit", "patente", "passaporto", "ci_", "ci.", "fronte", "retro", "cf"))), None)
         scelti = [a for a in scelti if a] or atts[:2]
         for att in scelti:
             try:
