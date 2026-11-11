@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Euro, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText, Link2, KeyRound, GraduationCap, Calculator, ShoppingBag, BarChart3, Receipt, Trophy, ClipboardList } from "lucide-react";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { LayoutDashboard, Users, Building2, UserCog, ShieldCheck, LogOut, Zap, Euro, Menu, MessageCircle, Wrench, Smartphone, Package, Recycle, Lock, ScrollText, Link2, KeyRound, GraduationCap, Calculator, ShoppingBag, BarChart3, Receipt, Trophy, ClipboardList, MessageSquareWarning } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
 import { RUOLI } from "../lib/constants";
@@ -15,6 +15,7 @@ const NAV = [
   { to: "/kpi", label: "KPI Team", icon: BarChart3, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-kpi" },
   { to: "/clienti", label: "Clienti", icon: Users, roles: ["admin", "operatore", "negozio", "tecnico"], section: "energia", testid: "nav-clienti" },
   { to: "/lavorazioni", label: "Riepilogo Lavorazioni", icon: ClipboardList, roles: ["admin", "operatore", "negozio", "tecnico"], section: "energia", addetto: true, testid: "nav-lavorazioni" },
+  { to: "/lavorazioni#switcho", label: "Switcho", icon: MessageSquareWarning, roles: ["admin", "operatore", "negozio", "tecnico"], section: "energia", addetto: true, testid: "nav-switcho" },
   { to: "/riparazioni", label: "Riparazioni", icon: Wrench, roles: ["admin", "operatore", "negozio", "tecnico"], section: "riparazioni", testid: "nav-riparazioni" },
   { to: "/telefonia", label: "Telefonia", icon: Smartphone, roles: ["admin", "operatore", "negozio", "tecnico"], section: "telefonia", testid: "nav-telefonia" },
   { to: "/magazzino", label: "Magazzino", icon: Package, roles: ["admin", "operatore", "negozio", "tecnico"], testid: "nav-magazzino" },
@@ -38,6 +39,7 @@ const NAV = [
 function NavItems({ onNavigate, mobile }) {
   const { user } = useAuth();
   const suffix = mobile ? "-mobile" : "";
+  const location = useLocation();
   const sections = user.sections || ALL_SECTIONS_DEFAULT;
   const [addetto, setAddetto] = useState(user.role === "admin");
   useEffect(() => {
@@ -54,14 +56,16 @@ function NavItems({ onNavigate, mobile }) {
         <NavLink
           key={n.to}
           to={n.to}
-          end={n.to === "/"}
+          end={n.to === "/" || n.to.includes("#")}
           onClick={onNavigate}
           data-testid={`${n.testid}${suffix}`}
-          className={({ isActive }) =>
-            `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
-              isActive ? "bg-sky-600/10 text-sky-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-            }`
-          }
+          className={({ isActive }) => {
+            const hash = n.to.includes("#") ? n.to.slice(n.to.indexOf("#")) : "";
+            const attivo = isActive && (hash ? location.hash === hash : !(location.hash && items.some((x) => x.to === `${n.to}${location.hash}`)));
+            return `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
+              attivo ? "bg-sky-600/10 text-sky-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            }`;
+          }}
         >
           <n.icon className="h-4 w-4" />
           {n.label}

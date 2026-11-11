@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { ClipboardList, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../lib/api";
@@ -30,6 +31,10 @@ export default function RiepilogoLavorazioni() {
       .catch((e) => { if (e?.response?.status === 403) setDenied(true); else toast.error(apiError(e)); });
   }, [storeId]);
   useEffect(() => { load(); }, [load]);
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (data && hash === "#switcho") setTimeout(() => document.getElementById("switcho")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+  }, [data, hash]);
 
   if (denied) {
     return (
@@ -55,7 +60,7 @@ export default function RiepilogoLavorazioni() {
       {data && (
         <>
           <RiepilogoNegozi negozi={data.negozi} totali={data.totali} storeId={storeId} onSelect={setStoreId} />
-          <SwitchoBox onOpen={setDetail} onChanged={load} />
+          <div id="switcho" className="scroll-mt-4"><SwitchoBox onOpen={setDetail} onChanged={load} /></div>
           <DocumentiReport onOpen={setDetail} />
           <NumeriDoppi onOpen={setDetail} />
           <AgendaGiorno scadute={data.agenda_scadute} oggi={data.oggi} onChanged={load} />
