@@ -373,6 +373,7 @@ async def _media_documenti(segs: list) -> list:
                 data, ct = _d["get_object"](att["storage_path"])
             except Exception as e:
                 logger.warning(f"allegato {att.get('id')}: {e}")
+                await db.switcho_segnalazioni.update_one({"id": s["id"]}, {"$push": {"azioni": f"Allegato {att.get('original_filename')} non leggibile: {e}"}})
                 continue
             media.append({"filename": f"{s.get('client_name', '').replace(' ', '_')}_{att.get('tipo') or 'doc'}_{att.get('original_filename') or 'documento'}", "mimetype": att.get("content_type") or ct, "base64": base64.b64encode(data).decode()})
     return media
@@ -696,18 +697,27 @@ async def rispondi(seg_id: str, input: RispondiInput, user: dict = Depends(requi
     if not seg:
         raise HTTPException(status_code=404, detail="Segnalazione non trovata")
     media = []
+    ammessi = set(await _client_ids_persona(seg["client_id"])) if seg.get("client_id") else None
+    scartati = []
     for att in await db.attachments.find({"id": {"$in": input.attachment_ids}, "is_deleted": False}, {"_id": 0}).to_list(20):
-        if seg.get("client_id") and att.get("client_id") != seg["client_id"]:
+        if ammessi is not None and att.get("client_id") not in ammessi:
+            scartati.append(f"{att.get('original_filename')}: appartiene a un altro cliente")
             continue
-        data, ct = _d["get_object"](att["storage_path"])
+        try:
+            data, ct = _d["get_object"](att["storage_path"])
+        except Exception as e:
+            scartati.append(f"{att.get('original_filename')}: file non leggibile ({e})")
+            continue
         media.append({"filename": att.get("original_filename") or "documento", "mimetype": att.get("content_type") or ct, "base64": base64.b64encode(data).decode()})
+    if input.attachment_ids and not media:
+        raise HTTPException(status_code=400, detail="Nessun allegato inviabile: " + "; ".join(scartati or ["allegati non trovati"]))
     testo = input.testo.strip() or (f"Documenti di {seg.get('client_name')} in allegato." if media else "")
     if not testo and not media:
         raise HTTPException(status_code=400, detail="Scrivi un testo o seleziona almeno un documento")
     await _invia_gruppo(testo, media)
     await db.switcho_segnalazioni.update_one({"id": seg_id}, {"$set": {"risposta": {"testo": testo, "allegati": len(media), "da": user["name"], "at": _now().isoformat()}},
-                                                              "$push": {"azioni": f"Risposta al gruppo da {user['name']} ({len(media)} allegati)"}})
-    return {"status": "ok", "allegati": len(media)}
+                                                              "$push": {"azioni": f"Risposta al gruppo da {user['name']} ({len(media)} allegati)" + (f" — scartati: {'; '.join(scartati)}" if scartati else "")}})
+    return {"status": "ok", "allegati": len(media), "scartati": scartati}
 
 
 # ---------- promemoria 48 ore ----------
