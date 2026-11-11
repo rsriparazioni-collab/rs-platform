@@ -8,7 +8,7 @@ const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '40mb' }));
 
 const API_KEY = process.env.WA_API_KEY || '';
 app.use((req, res, next) => {
@@ -22,6 +22,16 @@ const CRM_URL = (process.env.CRM_URL || '').replace(/\/$/, '');
 const CRM_WEBHOOK_SECRET = process.env.CRM_WEBHOOK_SECRET || '';
 const logger = pino({ level: 'silent' });
 const sessions = {};
+// lo stesso messaggio di gruppo arriva a ogni nostro numero presente nel gruppo: lo inoltriamo al gestionale una volta sola
+const inoltrati = new Map();
+function giaInoltrato(messageId) {
+  if (!messageId) return false;
+  const now = Date.now();
+  for (const [k, t] of inoltrati) if (now - t > 30 * 60 * 1000) inoltrati.delete(k);
+  if (inoltrati.has(messageId)) return true;
+  inoltrati.set(messageId, now);
+  return false;
+}
 
 function sanitizeId(id) {
   return String(id || 'default').replace(/[^\w-]/g, '').slice(0, 64) || 'default';
@@ -55,9 +65,14 @@ async function initSession(sessionId) {
       sess.user = null;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log(`[${sessionId}] Connessione chiusa, riconnessione:`, shouldReconnect);
+      console.log(`[${sessionId}] Connessione chiusa (${statusCode}), riconnessione:`, shouldReconnect);
       delete sessions[sessionId];
-      if (shouldReconnect) setTimeout(() => initSession(sessionId).catch((e) => console.error('Init error:', e)), 5000);
+      if (!shouldReconnect) {
+        // telefono scollegato dall'utente / sessione scaduta: credenziali vecchie inutili → le cancelliamo così al prossimo giro compare il QR
+        fs.rmSync(dir, { recursive: true, force: true });
+        console.log(`[${sessionId}] credenziali eliminate, QR rigenerato`);
+      }
+      setTimeout(() => initSession(sessionId).catch((e) => console.error('Init error:', e)), 5000);
     } else if (connection === 'open') {
       sess.connected = true;
       sess.qr = null;
@@ -66,6 +81,16 @@ async function initSession(sessionId) {
     }
   });
   sock.ev.on('creds.update', saveCreds);
+  // sessione "muta": né connessa né QR entro 60 s (credenziali corrotte/scadute) → reset automatico
+  setTimeout(() => {
+    if (sessions[sessionId] === sess && !sess.connected && !sess.qr) {
+      console.log(`[${sessionId}] nessun QR né connessione dopo 60 s: reset automatico`);
+      try { sock.end(undefined); } catch (_) { /* ignore */ }
+      delete sessions[sessionId];
+      fs.rmSync(dir, { recursive: true, force: true });
+      initSession(sessionId).catch((e) => console.error('Init error:', e));
+    }
+  }, 60 * 1000);
   // Inoltro al gestionale dei messaggi ricevuti nei gruppi (es. gruppo Switcho)
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify' || !CRM_URL || !CRM_WEBHOOK_SECRET) return;
@@ -77,6 +102,7 @@ async function initSession(sessionId) {
       if (!jid.endsWith('@g.us') && (msg.imageMessage || msg.documentMessage)) {
         const media = msg.imageMessage || msg.documentMessage;
         if ((media.fileLength || 0) > 15 * 1024 * 1024) continue;
+        if (giaInoltrato(m.key?.id)) continue;
         try {
           const buf = await downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
           let from = String(jid).split('@')[0].split(':')[0];
@@ -92,7 +118,23 @@ async function initSession(sessionId) {
         } catch (e) { console.error(`[${sessionId}] media cliente:`, e.message); }
         continue;
       }
-      if (!jid.endsWith('@g.us')) continue;
+      if (!jid.endsWith('@g.us')) {
+        // Chat privata: testo di un cliente → il gestionale lo mostra in Dashboard se è una risposta ai nostri messaggi (es. "seguici sui social")
+        const t = msg.conversation || msg.extendedTextMessage?.text || '';
+        if (!t || jid.endsWith('@broadcast') || giaInoltrato(m.key?.id)) continue;
+        let from = String(jid).split('@')[0].split(':')[0];
+        if (jid.endsWith('@lid')) {
+          try { from = String((await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)) || m.key?.senderPn || '').split('@')[0].split(':')[0] || from; } catch (_) { /* ok */ }
+        }
+        try {
+          await fetch(`${CRM_URL}/api/whatsapp/inbox-text`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': CRM_WEBHOOK_SECRET },
+            body: JSON.stringify({ sender: from, sender_is_lid: jid.endsWith('@lid'), push_name: m.pushName || '', session: sessionId, message_id: m.key.id, text: t,
+                                   timestamp: new Date((Number(m.messageTimestamp) || Date.now() / 1000) * 1000).toISOString() }),
+          });
+        } catch (e) { console.error(`[${sessionId}] inbox-text:`, e.message); }
+        continue;
+      }
       const text = msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || msg.documentMessage?.caption || '';
       if (!text) continue;
       const participant = String(m.key?.participant || '');
@@ -106,6 +148,7 @@ async function initSession(sessionId) {
       // le risposte scritte dai nostri negozi (altre sessioni di questo servizio) non sono richieste Switcho
       const nostri = Object.values(sessions).flatMap((s) => [s.user?.id, s.user?.lid]).filter(Boolean).map((j) => String(j).split('@')[0].split(':')[0]);
       if (nostri.includes(sender) || (senderPn && nostri.includes(senderPn))) { console.log(`[${sessionId}] gruppo ${jid}: messaggio di un nostro negozio, ignorato`); continue; }
+      if (giaInoltrato(m.key?.id)) { console.log(`[${sessionId}] gruppo ${jid}: messaggio già inoltrato da un'altra sessione`); continue; }
       try {
         const r = await fetch(`${CRM_URL}/api/whatsapp/inbox`, {
           method: 'POST',
@@ -185,8 +228,8 @@ app.post('/send', async (req, res) => {
   const { phone, message, session, media } = req.body || {};
   if (!phone || (!message && !(Array.isArray(media) && media.length))) return res.status(400).json({ success: false, error: 'phone e message obbligatori' });
   let jid, num;
-  if (String(phone).endsWith('@g.us')) {
-    jid = String(phone); num = jid;
+  if (String(phone).trim().endsWith('@g.us')) {
+    jid = String(phone).replace(/\s+/g, '').replace(/^\+/, ''); num = jid;
   } else {
     num = String(phone).replace(/[^\d+]/g, '');
     if (num.startsWith('+')) num = num.slice(1);
