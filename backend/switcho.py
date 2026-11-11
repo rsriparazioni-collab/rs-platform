@@ -674,10 +674,11 @@ async def _invia_gruppo(testo: str, media: list | None = None) -> dict:
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Servizio WhatsApp non raggiungibile: {e}")
     ok = resp.status_code == 200 and bool(data.get("success"))
+    err = None if ok else (data.get("error") or {413: "Allegati troppo grandi per il microservizio WhatsApp: aggiorna service.js su Railway (limite 40 MB)", 404: "Il microservizio WhatsApp su Railway è vecchio: aggiorna service.js"}.get(resp.status_code) or f"Invio fallito (HTTP {resp.status_code})")
     await _d["db"].wa_log.insert_one({"id": str(uuid.uuid4()), "phone": c["gruppo_jid"], "session": sess, "message": testo[:1000], "tipo": "switcho_gruppo",
-                                      "at": _now().isoformat(), "ok": ok, "error": None if ok else data.get("error", "Invio fallito"), "media": len(media or [])})
+                                      "at": _now().isoformat(), "ok": ok, "error": err, "media": len(media or [])})
     if not ok:
-        raise HTTPException(status_code=502, detail=data.get("error", "Invio al gruppo fallito (il microservizio deve supportare i gruppi/allegati)"))
+        raise HTTPException(status_code=502, detail=err)
     return data
 
 

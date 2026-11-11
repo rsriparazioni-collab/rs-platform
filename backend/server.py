@@ -2672,7 +2672,14 @@ async def upload_attachment(client_id: str, file: UploadFile = File(...), tipo: 
 @api_router.get("/clients/{client_id}/attachments")
 async def list_attachments(client_id: str, user: dict = Depends(get_current_user)):
     await get_scoped_client(client_id, user)
-    return await db.attachments.find({"client_id": client_id, "is_deleted": False}, {"_id": 0}).to_list(200)
+    ids = await switcho_module._client_ids_persona(client_id)
+    out = await db.attachments.find({"client_id": {"$in": ids}, "is_deleted": False}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    if len(ids) > 1:
+        nomi = {c["id"]: (c.get("gestione") or c.get("tipo") or "altra scheda") async for c in db.clients.find({"id": {"$in": ids}}, {"_id": 0, "id": 1, "gestione": 1, "tipo": 1})}
+        for a in out:
+            if a["client_id"] != client_id:
+                a["da_scheda"] = nomi.get(a["client_id"], "altra scheda")
+    return out
 
 async def _check_attachment_scope(rec: dict, user: dict):
     if rec.get("client_id"):

@@ -491,6 +491,7 @@ export default function ClientDetail({ client, onClose, onEdit, onChanged, isAdm
                               onClick={() => downloadBlob(`/attachments/${a.id}/download`, a.original_filename)}
                               data-testid={`attachment-download-${a.id}`}>
                         <Paperclip className="h-3.5 w-3.5" /> {a.original_filename}
+                        {a.da_scheda && <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800" title="Caricato su un'altra scheda della stessa persona: vale anche qui" data-testid={`attachment-da-scheda-${a.id}`}>da scheda {a.da_scheda}</span>}
                       </button>
                       <span className="flex items-center gap-1">
                         <select value={a.tipo || "altro"} onChange={(e) => cambiaTipo(a, e.target.value)} className={`h-7 rounded border px-1 text-[11px] ${!a.tipo || a.tipo === "altro" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-white"}`} title="Tipo allegato (serve all'invio automatico a Switcho)" data-testid={`attachment-tipo-${a.id}`}>
