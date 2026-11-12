@@ -1,0 +1,32 @@
+{
+  "summary": "Verified fix for store WhatsApp templates editor. Backend: GET /api/messaggi-default returns all 21 keys (11 legacy + 10 new); PATCH /api/stores/{id} persists every new key and empty-string restore works (7/7 pytest pass). Frontend: admin login with 2FA TOTP, /negozi -> Sondrio Modifica -> Personalizza shows 21 textareas store-msg-* (incl. firma_ritiro, grazie_bolletta, vendita_arrivato, sollecito_ritiro, grazie_documento, grazie_altro) and 21 'Usa testo standard' buttons. Saved 'TEST grazie {nome}' in msg_grazie_bolletta -> toast 'Negozio aggiornato' -> persisted after page reload; 'Usa testo standard' fills default; restored to empty and verified empty after reload.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/stores/{id}", "issue": "Review request mentions PUT but backend exposes only PATCH (PUT -> 405). Frontend correctly uses PATCH, so no functional impact."},
+      {"endpoint": "POST /api/stores", "issue": "StoreCreate/create_store only persist msg_privacy/msg_pronto/msg_recensione/msg_promemoria; when creating a NEW store, any custom texts typed in the other 17 fields of the editor are silently discarded (pydantic drops unknown fields)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Negozi -> Modifica -> Testi messaggi", "issues": ["Placeholder (default text) is rendered with a gray very close to real text color; hard to distinguish empty-field placeholder from a custom value. Consider lighter placeholder (placeholder:text-slate-300/italic)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter44_store_messaggi.py", "/app/test_reports/pytest/pytest_iter44.xml"],
+  "action_items": [
+    "Optional: add the 17 missing msg_* fields to StoreCreate and create_store so custom texts are kept when creating a new store",
+    "Optional: lighter placeholder style in StoreMessaggiEditor textareas"
+  ],
+  "critical_code_review_comments": [
+    "create_store builds the doc manually with only 4 msg fields - use input.model_dump() to avoid drift with MSG_KEYS",
+    "update_store filters only None, so '' correctly resets to default - OK"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter44_store_messaggi.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. Sondrio store msg fields modified temporarily and restored to original ('' / original values) - verified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run pytest with -n0 (single TOTP login per module; parallel workers may hit TOTP replay). Store update endpoint is PATCH. Sondrio id abbe8ad2-8102-4951-b4f7-8db24634a205."
+}
