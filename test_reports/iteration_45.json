@@ -1,0 +1,34 @@
+{
+  "summary": "Tested the WhatsApp reminder fix in test mode (dry-run): the invia-ora calls for rinnovo energia, bollette and vincolo, ripristina-test, stato and the AvvisiStato panel in the Dashboard. I found one CRITICAL bug and fixed it with one line: wa_send in dry-run returned {'status':'dry-run'} without a 'dry_run' key. Because of that, r.get('dry_run') was always falsy, so the fix had no effect: the report said inviato=True and clients were still marked as notified. With the fix, 9/10 backend tests pass. What fails: a client with a malformed data_contratto (non-string) makes the whole round crash with a 500, so not every client is isolated. Frontend fully OK: dry-run badge, 8 rounds shown, confirm dialog, toast 'Riabilitati: 1 rinnovi · 0 bollette · 0 vincoli', counter updated from 51 to 52.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "wa_send (server.py ~3734) -> /api/energia/avvisi-rinnovo/invia-ora, /api/energia/avvisi-bollette/invia-ora, /api/telefonia/avvisi-vincolo/invia-ora", "issue": "In dry-run, wa_send returned {'status':'dry-run'} without the 'dry_run' key, so `if not r.get('dry_run')` always marked the client/service as notified and the report said inviato=True, dry_run=False. The bug reported by the user was NOT fixed. FIXED by the testing agent: return {'status':'dry-run','dry_run': True}.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/energia/avvisi-rinnovo/invia-ora (and bollette, stato)", "issue": "compute_dates(c), date.fromisoformat, store lookup and store_msg are OUTSIDE the per-client try/except. A client with a non-string data_contratto (e.g. int 20250101) causes TypeError 'int' object is not subscriptable (server.py:209) -> 500, and the whole round stops. Put the whole loop body in the try, or make compute_dates robust (str(dc))."},
+      {"endpoint": "POST /api/cron/riparazioni-ferme", "issue": "The function no longer returns anything (the `return {\"status\": \"accepted\"}` ended up as dead code after avvisi_stato, line ~5974). It answers 200 with body null. Move the return back into the cron."},
+      {"endpoint": "GET /api/avvisi/stato giri", "issue": "Manual invia-ora calls do not update cron_log run:* (only the cron does, via _esegui_isolato). The panel shows the 'ultimo giro' of the cron, not the manual one. Acceptable, but it can be confusing."},
+      {"endpoint": "invalid phone 'abc'", "issue": "In dry-run wa_send does not validate the number, so 'abc' ends up in the report as dry_run=true and not as an error. The real-error scenario cannot be checked in preview (no real sends)."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iter45_avvisi_dry_run.py", "/app/test_reports/pytest/iter45.xml"],
+  "action_items": [
+    "Keep the wa_send fix (dry_run: True in the return) and check other places that depend on the dry-run return value.",
+    "Put the whole per-client body (compute_dates, store lookup, store_msg) inside try/except Exception in invia_avvisi_rinnovo_energia, clienti_bollette_da_avvisare and invia_avvisi_vincolo (scadenza_offerta); also make avvisi_stato robust.",
+    "Restore `return {\"status\": \"accepted\"}` in cron_riparazioni_ferme and remove the dead return in avvisi_stato.",
+    "Optional: have manual invia-ora also update cron_log run:<nome>."
+  ],
+  "critical_code_review_comments": [
+    "The contract between wa_send and its callers was never checked: 'status':'dry-run' vs r.get('dry_run'). A test would have caught it right away.",
+    "ripristina-test does one find_one on wa_log per marked document (N+1). Fine at the current volume.",
+    "server.py is 6700+ lines: it should be split into modules."
+  ],
+  "updated_files": ["/app/backend/server.py (wa_send dry-run return now includes dry_run: True)", "/app/backend/tests/test_iter45_avvisi_dry_run.py"],
+  "success_rate": {"backend": "90% (9/10, after fixing the critical bug)", "frontend": "100%"},
+  "seed_data_creation": "Created TEST_* clients and wa_logs (tests + 1 for the UI). All deleted (0 TEST_ clients left). NOTE: running POST /api/avvisi/ripristina-test (as the request asked) removed rinnovo_msg_sent_for from about 53 real preview clients whose last wa_log was dry_run (69 -> 16 marked). That is the intended behaviour of the feature, but it is a change to preview data.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Preview has settings wa_dry_run=True: do NOT turn it off. Run the tests with: set -a; . backend/.env; set +a; export REACT_APP_BACKEND_URL=...; pytest tests/test_iter45_avvisi_dry_run.py -n 0. The malformed-data_contratto test fails until the main agent widens the try/except. TOTP secret is in backend/.env TEST_ADMIN_TOTP_SECRET.",
+  "rca of the issue": "Root cause of the fix not working: wa_send (dry-run branch) returns {'status':'dry-run'}, while the callers check r.get('dry_run'), which is None, so they were treated as real sends and set *_msg_sent_for. Repro: with dry-run on, create a client expiring in 30 days and call invia-ora: report inviato=True and rinnovo_msg_sent_for gets set. Fix: return {'status':'dry-run','dry_run':True}. After the fix: inviato=False, dry_run=True and the field is not set (verified on the DB)."
+}

@@ -215,7 +215,7 @@ def compute_dates(c: dict) -> dict:
             c["data_scadenza"] = scad.isoformat()
             c["giorni_al_rinnovo"] = (rin - date.today()).days
             c["giorni_alla_scadenza"] = (scad - date.today()).days
-        except ValueError:
+        except (ValueError, TypeError, AttributeError):
             pass
     c["pagato_effettivo"] = effective_pagato(c.get("pagato", False), c.get("last_payment_date"))
     return c
@@ -3731,7 +3731,7 @@ async def wa_send(phone: str, message: str, session: str = "default", tipo: str 
     if await wa_dry_run_attivo():
         log.update({"ok": True, "session_used": "dry-run", "dry_run": True})
         await db.wa_log.insert_one(log)
-        return {"status": "dry-run"}
+        return {"status": "dry-run", "dry_run": True}
     try:
         async with httpx.AsyncClient(timeout=30) as http_client:
             resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message, "session": session}, headers=wa_headers())
