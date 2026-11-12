@@ -16,6 +16,16 @@ const CAMPI = [
   { key: "msg_bollette", label: "Invito a inviare le bollette (20 gg in Centro Alert)", hint: "Inviato una volta ai clienti in alert rinnovo da 20 giorni e non ancora lavorati" },
   { key: "msg_compleanno", label: "Auguri di compleanno (ore 9:00)", hint: "Inviato una volta l'anno il giorno del compleanno (data di nascita o codice fiscale) dal numero del negozio. Variabili: {nome} {cognome} {negozio}" },
   { key: "msg_conferma_link", label: "Conferma link/plico fornitore (richiesta Switcho)", hint: "Inviato al cliente dal numero del negozio quando Switcho chiede di confermare il link o il plico del fornitore. Variabili: {nome} {negozio} {fornitore}" },
+  { key: "msg_ricambio_arrivato", label: "Ricambio arrivato (riparazioni)", hint: "Inviato quando segni il ricambio come arrivato. Variabili: {nome} {dispositivo} {negozio}" },
+  { key: "msg_disponibile", label: "Articolo disponibile in negozio (avviso manuale)", hint: "Tasto 'Avvisa disponibile' in scheda cliente. Variabili: {nome} {articolo} {saldo} {negozio}" },
+  { key: "msg_vendita_ordinato", label: "Vendita: telefono ordinato", hint: "Inviato alla registrazione di una vendita con ordine. Variabili: {nome} {articolo} {negozio}" },
+  { key: "msg_vendita_arrivato", label: "Vendita: telefono arrivato", hint: "Inviato quando il telefono venduto arriva in negozio. Variabili: {nome} {articolo} {saldo} {negozio}" },
+  { key: "msg_ordine_arrivato", label: "Ordine accessori/prodotto arrivato", hint: "Inviato quando il prodotto ordinato viene caricato in magazzino. Variabili: {nome} {articolo} {saldo} {negozio}" },
+  { key: "msg_sollecito_ritiro", label: "Sollecito ritiro telefono venduto", hint: "Inviato se il telefono arrivato non viene ritirato dopo alcuni giorni. Variabili: {nome} {articolo} {saldo} {negozio}" },
+  { key: "msg_firma_ritiro", label: "Firma bolla ritiro usato (link + OTP)", hint: "Inviato al cliente per firmare la bolla del telefono ritirato. Variabili: {nome} {articolo} {negozio} {bolla} {valore} {link_firma} {otp} {minuti}" },
+  { key: "msg_grazie_bolletta", label: "Grazie per la bolletta ricevuta", hint: "Risposta automatica quando il cliente manda una bolletta su WhatsApp. Variabili: {nome}" },
+  { key: "msg_grazie_documento", label: "Grazie per il documento ricevuto", hint: "Risposta automatica quando il cliente manda un documento. Variabili: {nome}" },
+  { key: "msg_grazie_altro", label: "Grazie per il file ricevuto (altro)", hint: "Risposta automatica per file non riconosciuti. Variabili: {nome}" },
 ];
 
 export default function StoreMessaggiEditor({ form, setForm }) {

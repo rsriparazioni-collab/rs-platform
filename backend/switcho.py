@@ -469,11 +469,6 @@ async def inbox_media(input: InboxMediaInput, request: Request):
     return {"status": "ok", "client_id": c["id"], "tipo": cls["tipo"], "attachment_id": doc["id"], "grazie": grazie, "omonimi_numero": len(cand) - 1, "scelta_cliente": scelta}
 
 
-GRAZIE = {"bolletta": "Grazie {nome}, abbiamo ricevuto la bolletta: la alleghiamo subito alla tua pratica. Ti aggiorniamo appena ci sono novità.",
-          "documento": "Grazie {nome}, documento ricevuto e allegato alla tua pratica.",
-          "altro": "Grazie {nome}, abbiamo ricevuto il file: lo verifichiamo e ti aggiorniamo."}
-
-
 async def _grazie_cliente(c: dict, tipo: str, session: str, n_cand: int) -> dict | None:
     """Risposta automatica dal negozio: una sola volta ogni 10 minuti per cliente (se manda 3 foto, un solo grazie)."""
     db = _d["db"]
@@ -484,7 +479,7 @@ async def _grazie_cliente(c: dict, tipo: str, session: str, n_cand: int) -> dict
         return {"ok": True, "saltato": "già ringraziato pochi minuti fa"}
     store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
     sess = session if session and session == c.get("venditore_id") else await _d["wa_sessione_negozio"](store)
-    testo = GRAZIE.get(tipo, GRAZIE["altro"]).format(nome=c.get("nome", "")).replace("  ", " ")
+    testo = _d["store_msg"](store, {"bolletta": "msg_grazie_bolletta", "documento": "msg_grazie_documento"}.get(tipo, "msg_grazie_altro"), nome=c.get("nome", "")).replace("  ", " ")
     try:
         await _d["wa_send"](c["telefono"], testo, session=sess, tipo="grazie_documenti", client_id=c["id"])
         return {"ok": True, "testo": testo}

@@ -14,8 +14,6 @@ REGIMI_IVA = ["iva22", "art36", "art17"]
 CATEGORIE_USATO = {"telefono_rigenerato", "telefono_ricondizionato", "telefono_usato"}
 IVA_DEFAULT = {"telefono_usato": "art36"}
 STATI_VENDITA = ["ordinato", "arrivato", "consegnato"]
-MSG_ORDINATO = "Ciao {nome}! 😊\nIl tuo nuovo {articolo} è stato ordinato. Grazie di averci scelto!\nTi avviseremo appena arriva in negozio.\n{negozio}"
-MSG_ARRIVATO = "Ciao {nome}! 😊\nIl tuo telefono {articolo} è arrivato in negozio: ti aspettiamo per prepararlo insieme e partire con la tua nuova esperienza!{saldo}\n{negozio}"
 SHEET_PREFIX_STORE = {"M": "Morbegno", "SO": "Sondrio", "G": "Gravedona"}
 
 router = APIRouter()
@@ -108,12 +106,12 @@ async def _wa_vendita(v: dict, template: str, tipo: str, saldo_txt: str = "") ->
     """WhatsApp al cliente dal numero del negozio della vendita; esito salvato sulla vendita."""
     db = _deps["db"]
     c = await db.clients.find_one({"id": v.get("client_id")}, {"_id": 0, "nome": 1, "telefono": 1}) if v.get("client_id") else None
-    store = await db.stores.find_one({"id": v["store_id"]}, {"_id": 0, "nome": 1})
+    store = await db.stores.find_one({"id": v["store_id"]}, {"_id": 0})
     key = f"wa_{tipo}"
     if not c or not c.get("telefono"):
         await db.vendite.update_one({"id": v["id"]}, {"$set": {f"{key}_error": "Cliente senza numero di telefono"}})
         return
-    msg = template.format(nome=c.get("nome", ""), articolo=v.get("articolo", ""), negozio=(store or {}).get("nome", ""), saldo=saldo_txt)
+    msg = _deps["store_msg"](store, template, nome=c.get("nome", ""), articolo=v.get("articolo", ""), saldo=saldo_txt)
     try:
         await _deps["wa_send"](c["telefono"], msg, session=v["store_id"], tipo=f"vendita_{tipo}", client_id=v["client_id"])
         await db.vendite.update_one({"id": v["id"]}, {"$set": {f"{key}_sent_at": datetime.now(timezone.utc).isoformat(), f"{key}_error": None}})
@@ -232,7 +230,7 @@ async def create_vendita(input: VenditaInput, user: dict = _user()):
         await _arricchisci(data)
         await db.vendite.insert_one(dict(data))
         data.pop("_id", None)
-        await _wa_vendita(data, MSG_ORDINATO, "ordinato")
+        await _wa_vendita(data, "msg_vendita_ordinato", "ordinato")
         return data
     if data["stato"] == "arrivato":
         data["pagato"] = False
@@ -265,7 +263,7 @@ async def create_vendita(input: VenditaInput, user: dict = _user()):
     await db.vendite.insert_one(dict(data))
     data.pop("_id", None)
     if data["stato"] == "arrivato":
-        await _wa_vendita(data, MSG_ARRIVATO, "arrivato", _saldo_txt(data))
+        await _wa_vendita(data, "msg_vendita_arrivato", "arrivato", _saldo_txt(data))
     elif data["stato"] == "consegnato":
         data["consegnato_at"] = now.isoformat()
         await db.vendite.update_one({"id": data["id"]}, {"$set": {"consegnato_at": now.isoformat()}})
@@ -287,7 +285,7 @@ async def arrivato_da_magazzino(item_id: str) -> list:
         await db.vendite.update_one({"id": v["id"]}, {"$set": {"stato": "arrivato", "arrivato_at": now, "updated_at": now},
                                                       "$push": {"stato_log": {"stato": "arrivato", "at": now, "by": "magazzino"}}})
         v.update(stato="arrivato")
-        await _wa_vendita(v, MSG_ARRIVATO, "arrivato", _saldo_txt(v))
+        await _wa_vendita(v, "msg_vendita_arrivato", "arrivato", _saldo_txt(v))
         out.append(f"{v.get('articolo', '')} ({v.get('client_name') or v.get('cliente_nome') or 'cliente'})")
     return out
 
@@ -332,9 +330,6 @@ async def avvisi_ordini_fermi() -> list:
 
 
 RITIRO_SOLLECITO_GIORNI = 7
-MSG_SOLLECITO_RITIRO = ("Ciao {nome}! 😊\nTi ricordiamo che il tuo {articolo} è pronto in negozio da qualche giorno e ti aspetta.{saldo}\n"
-                        "Passa quando vuoi negli orari di apertura, oppure scrivici qui per fissare un orario.\n{negozio}")
-
 
 async def sollecita_ritiri_in_attesa() -> list:
     """Ogni giorno: WA al cliente per i telefoni 'in attesa di ritiro' da oltre 7 giorni (ripetuto ogni 7 giorni)."""
@@ -346,7 +341,7 @@ async def sollecita_ritiri_in_attesa() -> list:
         ultimo = v.get("wa_sollecito_ritiro_sent_at")
         if ultimo and ultimo > limite:
             continue
-        await _wa_vendita(v, MSG_SOLLECITO_RITIRO, "sollecito_ritiro", _saldo_txt(v))
+        await _wa_vendita(v, "msg_sollecito_ritiro", "sollecito_ritiro", _saldo_txt(v))
         esiti.append({"vendita_id": v["id"], "cliente": v.get("client_name", ""), "articolo": v.get("articolo", "")})
     if esiti:
         await db.contabilita_log.insert_one({"id": str(uuid.uuid4()), "tipo": "sollecito_ritiro", "at": now.isoformat(), "esiti": esiti})
@@ -369,7 +364,7 @@ async def wa_arrivato_manuale(vendita_id: str, user: dict = _user()):
     v = await _deps["db"].vendite.find_one(scope, {"_id": 0})
     if not v:
         raise HTTPException(status_code=404, detail="Vendita non trovata")
-    await _wa_vendita(v, MSG_ARRIVATO, "arrivato", _saldo_txt(v))
+    await _wa_vendita(v, "msg_vendita_arrivato", "arrivato", _saldo_txt(v))
     v = await _deps["db"].vendite.find_one({"id": vendita_id}, {"_id": 0})
     if v.get("wa_arrivato_error"):
         raise HTTPException(status_code=400, detail=v["wa_arrivato_error"])
@@ -432,7 +427,7 @@ async def cambia_stato_vendita(vendita_id: str, input: StatoVenditaInput, user: 
     await db.vendite.update_one({"id": vendita_id}, {"$set": upd, "$push": {"stato_log": {"stato": input.stato, "at": now, "by": user.get("name", "")}}})
     v = await db.vendite.find_one({"id": vendita_id}, {"_id": 0})
     if input.stato == "arrivato" and attuale == "ordinato":
-        await _wa_vendita(v, MSG_ARRIVATO, "arrivato", _saldo_txt(v))
+        await _wa_vendita(v, "msg_vendita_arrivato", "arrivato", _saldo_txt(v))
     if input.stato == "consegnato" and attuale != "consegnato":
         await _accoda_recensione(v)
     return await db.vendite.find_one({"id": vendita_id}, {"_id": 0})

@@ -54,8 +54,8 @@ async def arrivato(item_id: str) -> list:
         store = await db.stores.find_one({"id": s.get("venditore_id")}, {"_id": 0, "nome": 1})
         saldo = round(float(s.get("importo") or 0) - float(s.get("acconto") or 0), 2)
         if c and c.get("telefono"):
-            msg = (f"Ciao {c.get('nome', '')}! 😊\nIl tuo {s.get('prodotto') or 'prodotto'} ordinato è arrivato ed è pronto per il ritiro presso {(store or {}).get('nome', 'il nostro negozio')}."
-                   + (f"\nSaldo alla consegna: {saldo:.2f} €." if saldo > 0 else "") + "\nTi aspettiamo!")
+            store = await db.stores.find_one({"id": s.get("venditore_id")}, {"_id": 0})
+            msg = _d["store_msg"](store, "msg_ordine_arrivato", nome=c.get("nome", ""), articolo=s.get("prodotto") or "prodotto", saldo=(f"\nSaldo alla consegna: {saldo:.2f} €." if saldo > 0 else ""))
             try:
                 await _d["wa_send"](c["telefono"], msg, session=s.get("venditore_id") or "default", tipo="ordine_arrivato", client_id=s["client_id"], servizio_id=s["id"])
                 await db.servizi.update_one({"id": s["id"]}, {"$set": {"arrivo_msg_sent_at": _now(), "arrivo_msg_error": None}})

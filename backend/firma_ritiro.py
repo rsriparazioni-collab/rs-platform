@@ -49,11 +49,10 @@ async def invia_richiesta_firma(ritiro: dict, nuovo_otp: bool = False) -> dict:
     if nuovo_otp or not ritiro.get("firma_otp") or ritiro.get("firma_otp_scadenza", "") < _now().isoformat():
         upd = {"firma_otp": f"{random.randint(0, 999999):06d}", "firma_otp_scadenza": (_now() + timedelta(minutes=OTP_MINUTI)).isoformat()}
         ritiro.update(upd)
-    store = await db.stores.find_one({"id": ritiro.get("store_id")}, {"_id": 0, "nome": 1})
-    msg = (f"Ciao {ritiro.get('nome', '')}, grazie per il ritiro del tuo {ritiro.get('articolo', 'dispositivo')} presso {(store or {}).get('nome', 'RS Riparazioni')}.\n"
-           f"Bolla N. {ritiro.get('numero')}" + (f" - valore EUR {ritiro['prezzo_ritiro']:.2f}" if ritiro.get("prezzo_ritiro") is not None else "") + ".\n\n"
-           f"Per firmare la bolla puoi:\n1) aprire questo link e firmare col dito: {link_firma(ritiro['firma_token'])}\n"
-           f"2) oppure comunicare al negozio il codice OTP: *{ritiro['firma_otp']}* (valido {OTP_MINUTI} minuti).")
+    store = await db.stores.find_one({"id": ritiro.get("store_id")}, {"_id": 0})
+    msg = _d["store_msg"](store, "msg_firma_ritiro", nome=ritiro.get("nome", ""), articolo=ritiro.get("articolo", "dispositivo"), bolla=ritiro.get("numero"),
+                          valore=(f" - valore EUR {ritiro['prezzo_ritiro']:.2f}" if ritiro.get("prezzo_ritiro") is not None else ""),
+                          link_firma=link_firma(ritiro["firma_token"]), otp=ritiro["firma_otp"], minuti=OTP_MINUTI)
     esito = {"ok": True}
     try:
         await _d["wa_send"](ritiro["telefono"], msg, session=ritiro.get("store_id") or "default", tipo="firma_ritiro", client_id=ritiro.get("client_id", ""))

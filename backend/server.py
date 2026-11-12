@@ -678,8 +678,28 @@ class StoreUpdate(BaseModel):
     msg_bollette: Optional[str] = None
     msg_compleanno: Optional[str] = None
     msg_conferma_link: Optional[str] = None
+    msg_ricambio_arrivato: Optional[str] = None
+    msg_disponibile: Optional[str] = None
+    msg_ordine_arrivato: Optional[str] = None
+    msg_vendita_ordinato: Optional[str] = None
+    msg_vendita_arrivato: Optional[str] = None
+    msg_sollecito_ritiro: Optional[str] = None
+    msg_firma_ritiro: Optional[str] = None
+    msg_grazie_bolletta: Optional[str] = None
+    msg_grazie_documento: Optional[str] = None
+    msg_grazie_altro: Optional[str] = None
 
 MSG_DEFAULTS = {
+    "msg_ricambio_arrivato": "Ciao {nome}! 😊\nIl ricambio del tuo {dispositivo} è arrivato: passa o contattaci per la riparazione.\nBuona giornata!\nRS Riparazioni {negozio}",
+    "msg_disponibile": "Ciao {nome}! 😊\nIl tuo {articolo} è arrivato ed è disponibile in negozio: ti aspettiamo per prepararlo insieme e partire con la tua nuova esperienza!{saldo}\n{negozio}",
+    "msg_ordine_arrivato": "Ciao {nome}! 😊\nIl tuo {articolo} ordinato è arrivato ed è pronto per il ritiro presso {negozio}.{saldo}\nTi aspettiamo!",
+    "msg_vendita_ordinato": "Ciao {nome}! 😊\nIl tuo nuovo {articolo} è stato ordinato. Grazie di averci scelto!\nTi avviseremo appena arriva in negozio.\n{negozio}",
+    "msg_vendita_arrivato": "Ciao {nome}! 😊\nIl tuo telefono {articolo} è arrivato in negozio: ti aspettiamo per prepararlo insieme e partire con la tua nuova esperienza!{saldo}\n{negozio}",
+    "msg_sollecito_ritiro": "Ciao {nome}! 😊\nTi ricordiamo che il tuo {articolo} è pronto in negozio da qualche giorno e ti aspetta.{saldo}\nPassa quando vuoi negli orari di apertura, oppure scrivici qui per fissare un orario.\n{negozio}",
+    "msg_firma_ritiro": "Ciao {nome}, grazie per il ritiro del tuo {articolo} presso {negozio}.\nBolla N. {bolla}{valore}.\n\nPer firmare la bolla puoi:\n1) aprire questo link e firmare col dito: {link_firma}\n2) oppure comunicare al negozio il codice OTP: *{otp}* (valido {minuti} minuti).",
+    "msg_grazie_bolletta": "Grazie {nome}, abbiamo ricevuto la bolletta: la alleghiamo subito alla tua pratica. Ti aggiorniamo appena ci sono novità.",
+    "msg_grazie_documento": "Grazie {nome}, documento ricevuto e allegato alla tua pratica.",
+    "msg_grazie_altro": "Grazie {nome}, abbiamo ricevuto il file: lo verifichiamo e ti aggiorniamo.",
     "msg_compleanno": "Buon compleanno {nome}! 🎂\nTanti auguri da tutto lo staff di RS Riparazioni {negozio}. Passa a trovarci quando vuoi!",
     "msg_conferma_link": "Ciao {nome}, ti scriviamo da RS Riparazioni {negozio}.\nPer completare la tua pratica luce/gas devi CONFERMARE il link (o la mail/plico) che ti ha inviato {fornitore}: hai tempo 48 ore, poi l'offerta scade.\nAprilo dal tuo telefono e con la tua connessione. Se hai dubbi passa in negozio o rispondi qui. Grazie!",
     "msg_privacy": """RS Group – Grazie per averci scelto!
@@ -3964,7 +3984,6 @@ class DisponibileInput(BaseModel):
     articolo: str = "telefono"
     saldo: Optional[float] = None
 
-MSG_DISPONIBILE = "Ciao {nome}! 😊\nIl tuo {articolo} è arrivato ed è disponibile in negozio: ti aspettiamo per prepararlo insieme e partire con la tua nuova esperienza!{saldo}\n{negozio}"
 
 @api_router.post("/clients/{client_id}/whatsapp/disponibile")
 async def whatsapp_disponibile(client_id: str, input: DisponibileInput, user: dict = Depends(get_current_user)):
@@ -3975,7 +3994,7 @@ async def whatsapp_disponibile(client_id: str, input: DisponibileInput, user: di
     store_id = c.get("venditore_id") or (user.get("store_ids") or [None])[0]
     store = await db.stores.find_one({"id": store_id}, {"_id": 0, "nome": 1}) if store_id else None
     saldo = f"\nSaldo alla consegna: {input.saldo:.2f} €." if input.saldo and input.saldo > 0 else ""
-    msg = MSG_DISPONIBILE.format(nome=c.get("nome", ""), articolo=(input.articolo or "telefono").strip(), saldo=saldo, negozio=(store or {}).get("nome", ""))
+    msg = store_msg(store, "msg_disponibile", nome=c.get("nome", ""), articolo=(input.articolo or "telefono").strip(), saldo=saldo)
     await wa_send(c["telefono"], msg, session=store_id or "default", tipo="disponibile", client_id=client_id)
     await db.clients.update_one({"id": client_id}, {"$set": {"disponibile_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
     return {"status": "ok", "message": msg}
@@ -4165,8 +4184,6 @@ async def export_clients(user: dict = Depends(get_current_user)):
 RIP_STATI = ["ingresso", "attesa_ricambio_cliente", "attesa_ricambio_carico", "ricambio_arrivato", "in_attesa_cliente",
              "preventivo", "in_lavorazione", "pronto", "pronto_ritiro", "consegnato", "non_riparabile"]
 
-MSG_RICAMBIO_ARRIVATO = "Ciao {nome}! 😊\nIl ricambio del tuo {dispositivo} è arrivato: passa o contattaci per la riparazione.\nBuona giornata!\n{negozio}"
-
 
 async def invia_avviso_ricambio_arrivato(svc: dict) -> None:
     """WA al cliente dal negozio della riparazione quando il ricambio ordinato è arrivato."""
@@ -4178,7 +4195,7 @@ async def invia_avviso_ricambio_arrivato(svc: dict) -> None:
         return
     sessione = await wa_session_servizio(svc)
     store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0, "nome": 1})
-    msg = MSG_RICAMBIO_ARRIVATO.format(nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo") or "telefono", negozio=f"RS Riparazioni {(store or {}).get('nome', '')}".strip())
+    msg = store_msg(store, "msg_ricambio_arrivato", nome=client_doc.get("nome", ""), dispositivo=svc.get("dispositivo") or "telefono")
     try:
         await wa_send(client_doc["telefono"], msg, session=sessione, tipo="ricambio_arrivato", client_id=svc["client_id"], servizio_id=svc["id"])
         await db.servizi.update_one({"id": svc["id"]}, {"$set": {"ricambio_msg_sent_at": datetime.now(timezone.utc).isoformat(), "ricambio_msg_error": None}})
@@ -6366,7 +6383,7 @@ async def accoda_recensione_vendita(client_id: str, store_id: str) -> bool:
     programma_svuota_coda()
     return True
 
-vendite_module.setup(db, get_current_user, magazzino_scope, wa_send=wa_send, accoda_recensione=accoda_recensione_vendita, sotto_scorta=controlla_sotto_scorta)
+vendite_module.setup(db, get_current_user, magazzino_scope, wa_send=wa_send, store_msg=store_msg, accoda_recensione=accoda_recensione_vendita, sotto_scorta=controlla_sotto_scorta)
 api_router.include_router(vendite_module.router)
 
 import report_ritiri as report_ritiri_module
@@ -6374,8 +6391,8 @@ report_ritiri_module.setup(db=db, get_current_user=get_current_user, ritiri_scop
                            put_object=put_object, send_email=send_email, app_name=APP_NAME, build_bolla_pdf=_build_bolla_pdf)
 api_router.include_router(report_ritiri_module.router)
 
-vendite_ordine_module.setup(db=db, wa_send=wa_send, get_scoped_servizio=get_scoped_servizio)
-firma_ritiro_module.setup(db=db, wa_send=wa_send, put_object=put_object, get_object=get_object, app_name=APP_NAME,
+vendite_ordine_module.setup(db=db, wa_send=wa_send, store_msg=store_msg, get_scoped_servizio=get_scoped_servizio)
+firma_ritiro_module.setup(db=db, wa_send=wa_send, store_msg=store_msg, put_object=put_object, get_object=get_object, app_name=APP_NAME,
                           build_bolla=_build_bolla_pdf, drive_upload=lambda rid: google_drive_module.carica_ritiro_su_drive(rid))
 api_router.include_router(firma_ritiro_module.router)
 magazzino_ricambi_module.setup(db=db, get_current_user=get_current_user, get_scoped_servizio=get_scoped_servizio,
