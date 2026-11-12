@@ -5426,13 +5426,14 @@ async def invia_avvisi_vincolo() -> dict:
         msg = store_msg(store, "msg_offerta_annuale" if annuale else "msg_vincolo",
                         nome=client_doc.get("nome", ""), cognome=client_doc.get("cognome", ""))
         try:
-            await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default",
+            r = await wa_send(client_doc["telefono"], msg, session=svc.get("venditore_id") or "default",
                           tipo="offerta_annuale" if annuale else "vincolo", client_id=svc["client_id"], servizio_id=svc["id"])
-            await db.servizi.update_one({"id": svc["id"]}, {"$set": {"vincolo_msg_sent_for": scad.isoformat(),
+            if not r.get("dry_run"):
+                await db.servizi.update_one({"id": svc["id"]}, {"$set": {"vincolo_msg_sent_for": scad.isoformat(),
                                                                      "vincolo_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
-            report.append({"servizio": svc["id"], "inviato": True, "annuale": annuale, "scadenza": scad.isoformat()})
-        except HTTPException as e:
-            report.append({"servizio": svc["id"], "inviato": False, "errore": str(e.detail)})
+            report.append({"servizio": svc["id"], "inviato": not r.get("dry_run"), "dry_run": bool(r.get("dry_run")), "annuale": annuale, "scadenza": scad.isoformat()})
+        except Exception as e:
+            report.append({"servizio": svc["id"], "inviato": False, "errore": str(getattr(e, "detail", e))})
     if report:
         await db.cron_log.insert_one({"job": "avvisi-vincolo", "at": datetime.now(timezone.utc).isoformat(), "report": report})
     return {"report": report}
@@ -5456,12 +5457,13 @@ async def invia_avvisi_rinnovo_energia() -> dict:
         store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
         msg = store_msg(store, "msg_rinnovo_energia", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
         try:
-            await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="rinnovo_energia", client_id=c["id"])
-            await db.clients.update_one({"id": c["id"]}, {"$set": {"rinnovo_msg_sent_for": c["data_scadenza"],
+            r = await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="rinnovo_energia", client_id=c["id"])
+            if not r.get("dry_run"):
+                await db.clients.update_one({"id": c["id"]}, {"$set": {"rinnovo_msg_sent_for": c["data_scadenza"],
                                                                    "rinnovo_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
-            report.append({"client_id": c["id"], "inviato": True, "scadenza": c["data_scadenza"]})
-        except HTTPException as e:
-            report.append({"client_id": c["id"], "inviato": False, "errore": str(e.detail)})
+            report.append({"client_id": c["id"], "inviato": not r.get("dry_run"), "dry_run": bool(r.get("dry_run")), "scadenza": c["data_scadenza"]})
+        except Exception as e:
+            report.append({"client_id": c["id"], "inviato": False, "errore": str(getattr(e, "detail", e))})
     if report:
         await db.cron_log.insert_one({"job": "rinnovo-energia", "at": datetime.now(timezone.utc).isoformat(), "report": report})
     return {"report": report}
@@ -5494,13 +5496,14 @@ async def invia_avvisi_bollette() -> dict:
         store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
         msg = store_msg(store, "msg_bollette", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
         try:
-            await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="bollette", client_id=c["id"])
-            await db.clients.update_many({"telefono": c["telefono"], "data_contratto": c.get("data_contratto")}, {"$set": {"bollette_msg_sent_for": c["data_rinnovo"],
+            r = await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="bollette", client_id=c["id"])
+            if not r.get("dry_run"):
+                await db.clients.update_many({"telefono": c["telefono"], "data_contratto": c.get("data_contratto")}, {"$set": {"bollette_msg_sent_for": c["data_rinnovo"],
                                                                    "lavorazione": "richieste_bollette", "updated_at": datetime.now(timezone.utc).isoformat(),
                                                                    "bollette_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
-            report.append({"client_id": c["id"], "nome": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "inviato": True})
-        except HTTPException as e:
-            report.append({"client_id": c["id"], "nome": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "inviato": False, "errore": str(e.detail)})
+            report.append({"client_id": c["id"], "nome": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "inviato": not r.get("dry_run"), "dry_run": bool(r.get("dry_run"))})
+        except Exception as e:
+            report.append({"client_id": c["id"], "nome": f"{c.get('cognome', '')} {c.get('nome', '')}".strip(), "inviato": False, "errore": str(getattr(e, "detail", e))})
     if report:
         await db.cron_log.insert_one({"job": "bollette", "at": datetime.now(timezone.utc).isoformat(), "report": report})
     return {"report": report, "inviati": sum(1 for r in report if r["inviato"]), "falliti": sum(1 for r in report if not r["inviato"])}
@@ -5927,6 +5930,22 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
                      ("rinnovo-energia", invia_avvisi_rinnovo_energia), ("bollette", invia_avvisi_bollette), ("avvisi-truffe", invia_avvisi_truffe),
                      ("ordini-fermi", vendite_module.avvisi_ordini_fermi), ("ritiri-in-attesa", vendite_module.sollecita_ritiri_in_attesa), ("retention-gdpr", pulizia_retention_gdpr)):
         background_tasks.add_task(_esegui_isolato, nome, fn)
+
+
+@api_router.post("/avvisi/ripristina-test")
+async def avvisi_ripristina_test(admin: dict = Depends(require_admin)):
+    """Toglie il segno 'avviso inviato' ai clienti/servizi il cui ultimo avviso era in MODALITÀ TEST (mai arrivato): verranno riavvisati al prossimo giro."""
+    out = {"rinnovo_energia": 0, "bollette": 0, "vincolo": 0}
+    for tipo, coll, campo_for, campo_at, id_field in (("rinnovo_energia", db.clients, "rinnovo_msg_sent_for", "rinnovo_msg_sent_at", "client_id"),
+                                                       ("bollette", db.clients, "bollette_msg_sent_for", "bollette_msg_sent_at", "client_id"),
+                                                       ("vincolo", db.servizi, "vincolo_msg_sent_for", "vincolo_msg_sent_at", "servizio_id"),
+                                                       ("offerta_annuale", db.servizi, "vincolo_msg_sent_for", "vincolo_msg_sent_at", "servizio_id")):
+        async for doc in coll.find({campo_for: {"$nin": [None, ""]}}, {"_id": 0, "id": 1}):
+            ultimo = await db.wa_log.find_one({"tipo": tipo, id_field: doc["id"]}, {"_id": 0, "dry_run": 1, "ok": 1}, sort=[("at", -1)])
+            if ultimo and ultimo.get("dry_run"):
+                await coll.update_one({"id": doc["id"]}, {"$unset": {campo_for: "", campo_at: ""}})
+                out["vincolo" if tipo == "offerta_annuale" else tipo] += 1
+    return out
 
 
 @api_router.get("/avvisi/stato")

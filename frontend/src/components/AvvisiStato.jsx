@@ -1,13 +1,22 @@
 import { useEffect, useState } from "react";
 import { BellRing, CheckCircle2, XCircle } from "lucide-react";
-import api from "../lib/api";
+import { toast } from "sonner";
+import api, { apiError } from "../lib/api";
 
 const LABEL = { "rinnovo-energia": "Rinnovo energia", bollette: "Richiesta bollette", "avvisi-vincolo": "Vincolo telefonia", "riparazioni-ferme": "Riparazioni ferme", "promemoria-ritiro": "Promemoria ritiro", "avvisi-truffe": "Avvisi truffe", "ordini-fermi": "Ordini fermi", "ritiri-in-attesa": "Ritiri in attesa" };
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "mai");
 
 export default function AvvisiStato() {
   const [d, setD] = useState(null);
-  useEffect(() => { api.get("/avvisi/stato").then((r) => setD(r.data)).catch(() => {}); }, []);
+  const [busy, setBusy] = useState(false);
+  const load = () => api.get("/avvisi/stato").then((r) => setD(r.data)).catch(() => {});
+  useEffect(() => { load(); }, []);
+  const ripristina = async () => {
+    if (!window.confirm("Riabilito gli avvisi che risultano 'inviati' ma erano stati fatti in MODALITÀ TEST (mai arrivati al cliente)? Partiranno al prossimo giro delle 8:30.")) return;
+    setBusy(true);
+    try { const r = await api.post("/avvisi/ripristina-test"); toast.success(`Riabilitati: ${r.data.rinnovo_energia} rinnovi · ${r.data.bollette} bollette · ${r.data.vincolo} vincoli`); load(); }
+    catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
+  };
   if (!d) return null;
   const giri = Object.entries(LABEL).map(([k, l]) => [k, l, d.giri[k]]);
   return (
@@ -29,7 +38,12 @@ export default function AvvisiStato() {
           </div>
         ))}
       </div>
-      <div className="border-t px-5 py-2 text-[11px] text-slate-500">{Object.values(d.regole).join(" · ")}</div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-2 text-[11px] text-slate-500">
+        <span>{Object.values(d.regole).join(" · ")}</span>
+        <button type="button" onClick={ripristina} disabled={busy} className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100" data-testid="avvisi-ripristina-test">
+          Riabilita avvisi fatti in modalità test
+        </button>
+      </div>
     </details>
   );
 }
