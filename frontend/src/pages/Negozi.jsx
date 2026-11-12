@@ -9,11 +9,9 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import StoreMessaggiEditor from "../components/StoreMessaggiEditor";
+import StoreMessaggiEditor, { MSG_KEYS } from "../components/StoreMessaggiEditor";
 import MessaggiEnelEditor from "../components/MessaggiEnelEditor";
 import SocialFollowupPanel from "../components/SocialFollowupPanel";
-
-const MSG_KEYS = ["msg_privacy", "msg_pronto", "msg_recensione", "msg_promemoria", "msg_vincolo", "msg_offerta_annuale", "msg_rinnovo_energia", "msg_truffe", "msg_bollette", "msg_compleanno", "msg_conferma_link"];
 
 export default function Negozi() {
   const { user } = useAuth();

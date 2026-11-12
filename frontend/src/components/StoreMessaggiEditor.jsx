@@ -28,6 +28,7 @@ const CAMPI = [
   { key: "msg_grazie_altro", label: "Grazie per il file ricevuto (altro)", hint: "Risposta automatica per file non riconosciuti. Variabili: {nome}" },
 ];
 
+export const MSG_KEYS = CAMPI.map((c) => c.key);
 export default function StoreMessaggiEditor({ form, setForm }) {
   const [defaults, setDefaults] = useState(null);
   const [open, setOpen] = useState(false);
