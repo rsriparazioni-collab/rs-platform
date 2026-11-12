@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="8" failures="0" skipped="0" tests="18" time="2.654" timestamp="2026-11-12T16:12:36.932274+00:00" hostname="agent-env-b47de3c2-90b0-420f-a80f-51979a931245"><testcase classname="tests.test_iter46_avvisi_malformed" name="test_rinnovo_malformed_does_not_break[12345]" time="0.617" /><testcase classname="tests.test_iter46_avvisi_malformed" name="test_rinnovo_malformed_does_not_break[bad_value1]" time="0.083" /><testcase classname="tests.test_iter46_avvisi_malformed" name="test_rinnovo_malformed_does_not_break[bad_value2]" time="0.095" /><testcase classname="tests.test_iter46_avvisi_malformed" name="test_rinnovo_malformed_does_not_break[not-a-date]" time="0.088" /><testcase classname="tests.test_iter46_avvisi_malformed" name="test_bollette_and_stato_with_malformed" time="0.230" /><testcase classname="tests.test_iter46_avvisi_malformed" name="test_vincolo_dry_run" time="0.071" /><testcase classname="tests.test_iter46_avvisi_malformed" name="test_ripristina_and_stato" time="0.127" /><testcase classname="tests.test_iter46_avvisi_malformed" name="test_alerts_dashboard_with_malformed" time="0.062" /><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_dry_run_flag_on" time="0.324"><error message="failed on setup with &quot;AssertionError: {&quot;detail&quot;:&quot;Codice non valido&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code&quot;">test_iter45_avvisi_dry_run.py:32: in admin
+    return _admin_session()
+           ^^^^^^^^^^^^^^^^
+test_iter45_avvisi_dry_run.py:25: in _admin_session
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Codice non valido"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</error></testcase><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_rinnovo_invia_ora_dry_run_not_marked" time="0.000"><error message="failed on setup with &quot;AssertionError: {&quot;detail&quot;:&quot;Codice non valido&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code&quot;">test_iter45_avvisi_dry_run.py:32: in admin
+    return _admin_session()
+           ^^^^^^^^^^^^^^^^
+test_iter45_avvisi_dry_run.py:25: in _admin_session
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Codice non valido"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</error></testcase><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_bollette_invia_ora_dry_run_not_marked" time="0.000"><error message="failed on setup with &quot;AssertionError: {&quot;detail&quot;:&quot;Codice non valido&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code&quot;">test_iter45_avvisi_dry_run.py:32: in admin
+    return _admin_session()
+           ^^^^^^^^^^^^^^^^
+test_iter45_avvisi_dry_run.py:25: in _admin_session
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Codice non valido"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</error></testcase><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_vincolo_invia_ora_dry_run" time="0.000"><error message="failed on setup with &quot;AssertionError: {&quot;detail&quot;:&quot;Codice non valido&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code&quot;">test_iter45_avvisi_dry_run.py:32: in admin
+    return _admin_session()
+           ^^^^^^^^^^^^^^^^
+test_iter45_avvisi_dry_run.py:25: in _admin_session
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Codice non valido"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</error></testcase><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_ripristina_test_unmarks" time="0.000"><error message="failed on setup with &quot;AssertionError: {&quot;detail&quot;:&quot;Codice non valido&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code&quot;">test_iter45_avvisi_dry_run.py:32: in admin
+    return _admin_session()
+           ^^^^^^^^^^^^^^^^
+test_iter45_avvisi_dry_run.py:25: in _admin_session
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Codice non valido"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</error></testcase><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_ripristina_keeps_real_sends" time="0.000"><error message="failed on setup with &quot;AssertionError: {&quot;detail&quot;:&quot;Codice non valido&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code&quot;">test_iter45_avvisi_dry_run.py:32: in admin
+    return _admin_session()
+           ^^^^^^^^^^^^^^^^
+test_iter45_avvisi_dry_run.py:25: in _admin_session
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Codice non valido"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</error></testcase><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_invalid_phone_no_500" time="0.000"><error message="failed on setup with &quot;AssertionError: {&quot;detail&quot;:&quot;Codice non valido&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code&quot;">test_iter45_avvisi_dry_run.py:32: in admin
+    return _admin_session()
+           ^^^^^^^^^^^^^^^^
+test_iter45_avvisi_dry_run.py:25: in _admin_session
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Codice non valido"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</error></testcase><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_malformed_data_contratto_does_not_break_loop" time="0.000"><error message="failed on setup with &quot;AssertionError: {&quot;detail&quot;:&quot;Codice non valido&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code&quot;">test_iter45_avvisi_dry_run.py:32: in admin
+    return _admin_session()
+           ^^^^^^^^^^^^^^^^
+test_iter45_avvisi_dry_run.py:25: in _admin_session
+    assert r.status_code == 200, r.text
+E   AssertionError: {"detail":"Codice non valido"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</error></testcase><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_non_admin_forbidden" time="0.549" /><testcase classname="tests.test_iter45_avvisi_dry_run" name="test_unauthenticated_401" time="0.172" /></testsuite></testsuites>

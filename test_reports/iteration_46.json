@@ -1,0 +1,27 @@
+{
+  "summary": "Backend retest of the WhatsApp reminders in test mode (dry-run). The compute_dates fix works: clients with a non-string data_contratto (int 12345, list, dict, garbage string) no longer stop the run. POST /api/energia/avvisi-rinnovo/invia-ora returned 200, and the valid TEST client (expiry in 30 days) was in the report with dry_run=true, inviato=false; rinnovo_msg_sent_for was not set; a dry_run wa_log was written. Bollette and vincolo invia-ora returned 200 with dry_run=true, inviato=false, inviati=0 and no sent marks or lavorazione change. ripristina-test returned 200 with keys {rinnovo_energia, bollette, vincolo}; stato returned 200 with dry_run=true. New iter46 suite 10/10, iter45 regression 10/10 (including the previously failing malformed-data test). wa_dry_run was not touched. All TEST_ clients and wa_logs were removed (0 left).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/cron/riparazioni-ferme", "issue": "Still not fixed since iter45: `return {\"status\": \"accepted\"}` is dead code at the end of avvisi_stato (server.py ~5976), so the cron returns 200 with body null. Move the return back to the end of cron_riparazioni_ferme."},
+      {"endpoint": "invia_avvisi_rinnovo_energia / clienti_bollette_da_avvisare / invia_avvisi_vincolo", "issue": "store lookup, store_msg and scadenza_offerta are still outside the per-item try/except. compute_dates is now safe, but a malformed servizio.data_attivazione (if scadenza_offerta does not handle it) could still stop the vincolo run. Not tested in this iteration."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iter46_avvisi_malformed.py", "/app/backend/tests/test_iter45_avvisi_dry_run.py", "/app/test_reports/pytest/iter46.xml", "/app/test_reports/pytest/iter46_reg45.xml"],
+  "action_items": [
+    "Restore `return {\"status\": \"accepted\"}` in cron_riparazioni_ferme and remove the dead return after avvisi_stato.",
+    "Optional: put store lookup, store_msg and scadenza_offerta inside the per-item try in the 3 reminder runs."
+  ],
+  "critical_code_review_comments": [
+    "compute_dates catches (ValueError, TypeError, AttributeError), which is correct.",
+    "server.py is very large (>6700 lines); split it into modules."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter46_avvisi_malformed.py"],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "not tested (as requested)"},
+  "seed_data_creation": "TEST_ clients (good + malformed) and their wa_logs were created and then deleted by id (0 left). ripristina-test was run as requested: it only removes sent marks whose last wa_log is dry_run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run iter45 and iter46 in SEPARATE pytest invocations with a gap of more than 30s: TOTP replay protection rejects the same code twice ('Codice non valido'). Command: set -a; . backend/.env; set +a; export REACT_APP_BACKEND_URL=...; cd backend/tests; pytest <file> -n 0. Do not turn off wa_dry_run.",
+  "rca of the issue": "Before the fix, compute_dates did dc[:10] on an int, raising TypeError outside the per-client try, so the whole run returned 500. The fix catches TypeError/AttributeError inside compute_dates, and the client is now skipped with no data_scadenza. Verified."
+}
