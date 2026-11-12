@@ -5887,6 +5887,17 @@ async def invia_avvisi_riparazioni_ferme() -> dict:
     await db.cron_log.insert_one({"job": "riparazioni-ferme", "at": datetime.now(timezone.utc).isoformat(), "report": report})
     return {"report": report}
 
+async def _esegui_isolato(nome: str, fn):
+    """Ogni avviso gira da solo: un errore su uno non blocca gli altri; esito sempre registrato in cron_log."""
+    try:
+        r = await fn()
+        n = len((r or {}).get("report", [])) if isinstance(r, dict) else None
+        await db.cron_log.update_one({"job": f"run:{nome}"}, {"$set": {"last_run": datetime.now(timezone.utc).isoformat(), "ok": True, "n": n, "error": None}}, upsert=True)
+    except Exception as e:
+        logger.error(f"avviso {nome} fallito: {e}")
+        await db.cron_log.update_one({"job": f"run:{nome}"}, {"$set": {"last_run": datetime.now(timezone.utc).isoformat(), "ok": False, "error": str(e)[:500]}}, upsert=True)
+
+
 @api_router.post("/cron/riparazioni-ferme")
 async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundTasks):
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
@@ -5895,15 +5906,35 @@ async def cron_riparazioni_ferme(request: Request, background_tasks: BackgroundT
     secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
     if not token or not secret or not hmac.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    background_tasks.add_task(invia_avvisi_riparazioni_ferme)
-    background_tasks.add_task(invia_promemoria_ritiro)
-    background_tasks.add_task(invia_avvisi_vincolo)
-    background_tasks.add_task(invia_avvisi_rinnovo_energia)
-    background_tasks.add_task(invia_avvisi_bollette)
-    background_tasks.add_task(invia_avvisi_truffe)
-    background_tasks.add_task(vendite_module.avvisi_ordini_fermi)
-    background_tasks.add_task(vendite_module.sollecita_ritiri_in_attesa)
-    background_tasks.add_task(pulizia_retention_gdpr)
+    for nome, fn in (("riparazioni-ferme", invia_avvisi_riparazioni_ferme), ("promemoria-ritiro", invia_promemoria_ritiro), ("avvisi-vincolo", invia_avvisi_vincolo),
+                     ("rinnovo-energia", invia_avvisi_rinnovo_energia), ("bollette", invia_avvisi_bollette), ("avvisi-truffe", invia_avvisi_truffe),
+                     ("ordini-fermi", vendite_module.avvisi_ordini_fermi), ("ritiri-in-attesa", vendite_module.sollecita_ritiri_in_attesa), ("retention-gdpr", pulizia_retention_gdpr)):
+        background_tasks.add_task(_esegui_isolato, nome, fn)
+
+
+@api_router.get("/avvisi/stato")
+async def avvisi_stato(admin: dict = Depends(require_admin)):
+    """Diagnostica avvisi automatici: ultimo giro per tipo, invii/errori ultimi 7 giorni, clienti in attesa di avviso."""
+    da = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    runs = await db.cron_log.find({"job": {"$regex": "^run:"}}, {"_id": 0}).to_list(50)
+    tipi = ("rinnovo_energia", "bollette", "vincolo", "offerta_annuale", "riparazione_ferma", "promemoria_ritiro")
+    invii = {}
+    for t in tipi:
+        ok = await db.wa_log.count_documents({"tipo": t, "at": {"$gte": da}, "ok": True, "dry_run": {"$ne": True}})
+        ko = await db.wa_log.count_documents({"tipo": t, "at": {"$gte": da}, "ok": False})
+        ultimo_err = await db.wa_log.find_one({"tipo": t, "ok": False}, {"_id": 0, "at": 1, "error": 1, "session": 1}, sort=[("at", -1)])
+        invii[t] = {"inviati_7gg": ok, "errori_7gg": ko, "ultimo_errore": ultimo_err}
+    clients = await db.clients.find({"data_contratto": {"$nin": [None, ""]}, "telefono": {"$nin": [None, ""]}}, {"_id": 0, "data_contratto": 1, "rinnovo_msg_sent_for": 1}).to_list(20000)
+    in_attesa_rinnovo = 0
+    for c in clients:
+        compute_dates(c)
+        if c.get("data_scadenza") and 0 <= (date.fromisoformat(c["data_scadenza"]) - date.today()).days <= RINNOVO_PREAVVISO_GIORNI and c.get("rinnovo_msg_sent_for") != c["data_scadenza"]:
+            in_attesa_rinnovo += 1
+    return {"dry_run": await wa_dry_run_attivo(), "giri": {r["job"][4:]: r for r in runs}, "invii": invii,
+            "in_attesa": {"rinnovo_energia": in_attesa_rinnovo, "bollette": len(await clienti_bollette_da_avvisare())},
+            "regole": {"rinnovo_energia": f"WhatsApp al cliente da {RINNOVO_PREAVVISO_GIORNI} giorni prima della scadenza contratto (una volta per scadenza)",
+                       "bollette": f"Richiesta bollette {BOLLETTE_DOPO_GIORNI} giorni dopo l'ingresso nel Centro Alert rinnovi, se non lavorato",
+                       "vincolo": f"Telefonia: avviso {VINCOLO_PREAVVISO_GIORNI} giorni prima della fine vincolo/offerta annuale"}}
     return {"status": "accepted"}
 
 @api_router.get("/riparazioni-ferme")

@@ -13,6 +13,7 @@ import { useAuth } from "../context/AuthContext";
 import RegistroRapido from "../components/RegistroRapido";
 import AvvisiBolletteButton from "../components/AvvisiBolletteButton";
 import RisposteSocial from "../components/RisposteSocial";
+import AvvisiStato from "../components/AvvisiStato";
 import { LAVORAZIONI, lavorazioneLabel, lavorazioneBadge, fmtDate } from "../lib/constants";
 import { Button } from "../components/ui/button";
 
@@ -240,6 +241,7 @@ export default function Dashboard() {
       )}
 
       <RisposteSocial />
+      {user?.role === "admin" && <AvvisiStato />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm lg:col-span-7" data-testid="alerts-panel">
