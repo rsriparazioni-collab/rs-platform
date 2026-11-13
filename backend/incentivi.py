@@ -50,7 +50,7 @@ async def _default_config() -> dict:
     srls = [stores[n] for n in ("sondrio",) if n in stores]
     return {"id": CONFIG_ID, "online": False, "gettone_lordo": 25.0, "gettone_energia_lordo": 10.0, "costo_datore_fattore": 1.45, "eolo_fondo_pct": 50.0,
             "trattenuta_terzi_pct": 15.0, "energia_importo": 50.0, "energia_acquisizione": 25.0, "energia_lavorazione": 25.0,
-            "premi_pct": [50, 30, 20], "tetto_fondo": 0.0, "padre_in_fondo": True,
+            "premi_pct": [40, 30, 20, 10], "tetto_fondo": 0.0, "padre_in_fondo": True,
             "partecipanti": [users[n] for n in ("kevin", "deborah", "silvio", "bruno") if n in users],
             "coef_eolo": 100.0, "coef_energia": 100.0, "coef_riparazione": 50.0, "valore_sim_nuova": 5.0, "valore_sim_mnp": 10.0, "valore_fisso": 20.0,
             "bonus_squadra_pct": 0.0,
@@ -75,6 +75,11 @@ async def get_config() -> dict:
     if mancanti:
         c["partecipanti"] = list(c.get("partecipanti", [])) + mancanti
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"partecipanti": c["partecipanti"]}})
+    # 12/11/2026: fondo diviso 40/30/20/10 (anche il 4° prende qualcosa); una tantum, poi modificabile dalle impostazioni
+    if not c.get("premi_pct_v2"):
+        c["premi_pct"], c["premi_pct_v2"] = [40, 30, 20, 10], True
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"premi_pct": c["premi_pct"], "premi_pct_v2": True, "updated_at": _now()}})
+        await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"premi_pct": {"prima": [50, 30, 20], "dopo": [40, 30, 20, 10]}}})
     return c
 
 
