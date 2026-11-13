@@ -1,0 +1,26 @@
+{
+  "summary": "Iter47: Incentivi partecipanti base auto-add. Backend 7/8 pytest pass: config contiene Kevin/Deborah/Silvio/Bruno, premi_pct [40,30,20,10], Silvio rimosso via DB viene riaggiunto, nome composto 'Silvio Tacconis' riconosciuto, rimozione esplicita via PUT rispettata, classifica 2026-10 con 4 voci (Kevin 1° 40%, Bruno/Deborah/Silvio 2= 20% ciascuno = (30+20+10)/3, totale 100%). /meta include admin (Enrico). 1 FAIL: la rimozione esplicita non sopravvive a un secondo salvataggio. Frontend: login admin con TOTP OK, /incentivi ottobre 2026 mostra riga Silvio in classifica, Regole mostra 8 checkbox (tutti utenti attivi incl. Enrico admin), Silvio spuntato, premi 40/30/20/10. Config e nome Silvio ripristinati esattamente (snapshot DB, updated_at originale preservato).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/incentivi/config", "issue": "partecipanti_rimossi viene RICALCOLATO ad ogni PUT come (old.partecipanti - new.partecipanti). Dopo aver tolto Silvio, qualsiasi salvataggio successivo (il frontend Salva regole invia sempre partecipanti) imposta partecipanti_rimossi=[] e il GET successivo riaggiunge Silvio automaticamente: la rimozione esplicita si perde. Repro: PUT partecipanti senza Silvio -> GET (ok assente) -> PUT {partecipanti: stessi, tetto_fondo: 1} -> GET -> Silvio presente. Fix: rimossi = (old_rimossi ∪ (old - new)) - new.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Incentivi > Regole", "issues": ["Hint sotto 'Premi % del fondo' dice ancora 'es. 50/30/20' (ora default 40/30/20/10)", "Selettore mese (incentivi-mese, inc-ent-da) usa input type=month nativo del browser"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter47_incentivi_partecipanti.py", "/app/test_reports/pytest/pytest_iter47.xml"],
+  "action_items": ["In update_config (incentivi.py ~141) unire i nuovi rimossi con quelli già presenti e togliere quelli ri-aggiunti: changes['partecipanti_rimossi'] = [u for u in set(old.get('partecipanti_rimossi') or []) | set(old.get('partecipanti', [])) if u not in changes['partecipanti']]", "Aggiornare hint premi a 'es. 40/30/20/10'"],
+  "critical_code_review_comments": ["get_config() esegue scritture DB (update partecipanti / premi_pct_v2) ad ogni GET: side-effect su lettura, ok ma da tenere presente", "_utenti_base: se il nome è vuoto usa la parte locale email; se il primo nome non è base ma l'email sì (es. name='Tacconis S.' email silvio@) non viene riconosciuto — fallback email solo quando name vuoto", "Ex aequo con valore 0: premio_pct 20% mostrato ma premio_lordo 0 (corretto, residuo resta all'azienda) — eventualmente chiarire in UI"],
+  "updated_files": ["/app/backend/tests/test_iter47_incentivi_partecipanti.py"],
+  "success_rate": {"backend": "87.5% (7/8)", "frontend": "100%"},
+  "seed_data_creation": "Nessuna. Modifiche temporanee a incentivi_config e users.name Silvio ripristinate dallo snapshot (fixture). Aggiunte alcune righe in incentivi_config_log dovute ai PUT di test.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=... python -m pytest tests/test_iter47_incentivi_partecipanti.py -n 0 -v. Test test_removal_survives_second_save copre il bug. Fixture snapshot ripristina la config via replace_one. Non premere bottoni WhatsApp, non cambiare online. Silvio id 1a222792-dfd6-4dec-a957-12fa35c4167d.",
+  "rca of the issue": "update_config sovrascrive partecipanti_rimossi con il solo delta dell'ultimo PUT invece di accumularlo; poiché il frontend invia sempre partecipanti, il secondo salvataggio azzera la lista e get_config() riaggiunge l'utente base."
+}

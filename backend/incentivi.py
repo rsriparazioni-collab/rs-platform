@@ -139,7 +139,9 @@ async def update_config(input: ConfigInput, request: Request):
         raise HTTPException(status_code=400, detail="La somma delle percentuali premi non può superare 100")
     diff = {k: {"prima": old.get(k), "dopo": v} for k, v in changes.items() if old.get(k) != v}
     if "partecipanti" in changes:
-        changes["partecipanti_rimossi"] = [u for u in old.get("partecipanti", []) if u not in changes["partecipanti"]]
+        prima = set(old.get("partecipanti_rimossi") or [])
+        tolti_ora = {u for u in old.get("partecipanti", []) if u not in changes["partecipanti"]}
+        changes["partecipanti_rimossi"] = sorted((prima | tolti_ora) - set(changes["partecipanti"]))
     if diff:
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {**changes, "updated_at": _now()}})
         await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": user["id"], "user_name": user["name"], "modifiche": diff})
