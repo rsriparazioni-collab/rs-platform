@@ -59,12 +59,22 @@ async def _default_config() -> dict:
             "spareggio": "contratti_eolo_energia", "updated_at": _now()}
 
 
+PARTECIPANTI_BASE = ("kevin", "deborah", "silvio", "bruno")
+
+
 async def get_config() -> dict:
     db = _d["db"]
     c = await db.incentivi_config.find_one({"id": CONFIG_ID}, {"_id": 0})
     if not c:
         c = await _default_config()
         await db.incentivi_config.insert_one(dict(c))
+    # i partecipanti base entrano da soli appena esistono come utenti (es. Silvio creato dopo la prima configurazione)
+    users = {u["name"].strip().lower(): u["id"] async for u in db.users.find({"name": {"$in": [n.capitalize() for n in PARTECIPANTI_BASE] + list(PARTECIPANTI_BASE)}}, {"_id": 0, "id": 1, "name": 1})}
+    rimossi = set(c.get("partecipanti_rimossi") or [])
+    mancanti = [users[n] for n in PARTECIPANTI_BASE if n in users and users[n] not in c.get("partecipanti", []) and users[n] not in rimossi]
+    if mancanti:
+        c["partecipanti"] = list(c.get("partecipanti", [])) + mancanti
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"partecipanti": c["partecipanti"]}})
     return c
 
 
@@ -109,6 +119,8 @@ async def update_config(input: ConfigInput, request: Request):
     if "premi_pct" in changes and sum(changes["premi_pct"]) > 100:
         raise HTTPException(status_code=400, detail="La somma delle percentuali premi non può superare 100")
     diff = {k: {"prima": old.get(k), "dopo": v} for k, v in changes.items() if old.get(k) != v}
+    if "partecipanti" in changes:
+        changes["partecipanti_rimossi"] = [u for u in old.get("partecipanti", []) if u not in changes["partecipanti"]]
     if diff:
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {**changes, "updated_at": _now()}})
         await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": user["id"], "user_name": user["name"], "modifiche": diff})
