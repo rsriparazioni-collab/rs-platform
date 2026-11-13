@@ -51,8 +51,8 @@ export const FondoPanel = ({ d }) => (
   <div className="space-y-2">
   <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
     <Kpi label="EOLO gruppo" value={eur(d.fondo.eolo_gruppo_lordo)} sub="Morbegno + Gravedona confermato" testid="inc-kpi-eolo" />
-    <Kpi label="Energia gruppo" value={eur(d.fondo.energia_gruppo_lordo)} sub="copre i gettoni, non va a fondo" testid="inc-kpi-energia" />
-    <Kpi label="Fondo disponibile" value={eur(d.fondo.fondo_disponibile)} sub={`${d.fondo.fondo_pct}% EOLO dopo gettoni`} testid="inc-kpi-fondo" tone="border-emerald-200 bg-emerald-50/40" />
+    <Kpi label="Energia gruppo" value={eur(d.fondo.energia_gruppo_lordo)} sub={`${d.fondo.energia_fondo_pct}% al fondo dopo gettoni → ${eur(d.fondo.fondo_da_energia)}`} testid="inc-kpi-energia" />
+    <Kpi label="Fondo disponibile" value={eur(d.fondo.fondo_disponibile)} sub={`EOLO ${eur(d.fondo.fondo_da_eolo)} + energia ${eur(d.fondo.fondo_da_energia)}`} testid="inc-kpi-fondo" tone="border-emerald-200 bg-emerald-50/40" />
     <Kpi label="Premi assegnati" value={eur(d.fondo.premi_assegnati)} sub={`residuo ${eur(d.fondo.residuo)}`} testid="inc-kpi-premi" />
     <Kpi label="Gettoni" value={`${d.costi.gettoni_n} · ${eur(d.costi.gettoni_lordi)}`} sub="25 € lordi a contratto" testid="inc-kpi-gettoni" />
     <Kpi label="Risultato azienda" value={eur(d.costi.risultato_azienda)} sub={`costo datore ${eur(d.costi.costo_datore_totale)} · trattenute ${eur(d.costi.trattenute_esterni)}`} testid="inc-kpi-risultato" tone={d.costi.risultato_azienda < 0 ? "border-red-200 bg-red-50/40" : ""} />

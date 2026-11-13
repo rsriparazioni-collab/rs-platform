@@ -63,7 +63,7 @@ async def _default_config() -> dict:
     fondo = [stores[n] for n in ("morbegno", "gravedona") if n in stores]
     srls = [stores[n] for n in ("sondrio",) if n in stores]
     return {"id": CONFIG_ID, "online": False, "gettone_lordo": 25.0, "gettone_energia_lordo": 10.0, "costo_datore_fattore": 1.45, "eolo_fondo_pct": 50.0,
-            "trattenuta_terzi_pct": 15.0, "energia_importo": 50.0, "energia_acquisizione": 25.0, "energia_lavorazione": 25.0,
+            "trattenuta_terzi_pct": 15.0, "energia_importo": 25.0, "energia_acquisizione": 12.5, "energia_lavorazione": 12.5, "energia_fondo_pct": 50.0,
             "premi_pct": [40, 30, 20, 10], "tetto_fondo": 0.0, "padre_in_fondo": True,
             "partecipanti": [users[n] for n in ("kevin", "deborah", "silvio", "bruno") if n in users],
             "coef_eolo": 100.0, "coef_energia": 100.0, "coef_riparazione": 50.0, "valore_sim_nuova": 5.0, "valore_sim_mnp": 10.0, "valore_fisso": 20.0,
@@ -94,6 +94,13 @@ async def get_config() -> dict:
         c["premi_pct"], c["premi_pct_v2"] = [40, 30, 20, 10], True
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"premi_pct": c["premi_pct"], "premi_pct_v2": True, "updated_at": _now()}})
         await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"premi_pct": {"prima": [50, 30, 20], "dopo": [40, 30, 20, 10]}}})
+    # 13/11/2026: CambiaOra paga 25 € a contratto e alimenta la gara (50 % dopo gettone, come EOLO); una tantum, poi modificabile
+    if not c.get("energia_fondo_v1"):
+        upd = {"energia_importo": 25.0, "energia_fondo_pct": 50.0, "energia_fondo_v1": True, "updated_at": _now()}
+        prima = {k: c.get(k) for k in ("energia_importo", "energia_fondo_pct")}
+        c.update(upd)
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
+        await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {k: {"prima": prima[k], "dopo": upd[k]} for k in prima}})
     return c
 
 
@@ -106,6 +113,7 @@ class ConfigInput(BaseModel):
     energia_importo: Optional[float] = None
     energia_acquisizione: Optional[float] = None
     energia_lavorazione: Optional[float] = None
+    energia_fondo_pct: Optional[float] = None
     premi_pct: Optional[List[float]] = None
     tetto_fondo: Optional[float] = None
     padre_in_fondo: Optional[bool] = None
@@ -668,7 +676,7 @@ async def calcola(mese: str, cfg: dict) -> dict:
     anomalie = []
 
     per_persona = {u: {"user_id": u, "nome": users[u], "eolo_n": 0, "eolo_importo": 0.0, "energia_n": 0, "energia_importo": 0.0, "gettoni_n": 0, "gettoni_lordo": 0.0} for u in partecipanti}
-    fondo_lordo_eolo, energia_gruppo, gettoni_tot = 0.0, 0.0, 0
+    fondo_lordo_eolo, fondo_lordo_energia, energia_gruppo, gettoni_tot = 0.0, 0.0, 0.0, 0
     fondo_per_entita = defaultdict(float)
     esterni = defaultdict(lambda: {"eolo": 0.0, "energia": 0.0, "n": 0, "righe": []})
     for p in provv:
@@ -698,6 +706,11 @@ async def calcola(mese: str, cfg: dict) -> dict:
                 fondo_per_entita[ent or "ditta"] += quota
             else:
                 energia_gruppo += imp
+                # CambiaOra paga 25 € a contratto: quando pagato alimenta la gara del mese come EOLO (stessa %, dopo il gettone)
+                residuo = imp - (gettone_energia * fatt if gett_applicato else 0)
+                quota = residuo * float(cfg.get("energia_fondo_pct", cfg["eolo_fondo_pct"])) / 100
+                fondo_lordo_energia += quota
+                fondo_per_entita[ent or "ditta"] += quota
         else:
             # negozi esterni / SRLS: trattenuta su EOLO (fatturato alla ditta) e su energia solo per terzi; % dal negozio (sezione Compensi) se impostata, altrimenti default incentivi
             pct = float(tratt_store.get(sid)) / 100 if tratt_store.get(sid) is not None else tratt_pct
@@ -709,7 +722,7 @@ async def calcola(mese: str, cfg: dict) -> dict:
             e["n"] += 1
             e["righe"].append({"descrizione": p.get("descrizione", ""), "fonte": fonte, "importo": imp, "trattenuta": _r(tr), "netto": _r(imp - tr), "data": p.get("data_contratto", ""), "stato": p.get("stato")})
 
-    fondo = max(0.0, fondo_lordo_eolo)
+    fondo = max(0.0, fondo_lordo_eolo + fondo_lordo_energia)
     tetto = float(cfg.get("tetto_fondo") or 0)
     fondo_eccedenza_tetto = 0.0
     if tetto and fondo > tetto:
@@ -804,7 +817,8 @@ async def calcola(mese: str, cfg: dict) -> dict:
     estratti.sort(key=lambda x: -x["dare_ditta"])
     chiusura = await db.incentivi_chiusure.find_one({"mese": mese}, {"_id": 0, "approvato_da": 1, "at": 1})
     return {"mese": mese, "chiuso": bool(chiusura), "chiusura": chiusura,
-            "fondo": {"eolo_gruppo_lordo": eolo_gruppo, "energia_gruppo_lordo": _r(energia_gruppo), "fondo_pct": cfg["eolo_fondo_pct"], "fondo_disponibile": _r(fondo),
+            "fondo": {"eolo_gruppo_lordo": eolo_gruppo, "energia_gruppo_lordo": _r(energia_gruppo), "fondo_pct": cfg["eolo_fondo_pct"], "energia_fondo_pct": cfg.get("energia_fondo_pct", cfg["eolo_fondo_pct"]),
+                      "fondo_da_eolo": _r(max(0.0, fondo_lordo_eolo)), "fondo_da_energia": _r(max(0.0, fondo_lordo_energia)), "fondo_disponibile": _r(fondo),
                       "fondo_oltre_tetto": _r(fondo_eccedenza_tetto), "premi_assegnati": premi_lordi, "residuo": _r(fondo - premi_lordi), "per_entita": {k: _r(v) for k, v in fondo_per_entita.items()}},
             "costi": {"gettoni_n": gettoni_tot, "gettoni_lordi": gettoni_lordi, "premi_lordi": premi_lordi, "bonus_squadra_lordi": bonus_lordi, "costo_datore_totale": costo_datore,
                       "fattore_costo_datore": fatt, "trattenute_esterni": trattenute_tot,
