@@ -1,0 +1,17 @@
+{
+  "summary": "Backend retest of incentivi partecipanti_rimossi fix. 9/9 pytest passed (serial -n 0). Explicit removal of Silvio persists across 2nd save (with other field changed), identical-payload save, and save without partecipanti; re-adding Silvio removes him from partecipanti_rimossi. Regression: premi_pct [40,30,20,10], calcolo 2026-10 classifica has 4 entries (Kevin/Deborah/Silvio/Bruno), pct sum 100. Config restored from DB snapshot (verified identical before/after; online=False untouched). No WhatsApp sent.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iter47_incentivi_partecipanti.py", "/app/test_reports/pytest/pytest_iter48.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "update_config: partecipanti_rimossi is computed whenever partecipanti is sent but only persisted if diff is non-empty; fine today because rimossi is a pure function of the partecipanti change, but keep in mind if logic changes.",
+    "Restoring an old config via PUT cannot clear partecipanti_rimossi for non-base users except by re-adding them (acceptable)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter47_incentivi_partecipanti.py (added test_removal_survives_identical_and_other_field_save)"],
+  "success_rate": {"backend": "100%", "frontend": "skipped (per request)"},
+  "seed_data_creation": "None; config snapshot restored via replace_one at module teardown",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run this module with -n 0 (pytest.ini uses xdist loadscope; classes share a module-scoped DB snapshot fixture so serial is safer). Admin login requires TOTP via pyotp."
+}

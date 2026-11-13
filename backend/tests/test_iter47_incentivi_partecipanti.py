@@ -108,6 +108,16 @@ class TestConfig:
         c2 = s.get(f"{BASE_URL}/api/incentivi/config").json()
         assert sid not in c2["partecipanti"], "Silvio rientrato dopo un secondo salvataggio: partecipanti_rimossi sovrascritto"
 
+    def test_removal_survives_identical_and_other_field_save(self, s, ids):
+        # iter48: PUT identico (nessun diff) e PUT senza partecipanti non devono far rientrare Silvio
+        sid = ids["Silvio"]
+        c = s.get(f"{BASE_URL}/api/incentivi/config").json()
+        assert s.put(f"{BASE_URL}/api/incentivi/config", json={"partecipanti": c["partecipanti"]}).status_code == 200
+        assert s.put(f"{BASE_URL}/api/incentivi/config", json={"coef_eolo": float(c.get("coef_eolo", 100))}).status_code == 200
+        c2 = s.get(f"{BASE_URL}/api/incentivi/config").json()
+        assert sid not in c2["partecipanti"]
+        assert sid in (c2.get("partecipanti_rimossi") or [])
+
     def test_readd_restore(self, s, ids):
         sid = ids["Silvio"]
         c = s.get(f"{BASE_URL}/api/incentivi/config").json()
