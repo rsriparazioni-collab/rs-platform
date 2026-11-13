@@ -42,10 +42,24 @@ async def _admin(request: Request) -> dict:
 
 
 # ---------------- Config ----------------
+def _primo_nome(n: str) -> str:
+    return ((n or "").strip().split() or [""])[0].lower()
+
+
+async def _utenti_base(db) -> dict:
+    """{'kevin': user_id, ...} cercando per primo nome (es. 'Silvio Tacconis' → silvio), solo utenti attivi."""
+    out = {}
+    async for u in db.users.find({"active": {"$ne": False}}, {"_id": 0, "id": 1, "name": 1, "email": 1}):
+        pn = _primo_nome(u.get("name")) or (u.get("email") or "").split("@")[0].lower()
+        if pn in PARTECIPANTI_BASE and pn not in out:
+            out[pn] = u["id"]
+    return out
+
+
 async def _default_config() -> dict:
     db = _d["db"]
     stores = {s["nome"].strip().lower(): s["id"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
-    users = {u["name"].strip().lower(): u["id"] async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1})}
+    users = await _utenti_base(db)
     fondo = [stores[n] for n in ("morbegno", "gravedona") if n in stores]
     srls = [stores[n] for n in ("sondrio",) if n in stores]
     return {"id": CONFIG_ID, "online": False, "gettone_lordo": 25.0, "gettone_energia_lordo": 10.0, "costo_datore_fattore": 1.45, "eolo_fondo_pct": 50.0,
@@ -69,7 +83,7 @@ async def get_config() -> dict:
         c = await _default_config()
         await db.incentivi_config.insert_one(dict(c))
     # i partecipanti base entrano da soli appena esistono come utenti (es. Silvio creato dopo la prima configurazione)
-    users = {u["name"].strip().lower(): u["id"] async for u in db.users.find({"name": {"$in": [n.capitalize() for n in PARTECIPANTI_BASE] + list(PARTECIPANTI_BASE)}}, {"_id": 0, "id": 1, "name": 1})}
+    users = await _utenti_base(db)
     rimossi = set(c.get("partecipanti_rimossi") or [])
     mancanti = [users[n] for n in PARTECIPANTI_BASE if n in users and users[n] not in c.get("partecipanti", []) and users[n] not in rimossi]
     if mancanti:
