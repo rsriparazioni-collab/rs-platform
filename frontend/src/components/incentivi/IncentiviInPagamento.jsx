@@ -15,8 +15,9 @@ export const IncentiviInPagamento = ({ mese, meta }) => {
   const [importi, setImporti] = useState({});
   const [caricate, setCaricate] = useState(null);
   const [manuale, setManuale] = useState({ fonte: "eolo", store_id: "", user_id: "", importo: "", descrizione: "", data_contratto: "" });
-  const [foglio, setFoglio] = useState({ sheet_id: SHEET_DEFAULT, gid: "" });
+  const [foglio] = useState({ sheet_id: SHEET_DEFAULT, gid: "" });
   const [anteprima, setAnteprima] = useState(null);
+  const [busyFoglio, setBusyFoglio] = useState(false);
 
   const loadCaricate = useCallback(() => api.get(`/incentivi/provvigioni?mese=${mese}`).then((r) => setCaricate(r.data)).catch(() => {}), [mese]);
   const loadPrev = useCallback(() => api.get(`/incentivi/previste?mese=${competenza}`).then((r) => { setPrev(r.data); setSel({}); setImporti({}); }).catch((e) => toast.error(apiError(e))), [competenza]);
@@ -41,9 +42,10 @@ export const IncentiviInPagamento = ({ mese, meta }) => {
   };
   const elimina = async (p) => { if (!window.confirm("Eliminare la riga?")) return; try { await api.delete(`/incentivi/provvigioni/${p.id}`); loadCaricate(); } catch (e) { toast.error(apiError(e)); } };
   const importa = async (ant) => {
-    if (!foglio.gid) return toast.error("Inserisci il gid della scheda (dall'URL del foglio)");
-    try { const r = await api.post("/incentivi/import-foglio", { ...foglio, mese, anteprima: ant }); if (ant) setAnteprima(r.data); else { toast.success(`${r.data.importate} righe importate`); setAnteprima(null); loadCaricate(); } }
+    setBusyFoglio(true);
+    try { const r = await api.post("/incentivi/import-foglio", { ...foglio, mese, anteprima: ant }); if (ant) setAnteprima(r.data); else { toast.success(`${r.data.importate} righe caricate per ${mese}`); setAnteprima(null); loadCaricate(); } }
     catch (e) { toast.error(apiError(e)); }
+    finally { setBusyFoglio(false); }
   };
 
   return (
@@ -88,15 +90,28 @@ export const IncentiviInPagamento = ({ mese, meta }) => {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="flex items-center gap-2 font-semibold text-slate-900"><Table className="h-4 w-4" /> Importa scheda del foglio Google (storico EOLO) → mese {mese}</h3>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Input className="w-96" value={foglio.sheet_id} onChange={(e) => setFoglio({ ...foglio, sheet_id: e.target.value })} data-testid="inc-foglio-id" />
-          <Input className="w-40" placeholder="gid scheda" value={foglio.gid} onChange={(e) => setFoglio({ ...foglio, gid: e.target.value })} data-testid="inc-foglio-gid" />
-          <Button size="sm" variant="outline" onClick={() => importa(true)} data-testid="inc-foglio-anteprima">Anteprima</Button>
-          {anteprima && <Button size="sm" onClick={() => importa(false)} data-testid="inc-foglio-importa">Importa {anteprima.nuove} righe nuove ({eur(anteprima.totale)})</Button>}
+      <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4" data-testid="inc-foglio-box">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="flex items-center gap-2 font-semibold text-slate-900"><Table className="h-4 w-4" /> Compensi EOLO dal foglio Google · {mese}</h3>
+            <p className="text-xs text-slate-500">Un click: il gestionale trova da solo la scheda del mese nel foglio EOLO e carica compensi, gare e gara retail (le righe già caricate vengono saltate).</p>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => importa(true)} disabled={busyFoglio} data-testid="inc-foglio-anteprima">{busyFoglio ? "Leggo il foglio..." : `Carica foglio EOLO di ${mese}`}</Button>
+            {anteprima && anteprima.nuove > 0 && <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => importa(false)} disabled={busyFoglio} data-testid="inc-foglio-importa">Conferma {anteprima.nuove} righe ({eur(anteprima.totale_nuove)})</Button>}
+          </div>
         </div>
-        {anteprima && <div className="mt-2 max-h-48 overflow-auto text-xs" data-testid="inc-foglio-preview">{anteprima.righe.slice(0, 200).map((r) => <div key={r.ref_id} className={r.duplicato ? "text-slate-400" : ""}>{r.negozio_nome} · {r.sezione} · {r.data_contratto} · {eur(r.importo)} {r.duplicato && "(già importata)"} {r.anomalia && <span className="text-amber-700">{r.anomalia}</span>}</div>)}</div>}
+        {anteprima && (
+          <div className="mt-3 text-xs" data-testid="inc-foglio-preview">
+            {anteprima.nuove === 0 ? <p className="font-medium text-slate-700">Tutto già caricato per {mese}: nessuna riga nuova.</p> : (
+              <div className="flex flex-wrap gap-2">{anteprima.per_negozio.map((n) => <span key={n.negozio} className="rounded-full border border-slate-200 bg-white px-2 py-0.5">{n.negozio} · {n.n} · <b>{eur(n.totale)}</b></span>)}</div>
+            )}
+            {anteprima.righe.some((r) => r.anomalia) && <p className="mt-1 text-amber-700">Negozi non riconosciuti: {[...new Set(anteprima.righe.filter((r) => r.anomalia).map((r) => r.negozio_nome))].join(", ")} → controlla il nome in Gestione Negozi.</p>}
+            <details className="mt-1"><summary className="cursor-pointer text-slate-500">Vedi tutte le righe ({anteprima.righe.length})</summary>
+              <div className="mt-1 max-h-48 overflow-auto">{anteprima.righe.map((r) => <div key={r.ref_id} className={r.duplicato ? "text-slate-400" : ""}>{r.negozio_nome} · {r.sezione} · {r.data_contratto} · {eur(r.importo)} {r.duplicato && "(già caricata)"}</div>)}</div>
+            </details>
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">

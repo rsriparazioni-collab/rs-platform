@@ -394,7 +394,7 @@ async def elimina_provvigione(pid: str, request: Request):
 # ---------------- Import foglio Google (storico) ----------------
 class ImportFoglioInput(BaseModel):
     sheet_id: str
-    gid: str
+    gid: str = ""
     mese: str
     anteprima: bool = True
 
@@ -425,13 +425,47 @@ def _parse_foglio(testo: str) -> list:
     return out
 
 
+def _per_negozio(righe: list) -> dict:
+    out: dict = {}
+    for r in righe:
+        if r.get("duplicato"):
+            continue
+        n, t = out.get(r["negozio_nome"], (0, 0.0))
+        out[r["negozio_nome"]] = (n + 1, t + r["importo"])
+    return out
+
+
+MESI_IT = {"gen": 1, "feb": 2, "mar": 3, "apr": 4, "mag": 5, "giu": 6, "lug": 7, "ago": 8, "set": 9, "ott": 10, "nov": 11, "dic": 12}
+
+
+def _schede_mese(html: str) -> dict:
+    """Tab del foglio EOLO → {mese_numero: gid}. Nomi tipo 'ottobre', 'SETTEMBRE', 'ott26', 'nov 2026'."""
+    out = {}
+    for name, gid in re.findall(r'items\.push\(\{name: "([^"]*)",[^}]*?gid: "(\d+)"', html):
+        m = re.match(r"^\s*([a-zà]{3})", name.strip().lower())
+        if m and m.group(1) in MESI_IT and MESI_IT[m.group(1)] not in out:
+            out[MESI_IT[m.group(1)]] = gid
+    return out
+
+
 @router.post("/import-foglio")
 async def import_foglio(input: ImportFoglioInput, request: Request):
     user = await _admin(request)
     db = _d["db"]
-    url = f"https://docs.google.com/spreadsheets/d/{input.sheet_id}/export?format=csv&gid={input.gid}"
+    gid = (input.gid or "").strip()
     async with httpx.AsyncClient(follow_redirects=True, timeout=30) as cl:
-        resp = await cl.get(url)
+        if not gid:
+            # trova da solo la scheda del mese tra i tab del foglio (es. "ottobre", "SETTEMBRE")
+            html = await cl.get(f"https://docs.google.com/spreadsheets/d/{input.sheet_id}/htmlview")
+            if html.status_code != 200:
+                raise HTTPException(status_code=400, detail="Foglio non leggibile: verifica che sia condiviso 'chiunque con il link'")
+            mese_n = int(input.mese[5:7])
+            schede = _schede_mese(html.text)
+            gid = schede.get(mese_n, "")
+            if not gid:
+                nomi = ", ".join(f"{m:02d}" for m in sorted(schede)) or "nessuna scheda mensile riconosciuta"
+                raise HTTPException(status_code=404, detail=f"Nel foglio non c'è la scheda del mese {mese_n:02d}. Mesi trovati: {nomi}")
+        resp = await cl.get(f"https://docs.google.com/spreadsheets/d/{input.sheet_id}/export?format=csv&gid={gid}")
     if resp.status_code != 200 or "<html" in resp.text[:200].lower():
         raise HTTPException(status_code=400, detail="Foglio non leggibile: verifica che sia condiviso 'chiunque con il link'")
     righe = _parse_foglio(resp.text)
@@ -439,12 +473,14 @@ async def import_foglio(input: ImportFoglioInput, request: Request):
     gia = {p["ref_id"] async for p in db.incentivi_provvigioni.find({"origine": "foglio", "mese": input.mese}, {"_id": 0, "ref_id": 1})}
     for r in righe:
         r["store_id"] = stores.get(r["negozio_nome"], "")
-        r["ref_id"] = f"foglio:{input.gid}:{r['riga']}"
+        r["ref_id"] = f"foglio:{gid}:{r['riga']}"
         r["duplicato"] = r["ref_id"] in gia
         r["anomalia"] = "" if r["store_id"] or r["negozio_nome"] == "PADRE" else "Negozio non riconosciuto"
     tot = round(sum(r["importo"] for r in righe), 2)
     if input.anteprima:
-        return {"mese": input.mese, "righe": righe, "totale": tot, "nuove": sum(1 for r in righe if not r["duplicato"])}
+        return {"mese": input.mese, "gid": gid, "righe": righe, "totale": tot, "nuove": sum(1 for r in righe if not r["duplicato"]),
+                "totale_nuove": round(sum(r["importo"] for r in righe if not r["duplicato"]), 2),
+                "per_negozio": sorted(({"negozio": k, "n": v[0], "totale": round(v[1], 2)} for k, v in _per_negozio(righe).items()), key=lambda x: -x["totale"])}
     n = 0
     for r in righe:
         if r["duplicato"]:
