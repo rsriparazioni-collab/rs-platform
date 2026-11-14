@@ -1,0 +1,35 @@
+{
+  "summary": "Incentivi module iteration: tested backend modalita reale/provvisoria, 50/50 energia split (acquisizione/lavorazione), same-person single row, previste ref_ids/descrizione, config migrations (fattore 1.0, riparazioni_a=Bruno, gettone energia 10, energia 25/50%), foglio rows mese = mese_fattura+1, riparazioni attributed to Bruno, /mio provvisoria for open month. 11/11 pytest passed against public URL (admin login via TOTP). Frontend also verified (login with TOTP works): modalita toggle changes text and fires calcolo?modalita=provvisoria (200), Regole select inc-riparazioni-a-select shows Bruno, In pagamento button inc-foglio-anteprima reads 'Carica fatturato EOLO del mese prima → pagato 2026-11'. All TEST- data removed (verified 0 residual docs).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "calcola (bonus squadra)", "issue": "In provvisoria mode the current month fondo (from gestionale) is compared against historic months computed in REALE mode: mixed bases, bonus 'superato' could be misleading in the provisional classifica shown to the team."},
+      {"endpoint": "_righe_gestionale", "issue": "If acquirer is empty/unknown and a lavoratore exists, split still happens (12.5 to unidentified + 12.5 to lavoratore) instead of 25 to the lavoratore; unidentified row may then fall back to persona_negozio (e.g. Kevin for Gravedona). Confirm intended."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Incentivi > Fondo & classifica", "issues": ["GETTONI card subtitle says '25 € lordi a contratto' only (EOLO); energia gettone is 10 € (5 per half) - could add energia value to avoid confusion"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter49_incentivi_provvisoria.py", "/app/test_reports/pytest/iter49.xml"],
+  "action_items": [
+    "Optional: compute bonus-squadra comparison months with same modalita (or hide bonus in provvisoria)",
+    "Optional: when acquirer unknown, assign full 25 € to the lavoratore",
+    "Optional: show energia gettone value in GETTONI card"
+  ],
+  "critical_code_review_comments": [
+    "incentivi.py is 1374 lines - should be split (config/migrations, calcolo, foglio import, firme/regolamento, cron)",
+    "/mio and /calcolo on a closed month recompute live data instead of returning the chiusura snapshot - closed month figures may drift if provvigioni change",
+    "_lavoratori_pratiche scans the entire lavorazioni_log on every calcolo/previste call; filter by client ids of the month for scalability",
+    "netto_stimato still uses /1.47 while costo_datore_fattore is now 1.0 - verify the label/meaning is still correct"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter49_incentivi_provvisoria.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Temporary docs TEST-iter49-cli-split, TEST-iter49-cli-same (clients), TEST-iter49-log1/2 (lavorazioni_log), TEST-iter49-rip (servizi) - created and deleted within tests.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=... pytest tests/test_iter49_incentivi_provvisoria.py -n 0. Admin login requires TOTP (secret in test_credentials.md). Month 2026-10 not closed; 0 energia clients in Oct in preview DB; tests use deltas vs baseline."
+}
