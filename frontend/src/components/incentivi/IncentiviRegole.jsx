@@ -19,7 +19,7 @@ export const IncentiviRegole = ({ cfg, meta, reload }) => {
 
   const salva = async () => {
     const body = Object.fromEntries(NUM.map(([k]) => [k, parseFloat(f[k]) || 0]));
-    body.premi_pct = premi.split("/").map((x) => parseFloat(x) || 0); body.partecipanti = f.partecipanti; body.negozi_fondo = f.negozi_fondo; body.padre_in_fondo = f.padre_in_fondo; body.persona_negozio = f.persona_negozio || {}; body.riparazioni_a = f.riparazioni_a || "";
+    body.premi_pct = premi.split("/").map((x) => parseFloat(x) || 0); body.partecipanti = f.partecipanti; body.negozi_fondo = f.negozi_fondo; body.padre_in_fondo = f.padre_in_fondo; body.persona_negozio = f.persona_negozio || {}; body.riparazioni_a = f.riparazioni_a || ""; body.gia_percepito = Object.fromEntries(Object.entries(f.gia_percepito || {}).map(([k, v]) => [k, parseFloat(v) || 0]));
     try { await api.put("/incentivi/config", body); toast.success("Regole salvate (modifica registrata)"); reload(); } catch (e) { toast.error(apiError(e)); }
   };
   const cambiaEntita = async () => {
@@ -49,6 +49,11 @@ export const IncentiviRegole = ({ cfg, meta, reload }) => {
         <p className="font-medium text-slate-800">Punteggio riparazioni a</p>
         <p className="text-xs text-slate-500">Tutte le riparazioni lavorate del mese contano per questa persona, anche se registrate da altri (chi le lavora davvero). Vuoto = a chi le ha segnate.</p>
         <select className="mt-2 h-8 rounded-md border border-slate-200 px-1 text-xs" value={f.riparazioni_a || ""} onChange={(e) => setF({ ...f, riparazioni_a: e.target.value })} data-testid="inc-riparazioni-a-select"><option value="">— chi le ha segnate —</option>{meta.users.filter((u) => f.partecipanti.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm" data-testid="inc-gia-percepito">
+        <p className="font-medium text-slate-800">Fisso mensile già percepito (da scalare)</p>
+        <p className="text-xs text-slate-500">Soldi che ognuno riceve già ogni mese: vengono tolti dal maturato (gettoni + premio); si paga solo l'eccedenza.</p>
+        <div className="mt-2 flex flex-wrap gap-2">{meta.users.filter((u) => f.partecipanti.includes(u.id)).map((u) => <label key={u.id} className="flex items-center gap-1 text-xs"><span className="w-20 text-slate-600">{u.name}</span><Input type="number" className="h-8 w-24" value={(f.gia_percepito || {})[u.id] ?? ""} onChange={(e) => setF({ ...f, gia_percepito: { ...(f.gia_percepito || {}), [u.id]: e.target.value } })} data-testid={`inc-gp-${u.id}`} /> €</label>)}</div>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button onClick={salva} className="gap-2" data-testid="inc-cfg-salva"><Save className="h-4 w-4" /> Salva regole</Button>

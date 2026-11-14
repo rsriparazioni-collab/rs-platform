@@ -20,7 +20,7 @@ export const ClassificaTable = ({ classifica, mostraEuro = true }) => (
       <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
         <tr><th className="px-3 py-2">#</th><th className="px-3 py-2">Persona</th><th className="px-3 py-2">Negozio</th><th className="px-3 py-2 text-right">Valore</th>
           <th className="px-3 py-2 text-right">EOLO</th><th className="px-3 py-2 text-right">Energia</th><th className="px-3 py-2 text-right">Riparazioni</th><th className="px-3 py-2 text-right">SIM n/MNP</th><th className="px-3 py-2 text-right">Fisso</th>
-          {mostraEuro && <><th className="px-3 py-2 text-right">Gettoni</th><th className="px-3 py-2 text-right">Premio</th><th className="px-3 py-2 text-right">Totale lordo</th><th className="px-3 py-2 text-right">Costo azienda</th></>}</tr>
+          {mostraEuro && <><th className="px-3 py-2 text-right">Gettoni</th><th className="px-3 py-2 text-right">Premio</th><th className="px-3 py-2 text-right">Totale lordo</th><th className="px-3 py-2 text-right">Già percepito</th><th className="px-3 py-2 text-right">Da pagare</th><th className="px-3 py-2 text-right">Costo azienda</th></>}</tr>
       </thead>
       <tbody className="divide-y divide-slate-100">
         {classifica.map((c) => (
@@ -38,10 +38,12 @@ export const ClassificaTable = ({ classifica, mostraEuro = true }) => (
               <td className="px-3 py-2 text-right">{c.gettoni_n} · {eur(c.gettoni_lordo)}</td>
               <td className="px-3 py-2 text-right">{c.premio_pct}% · <b>{eur(c.premio_lordo)}</b>{c.bonus_squadra > 0 && <span className="block text-xs text-emerald-700">+ squadra {eur(c.bonus_squadra)}</span>}</td>
               <td className="px-3 py-2 text-right font-semibold">{eur(c.totale_lordo)}</td>
+              <td className="px-3 py-2 text-right text-slate-500">− {eur(c.gia_percepito)}</td>
+              <td className={`px-3 py-2 text-right font-bold ${c.da_pagare > 0 ? "text-emerald-700" : "text-slate-400"}`} data-testid={`inc-da-pagare-${c.user_id}`}>{eur(c.da_pagare)}</td>
               <td className="px-3 py-2 text-right text-slate-500">{eur(c.costo_azienda)}</td></>}
           </tr>
         ))}
-        {!classifica.length && <tr><td colSpan={13} className="px-3 py-6 text-center text-slate-400">Nessun partecipante configurato</td></tr>}
+        {!classifica.length && <tr><td colSpan={15} className="px-3 py-6 text-center text-slate-400">Nessun partecipante configurato</td></tr>}
       </tbody>
     </table>
   </div>

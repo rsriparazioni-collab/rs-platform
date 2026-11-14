@@ -132,6 +132,14 @@ async def get_config() -> dict:
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"foglio_mese_pag_v1": True}})
         await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"foglio_eolo_mese_pagamento": {"prima": "mese fattura", "dopo": f"mese successivo ({n} righe spostate)"}}})
     # Le riparazioni le lavora Bruno anche se segnate da altri: punteggio riparazioni tutto a lui (modificabile in Regole)
+    # Fisso mensile già percepito da scalare dal maturato (Kevin 300, Silvio 300, Deborah 100, Bruno 200)
+    if not c.get("gia_percepito_v1"):
+        users = await _utenti_base(db)
+        gp = {users[n]: v for n, v in (("kevin", 300.0), ("silvio", 300.0), ("deborah", 100.0), ("bruno", 200.0)) if n in users}
+        upd = {"gia_percepito": gp, "gia_percepito_v1": True, "updated_at": _now()}
+        c.update(upd)
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
+        await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"gia_percepito": {"prima": None, "dopo": gp}}})
     if not c.get("riparazioni_a_v1"):
         users = await _utenti_base(db)
         upd = {"riparazioni_a": users.get("bruno", ""), "riparazioni_a_v1": True, "updated_at": _now()}
@@ -167,6 +175,7 @@ class ConfigInput(BaseModel):
     persona_negozio: Optional[dict] = None
     spareggio: Optional[str] = None
     riparazioni_a: Optional[str] = None
+    gia_percepito: Optional[dict] = None
 
 
 @router.get("/config")
@@ -848,7 +857,9 @@ async def calcola(mese: str, cfg: dict, provvisoria: bool = False) -> dict:
     for c in classifica:
         c.setdefault("bonus_squadra", 0.0)
         c["costo_azienda"] = _r(c["totale_lordo"] * fatt)
-        c["netto_stimato"] = _r(c["totale_lordo"] / 1.47)
+        # soldi già percepiti (fisso mensile): si scalano dal lordo maturato, da pagare = eccedenza
+        c["gia_percepito"] = float((cfg.get("gia_percepito") or {}).get(c["user_id"]) or 0)
+        c["da_pagare"] = _r(max(c["totale_lordo"] - c["gia_percepito"], 0.0))
 
     # entità di appartenenza della persona (dal negozio dell'utente)
     user_store = {u["id"]: (u.get("store_ids") or [""])[0] async for u in db.users.find({}, {"_id": 0, "id": 1, "store_ids": 1})}
@@ -980,7 +991,7 @@ async def mio(mese: str, request: Request):
     cl = [{"posizione": x["posizione"], "nome": x["nome"], "negozio": x["negozio"], "ex_aequo": x["ex_aequo"], "io": x["user_id"] == user["id"]} for x in c["classifica"]]
     me = next((x for x in c["classifica"] if x["user_id"] == user["id"]), None)
     return {"mese": mese, "modalita": c["modalita"], "online": cfg.get("online"), "chiuso": c["chiuso"], "classifica": cl,
-            "mio": {k: me[k] for k in ("posizione", "valore", "eolo_n", "energia_n", "riparazioni_n", "riparazioni_margine", "sim_nuova", "sim_mnp", "fisso", "gettoni_n", "gettoni_lordo", "premio_lordo", "premio_pct", "totale_lordo")} if me else None}
+            "mio": {k: me[k] for k in ("posizione", "valore", "eolo_n", "energia_n", "riparazioni_n", "riparazioni_margine", "sim_nuova", "sim_mnp", "fisso", "gettoni_n", "gettoni_lordo", "premio_lordo", "premio_pct", "totale_lordo", "gia_percepito", "da_pagare")} if me else None}
 
 
 # ---------------- Spese nel PDP (quote girate pagate) ----------------
@@ -1060,6 +1071,7 @@ def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
                                    f"riparazioni lavorate (pronte/consegnate): {cfg['coef_riparazione']:.0f}% del margine (prezzo - ricambio)" + (f", attribuite tutte a {users.get(cfg['riparazioni_a'], 'chi le lavora')} indipendentemente da chi le registra" if cfg.get("riparazioni_a") else "") + f"; SIM nuova {cfg['valore_sim_nuova']:.2f} EUR, SIM MNP {cfg['valore_sim_mnp']:.2f} EUR, fisso/internet non EOLO {cfg['valore_fisso']:.2f} EUR (valori figurativi).",
                                    "Spareggio: piu' contratti EOLO+energia, poi piu' attivita' totali, infine premio diviso in parti uguali."]),
         ("5. Premi", ["Il fondo del mese e' ripartito tra i primi classificati: " + ", ".join(f"{i + 1}o {p:.0f}%" for i, p in enumerate(premi)) + ".",
+                      "Dal totale maturato (gettoni + premio) viene scalato il fisso mensile gia' percepito da ciascuno: viene pagata solo l'eccedenza.",
                       "Un partecipante con valore zero nel mese non riceve premio. I premi sono importi lordi erogati in busta paga, soggetti a tassazione e contributi di legge.",
                       "Nessun premio e' dovuto finche' l'amministrazione non chiude il mese e conferma gli importi."]
          + ([f"Premio squadra: se il fondo del mese supera il miglior fondo dei 6 mesi precedenti, il {cfg['bonus_squadra_pct']:.0f}% dell'eccedenza (presa dalla quota azienda, mai dal fondo) viene diviso in parti uguali tra tutti i partecipanti con valore maggiore di zero."] if float(cfg.get("bonus_squadra_pct") or 0) > 0 else [])),
@@ -1278,7 +1290,7 @@ async def riepilogo_fine_mese() -> dict:
     cfg = await get_config()
     c = await calcola(mese, cfg)
     f, k = c["fondo"], c["costi"]
-    righe = "\n".join(f"{x['posizione']}. {x['nome']} – valore {x['valore']:.0f} · gettoni {x['gettoni_n']} ({x['gettoni_lordo']:.2f} €) · premio {x['premio_lordo']:.2f} € → tot {x['totale_lordo']:.2f} € lordi" for x in c["classifica"])
+    righe = "\n".join(f"{x['posizione']}. {x['nome']} – valore {x['valore']:.0f} · gettoni {x['gettoni_n']} ({x['gettoni_lordo']:.2f} €) · premio {x['premio_lordo']:.2f} € → tot {x['totale_lordo']:.2f} € lordi, già percepiti {x['gia_percepito']:.0f} € → da pagare {x['da_pagare']:.2f} €" for x in c["classifica"])
     testo = (f"📊 *Incentivi RS – riepilogo {mese}*\n"
              f"EOLO gruppo {f['eolo_gruppo_lordo']:.2f} € · energia {f['energia_gruppo_lordo']:.2f} €\n"
              f"Fondo {f['fondo_disponibile']:.2f} € · premi {f['premi_assegnati']:.2f} € · gettoni {k['gettoni_n']} ({k['gettoni_lordi']:.2f} €)\n"
@@ -1358,9 +1370,9 @@ async def export_excel(mese: str, request: Request):
                                             ["Fondo disponibile", f["fondo_disponibile"]], ["Premi assegnati", f["premi_assegnati"]], ["Residuo", f["residuo"]],
                                             ["Gettoni n.", k["gettoni_n"]], ["Gettoni lordi", k["gettoni_lordi"]], ["Costo datore totale", k["costo_datore_totale"]],
                                             ["Trattenute esterni", k["trattenute_esterni"]], ["Risultato azienda", k["risultato_azienda"]]])
-    sheet("Classifica", ["Pos", "Persona", "Negozio", "Entità", "Valore", "EOLO n", "EOLO €", "Energia n", "Energia €", "Riparazioni n", "Margine rip.", "SIM nuove", "SIM MNP", "Fisso", "Gettoni n", "Gettoni €", "Premio %", "Premio €", "Totale lordo", "Costo azienda"],
+    sheet("Classifica", ["Pos", "Persona", "Negozio", "Entità", "Valore", "EOLO n", "EOLO €", "Energia n", "Energia €", "Riparazioni n", "Margine rip.", "SIM nuove", "SIM MNP", "Fisso", "Gettoni n", "Gettoni €", "Premio %", "Premio €", "Totale lordo", "Già percepito", "Da pagare", "Costo azienda"],
           [[x["posizione"], x["nome"], x["negozio"], x["entita"], x["valore"], x["eolo_n"], _r(x["eolo_importo"]), x["energia_n"], _r(x["energia_importo"]), x["riparazioni_n"], _r(x["riparazioni_margine"]),
-            x["sim_nuova"], x["sim_mnp"], x["fisso"], x["gettoni_n"], x["gettoni_lordo"], x["premio_pct"], x["premio_lordo"], x["totale_lordo"], x["costo_azienda"]] for x in c["classifica"]])
+            x["sim_nuova"], x["sim_mnp"], x["fisso"], x["gettoni_n"], x["gettoni_lordo"], x["premio_pct"], x["premio_lordo"], x["totale_lordo"], x["gia_percepito"], x["da_pagare"], x["costo_azienda"]] for x in c["classifica"]])
     sheet("Estratti conto", ["Negozio", "Entità", "Contratti", "EOLO lordo", "Energia lordo", "Trattenuta", "Dare ditta", "Avere ditta", "Avere SRLS", "Saldo ditta", "Saldo SRLS", "Pagato ditta", "Pagato SRLS"],
           [[e["negozio"], e["entita"], e["n_contratti"], e["eolo_lordo"], e["energia_lordo"], e["trattenuta"], e["dare_ditta"], e["avere_ditta"], e["avere_srls"], e["saldo_ditta"], e["saldo_srls"], e["pagato_ditta"], e["pagato_srls"]] for e in c["estratti_conto"]])
     provv = await _d["db"].incentivi_provvigioni.find({"mese": mese}, {"_id": 0}).to_list(10000)

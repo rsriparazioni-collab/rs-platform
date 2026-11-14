@@ -26,7 +26,9 @@ export const IncentiviMio = () => {
           <p className="text-slate-600">EOLO {m.eolo_n} · energia {m.energia_n} · riparazioni {m.riparazioni_n} ({eur(m.riparazioni_margine)} margine) · SIM {m.sim_nuova}/{m.sim_mnp} · fisso {m.fisso}</p>
           <p className="mt-2">Gettoni: {m.gettoni_n} = <b>{eur(m.gettoni_lordo)}</b> lordi</p>
           <p>Premio classifica ({m.premio_pct}% del fondo): <b>{eur(m.premio_lordo)}</b> lordi</p>
-          <p className="mt-1 text-lg font-semibold text-emerald-700" data-testid="inc-mio-totale">Totale stimato lordo: {eur(m.totale_lordo)}</p>
+          <p className="mt-1 text-lg font-semibold text-slate-800" data-testid="inc-mio-totale">Totale maturato lordo: {eur(m.totale_lordo)}</p>
+          <p className="text-slate-600">Già percepito (fisso): − {eur(m.gia_percepito)}</p>
+          <p className="text-lg font-semibold text-emerald-700" data-testid="inc-mio-da-pagare">Da pagare: {eur(m.da_pagare)}</p>
           <p className="text-xs text-slate-500">{d.chiuso ? "Importo confermato dall'amministrazione." : "Classifica provvisoria sui contratti inseriti a gestionale, salvo conguaglio e verifiche: diventa definitiva con la chiusura del mese sui pagamenti ricevuti."}</p>
         </div>}
       </div>
