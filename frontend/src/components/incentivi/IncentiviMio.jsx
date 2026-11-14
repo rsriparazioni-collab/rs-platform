@@ -12,7 +12,7 @@ export const IncentiviMio = () => {
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4" data-testid="inc-mio">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 font-semibold text-slate-900"><Trophy className="h-5 w-5 text-amber-500" /> I miei incentivi {d.chiuso && <span className="rounded bg-slate-900 px-2 py-0.5 text-xs text-white">confermato</span>}</h3>
+        <h3 className="flex items-center gap-2 font-semibold text-slate-900"><Trophy className="h-5 w-5 text-amber-500" /> I miei incentivi {d.chiuso ? <span className="rounded bg-slate-900 px-2 py-0.5 text-xs text-white">confermato</span> : <span className="rounded bg-amber-200 px-2 py-0.5 text-xs text-amber-900" data-testid="inc-mio-provvisoria">provvisoria</span>}</h3>
         <input type="month" value={mese} onChange={(e) => setMese(e.target.value)} className="h-8 rounded-md border border-slate-200 px-2 text-sm" data-testid="inc-mio-mese" />
       </div>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -24,10 +24,10 @@ export const IncentiviMio = () => {
           <p className="text-xs uppercase text-slate-500">I miei numeri</p>
           <p className="mt-1 text-2xl font-bold">{m.posizione}º posto · valore {m.valore.toLocaleString("it-IT")}</p>
           <p className="text-slate-600">EOLO {m.eolo_n} · energia {m.energia_n} · riparazioni {m.riparazioni_n} ({eur(m.riparazioni_margine)} margine) · SIM {m.sim_nuova}/{m.sim_mnp} · fisso {m.fisso}</p>
-          <p className="mt-2">Gettoni: {m.gettoni_n} × 25 € = <b>{eur(m.gettoni_lordo)}</b> lordi</p>
+          <p className="mt-2">Gettoni: {m.gettoni_n} = <b>{eur(m.gettoni_lordo)}</b> lordi</p>
           <p>Premio classifica ({m.premio_pct}% del fondo): <b>{eur(m.premio_lordo)}</b> lordi</p>
           <p className="mt-1 text-lg font-semibold text-emerald-700" data-testid="inc-mio-totale">Totale stimato lordo: {eur(m.totale_lordo)}</p>
-          <p className="text-xs text-slate-500">{d.chiuso ? "Importo confermato dall'amministrazione." : "Stima: diventa definitiva con la chiusura del mese."}</p>
+          <p className="text-xs text-slate-500">{d.chiuso ? "Importo confermato dall'amministrazione." : "Classifica provvisoria sui contratti inseriti a gestionale, salvo conguaglio e verifiche: diventa definitiva con la chiusura del mese sui pagamenti ricevuti."}</p>
         </div>}
       </div>
     </div>

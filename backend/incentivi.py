@@ -56,13 +56,19 @@ async def _utenti_base(db) -> dict:
     return out
 
 
+def _mese_succ(m: str, k: int = 1) -> str:
+    y, mo = int(m[:4]), int(m[5:7]) + k
+    y, mo = y + (mo - 1) // 12, (mo - 1) % 12 + 1
+    return f"{y:04d}-{mo:02d}"
+
+
 async def _default_config() -> dict:
     db = _d["db"]
     stores = {s["nome"].strip().lower(): s["id"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
     users = await _utenti_base(db)
     fondo = [stores[n] for n in ("morbegno", "gravedona") if n in stores]
     srls = [stores[n] for n in ("sondrio",) if n in stores]
-    return {"id": CONFIG_ID, "online": False, "gettone_lordo": 25.0, "gettone_energia_lordo": 10.0, "costo_datore_fattore": 1.45, "eolo_fondo_pct": 50.0,
+    return {"id": CONFIG_ID, "online": False, "gettone_lordo": 25.0, "gettone_energia_lordo": 10.0, "costo_datore_fattore": 1.0, "eolo_fondo_pct": 50.0,
             "trattenuta_terzi_pct": 15.0, "energia_importo": 25.0, "energia_acquisizione": 12.5, "energia_lavorazione": 12.5, "energia_fondo_pct": 50.0,
             "premi_pct": [40, 30, 20, 10], "tetto_fondo": 0.0, "padre_in_fondo": True,
             "partecipanti": [users[n] for n in ("kevin", "deborah", "silvio", "bruno") if n in users],
@@ -108,6 +114,23 @@ async def get_config() -> dict:
         c.update(upd)
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
         await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"gettone_energia_lordo": {"prima": prima_g, "dopo": upd["gettone_energia_lordo"]}}})
+    # Importi già lordi: nessun fattore costo datore (tasse a carico di chi riceve)
+    if not c.get("lordo_v1"):
+        prima_f = c.get("costo_datore_fattore")
+        upd = {"costo_datore_fattore": 1.0, "lordo_v1": True, "updated_at": _now()}
+        c.update(upd)
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
+        await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"costo_datore_fattore": {"prima": prima_f, "dopo": 1.0}}})
+    # Foglio EOLO: il fatturato del mese X viene pagato a X+1 → le righe foglio contano nella gara del mese di pagamento
+    if not c.get("foglio_mese_pag_v1"):
+        n = 0
+        async for p in db.incentivi_provvigioni.find({"origine": "foglio"}, {"_id": 0, "id": 1, "mese": 1}):
+            if p.get("mese") and not await db.incentivi_chiusure.find_one({"mese": p["mese"]}):
+                await db.incentivi_provvigioni.update_one({"id": p["id"]}, {"$set": {"mese": _mese_succ(p["mese"]), "mese_fattura": p["mese"]}})
+                n += 1
+        c["foglio_mese_pag_v1"] = True
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"foglio_mese_pag_v1": True}})
+        await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"foglio_eolo_mese_pagamento": {"prima": "mese fattura", "dopo": f"mese successivo ({n} righe spostate)"}}})
     # Le riparazioni le lavora Bruno anche se segnate da altri: punteggio riparazioni tutto a lui (modificabile in Regole)
     if not c.get("riparazioni_a_v1"):
         users = await _utenti_base(db)
@@ -294,25 +317,37 @@ def _importo_soglia(soglie: Optional[dict], prodotto: str, n_tot: int) -> float:
     return 0.0
 
 
-@router.get("/previste")
-async def previste(mese: str, request: Request):
-    """Contratti del gestionale nel mese (competenza) non ancora caricati in pagamento: proposta di importo, editabile."""
-    await _admin(request)
+async def _lavoratori_pratiche(db) -> dict:
+    """client_id → operatore che ha portato la pratica a cambio effettuato/rinnovato (ultimo nel log)."""
+    out = {}
+    async for lg in db.lavorazioni_log.find({"status": {"$in": ["cambio_effettuato", "rinnovato"]}}, {"_id": 0, "client_id": 1, "operatore_id": 1, "created_at": 1}).sort("created_at", 1):
+        if lg.get("operatore_id"):
+            out[lg["client_id"]] = lg["operatore_id"]
+    return out
+
+
+async def _righe_gestionale(mese: str, cfg: dict, gia: set, stores: dict, users: dict) -> dict:
+    """Contratti inseriti a gestionale nel mese di competenza: energia divisa metà acquisizione / metà lavorazione, EOLO da soglie."""
     db = _d["db"]
-    cfg = await get_config()
-    gia = {p["ref_id"] async for p in db.incentivi_provvigioni.find({"ref_id": {"$ne": ""}}, {"_id": 0, "ref_id": 1})}
-    stores = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
-    users = {u["id"]: u["name"] async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1})}
     out = []
+    lav = await _lavoratori_pratiche(db)
+    imp_tot = float(cfg["energia_importo"])
+    imp_acq = imp_lav = round(imp_tot / 2, 2)
     async for c in db.clients.find({"lavorazione": {"$in": ["cambio_effettuato", "rinnovato"]}, "anonimizzato_at": {"$in": [None]}}, {"_id": 0}):
         if _ym(c.get("data_contratto") or c.get("updated_at")) != mese:
             continue
-        uid = c.get("operatore_id") or c.get("created_by") or ""
+        acq = c.get("operatore_id") or c.get("created_by") or ""
+        lv = lav.get(c["id"], "")
         incassato = _d["effective_pagato"](c.get("pagato", False), c.get("last_payment_date")) if _d.get("effective_pagato") else bool(c.get("pagato"))
-        out.append({"ref_id": f"client:{c['id']}", "fonte": "energia", "store_id": c.get("venditore_id", ""), "negozio": stores.get(c.get("venditore_id", ""), "—"),
-                    "user_id": uid if uid in users else "", "persona": users.get(uid, "—"), "data_contratto": (c.get("data_contratto") or "")[:10], "incassato": incassato,
-                    "descrizione": f"{c.get('cognome', '')} {c.get('nome', '')} · {c.get('tipo_bolletta') or ''} · {(c.get('gestione') or 'cambiaora').upper()}".strip(),
-                    "importo": float(cfg["energia_importo"]), "gia_caricata": f"client:{c['id']}" in gia, "anomalia": "" if uid in users else "Operatore non identificato"})
+        desc = f"{c.get('cognome', '')} {c.get('nome', '')} · {c.get('tipo_bolletta') or ''} · {(c.get('gestione') or 'cambiaora').upper()}".strip()
+        base = {"fonte": "energia", "store_id": c.get("venditore_id", ""), "negozio": stores.get(c.get("venditore_id", ""), "—"), "data_contratto": (c.get("data_contratto") or "")[:10], "incassato": incassato}
+        if lv and lv in users and lv != acq and imp_acq + imp_lav > 0:
+            parti = [(f"client:{c['id']}", acq, imp_acq, "acquisizione"), (f"client:{c['id']}:lav", lv, imp_lav, "lavorazione")]
+        else:
+            parti = [(f"client:{c['id']}", acq or lv, imp_tot, "")]
+        for ref, uid, imp, ruolo in parti:
+            out.append({**base, "ref_id": ref, "user_id": uid if uid in users else "", "persona": users.get(uid, "—"), "importo": imp,
+                        "descrizione": desc + (f" · {ruolo}" if ruolo else ""), "gia_caricata": ref in gia, "anomalia": "" if uid in users else "Operatore non identificato"})
     eolo = [s async for s in db.servizi.find({"operatore_tel": {"$regex": "^eolo$", "$options": "i"}, "esito_attivazione": {"$nin": ["annullata", "respinta", "stornata", "non_riconosciuta"]}}, {"_id": 0})]
     eolo = [s for s in eolo if _ym(s.get("data_attivazione") or s.get("created_at")) == mese]
     soglie = await _soglie_mese(mese)
@@ -325,6 +360,18 @@ async def previste(mese: str, request: Request):
                     "descrizione": f"EOLO {prod} · {s.get('numero') or ''}".strip(), "importo": _importo_soglia(soglie, prod, n_tot), "gia_caricata": f"servizio:{s['id']}" in gia,
                     "anomalia": ("Operatore non identificato; " if uid not in users else "") + ("" if _importo_soglia(soglie, prod, n_tot) else "Importo soglia non trovato: inserire a mano")})
     return {"mese": mese, "n_eolo_totale": n_tot, "soglia_eolo": _tier(n_tot), "righe": out}
+
+
+@router.get("/previste")
+async def previste(mese: str, request: Request):
+    """Contratti del gestionale nel mese (competenza) non ancora caricati in pagamento: proposta di importo, editabile."""
+    await _admin(request)
+    db = _d["db"]
+    cfg = await get_config()
+    gia = {p["ref_id"] async for p in db.incentivi_provvigioni.find({"ref_id": {"$ne": ""}}, {"_id": 0, "ref_id": 1})}
+    stores = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    users = {u["id"]: u["name"] async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1})}
+    return await _righe_gestionale(mese, cfg, gia, stores, users)
 
 
 class ProvvigioneIn(BaseModel):
@@ -478,11 +525,11 @@ async def import_foglio(input: ImportFoglioInput, request: Request):
     gid = (input.gid or "").strip()
     async with httpx.AsyncClient(follow_redirects=True, timeout=30) as cl:
         if not gid:
-            # trova da solo la scheda del mese tra i tab del foglio (es. "ottobre", "SETTEMBRE")
+            # il fatturato EOLO del mese precedente viene pagato in input.mese: si legge la scheda del mese prima (es. gara novembre ← scheda "ottobre")
             html = await cl.get(f"https://docs.google.com/spreadsheets/d/{input.sheet_id}/htmlview")
             if html.status_code != 200:
                 raise HTTPException(status_code=400, detail="Foglio non leggibile: verifica che sia condiviso 'chiunque con il link'")
-            mese_n = int(input.mese[5:7])
+            mese_n = int(_mese_succ(input.mese, -1)[5:7])
             schede = _schede_mese(html.text)
             gid = schede.get(mese_n, "")
             if not gid:
@@ -508,7 +555,7 @@ async def import_foglio(input: ImportFoglioInput, request: Request):
     for r in righe:
         if r["duplicato"]:
             continue
-        await db.incentivi_provvigioni.insert_one({"id": str(uuid.uuid4()), "mese": input.mese, "stato": "confermata", "origine": "foglio", "fonte": "eolo",
+        await db.incentivi_provvigioni.insert_one({"id": str(uuid.uuid4()), "mese": input.mese, "mese_fattura": _mese_succ(input.mese, -1), "stato": "confermata", "origine": "foglio", "fonte": "eolo",
                                                    "ref_id": r["ref_id"], "store_id": r["store_id"], "negozio_nome": r["negozio_nome"], "user_id": "", "importo": r["importo"],
                                                    "data_contratto": r["data_contratto"], "descrizione": f"EOLO foglio {r['sezione']} {r['codice']}", "sezione": r["sezione"],
                                                    "created_at": _now(), "created_by": user["name"]})
@@ -676,7 +723,8 @@ async def _attivita_mese(mese: str, partecipanti: set, cfg: dict) -> dict:
     return val
 
 
-async def calcola(mese: str, cfg: dict) -> dict:
+async def calcola(mese: str, cfg: dict, provvisoria: bool = False) -> dict:
+    """provvisoria=True: classifica dal gestionale (contratti inseriti nel mese, salvo conguaglio); False: reale da provvigioni pagate/fatturate caricate."""
     db = _d["db"]
     stores = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
     users = {u["id"]: u["name"] async for u in db.users.find({}, {"_id": 0, "id": 1, "name": 1})}
@@ -688,8 +736,12 @@ async def calcola(mese: str, cfg: dict) -> dict:
     gettoni_lordi_tot = 0.0
     tratt_store = {s["id"]: s.get("trattenuta_pct") async for s in db.stores.find({"trattenuta_pct": {"$ne": None}}, {"_id": 0, "id": 1, "trattenuta_pct": 1})}
     tratt_pct = float(cfg["trattenuta_terzi_pct"]) / 100
-    provv = await db.incentivi_provvigioni.find({"mese": mese}, {"_id": 0}).to_list(10000)
+    if provvisoria:
+        provv = [{**r, "stato": "prevista"} for r in (await _righe_gestionale(mese, cfg, set(), stores, users))["righe"]]
+    else:
+        provv = await db.incentivi_provvigioni.find({"mese": mese}, {"_id": 0}).to_list(10000)
     anomalie = []
+    energia_importo = float(cfg["energia_importo"]) or 1.0
 
     per_persona = {u: {"user_id": u, "nome": users[u], "eolo_n": 0, "eolo_importo": 0.0, "energia_n": 0, "energia_importo": 0.0, "gettoni_n": 0, "gettoni_lordo": 0.0} for u in partecipanti}
     fondo_lordo_eolo, fondo_lordo_energia, energia_gruppo, gettoni_tot = 0.0, 0.0, 0.0, 0
@@ -704,7 +756,8 @@ async def calcola(mese: str, cfg: dict) -> dict:
             anomalie.append({"tipo": "negozio_mancante", "descrizione": p.get("descrizione", ""), "importo": imp})
         uid = p.get("user_id", "") or (cfg.get("persona_negozio") or {}).get(sid, "")
         gett_applicato = uid in pset and imp > 0 and in_gruppo
-        gett_val = gettone if fonte == "eolo" else gettone_energia
+        # energia divisa acquisizione/lavorazione: il gettone segue la quota (10 € a contratto intero)
+        gett_val = gettone if fonte == "eolo" else gettone_energia * min(imp / energia_importo, 1.0)
         if gett_applicato:
             per_persona[uid]["gettoni_n"] += 1
             per_persona[uid]["gettoni_lordo"] += gett_val
@@ -724,7 +777,7 @@ async def calcola(mese: str, cfg: dict) -> dict:
                 energia_gruppo += imp
                 # CambiaOra paga 25 € a contratto: quando pagato alimenta la gara del mese come EOLO (stessa %, dopo il gettone)
                 # gettone energia al lordo (tasse a carico di chi lo riceve): nessun fattore costo datore
-                residuo = max(imp - (gettone_energia if gett_applicato else 0), 0.0)
+                residuo = max(imp - (gett_val if gett_applicato else 0), 0.0)
                 quota = residuo * float(cfg.get("energia_fondo_pct", cfg["eolo_fondo_pct"])) / 100
                 fondo_lordo_energia += quota
                 fondo_per_entita[ent or "ditta"] += quota
@@ -833,7 +886,7 @@ async def calcola(mese: str, cfg: dict) -> dict:
                          "nota": "Energia incassata direttamente dalla SRLS: fuori estratto conto" if ent == "srls" and e["energia"] else ""})
     estratti.sort(key=lambda x: -x["dare_ditta"])
     chiusura = await db.incentivi_chiusure.find_one({"mese": mese}, {"_id": 0, "approvato_da": 1, "at": 1})
-    return {"mese": mese, "chiuso": bool(chiusura), "chiusura": chiusura,
+    return {"mese": mese, "modalita": "provvisoria" if provvisoria else "reale", "chiuso": bool(chiusura), "chiusura": chiusura,
             "fondo": {"eolo_gruppo_lordo": eolo_gruppo, "energia_gruppo_lordo": _r(energia_gruppo), "fondo_pct": cfg["eolo_fondo_pct"], "energia_fondo_pct": cfg.get("energia_fondo_pct", cfg["eolo_fondo_pct"]),
                       "fondo_da_eolo": _r(max(0.0, fondo_lordo_eolo)), "fondo_da_energia": _r(max(0.0, fondo_lordo_energia)), "fondo_disponibile": _r(fondo),
                       "fondo_oltre_tetto": _r(fondo_eccedenza_tetto), "premi_assegnati": premi_lordi, "residuo": _r(fondo - premi_lordi), "per_entita": {k: _r(v) for k, v in fondo_per_entita.items()}},
@@ -845,8 +898,8 @@ async def calcola(mese: str, cfg: dict) -> dict:
 
 
 @router.get("/calcolo")
-async def get_calcolo(mese: str, request: Request, override: str = ""):
-    """Calcolo del mese. `override` (JSON) sovrascrive i parametri solo per questa chiamata: è la simulazione, nulla viene salvato."""
+async def get_calcolo(mese: str, request: Request, override: str = "", modalita: str = "reale"):
+    """Calcolo del mese. `modalita` reale (provvigioni caricate) | provvisoria (contratti inseriti a gestionale). `override` (JSON) sovrascrive i parametri solo per questa chiamata: è la simulazione, nulla viene salvato."""
     await _admin(request)
     cfg = await get_config()
     if override:
@@ -859,7 +912,7 @@ async def get_calcolo(mese: str, request: Request, override: str = ""):
             cfg["premi_pct"] = [float(x) for x in cfg.get("premi_pct", [])]
         except Exception:
             raise HTTPException(status_code=400, detail="Override non valido")
-    return await calcola(mese, cfg)
+    return await calcola(mese, cfg, provvisoria=modalita == "provvisoria")
 
 
 @router.get("/storico")
@@ -908,6 +961,10 @@ async def get_chiusura(mese: str, request: Request):
 
 
 # ---------------- Area dipendente ----------------
+async def db_chiuso(mese: str) -> bool:
+    return bool(await _d["db"].incentivi_chiusure.find_one({"mese": mese}, {"_id": 1}))
+
+
 @router.get("/mio")
 async def mio(mese: str, request: Request):
     user = await _user(request)
@@ -918,10 +975,11 @@ async def mio(mese: str, request: Request):
         raise HTTPException(status_code=403, detail=f"La gara parte da {cfg['mese_partenza']}")
     if user["id"] not in cfg.get("partecipanti", []) and user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Non partecipi alla gara")
-    c = await calcola(mese, cfg)
+    # ai ragazzi: classifica provvisoria dagli inseriti a gestionale (salvo conguaglio); a mese chiuso quella reale confermata
+    c = await calcola(mese, cfg, provvisoria=not await db_chiuso(mese))
     cl = [{"posizione": x["posizione"], "nome": x["nome"], "negozio": x["negozio"], "ex_aequo": x["ex_aequo"], "io": x["user_id"] == user["id"]} for x in c["classifica"]]
     me = next((x for x in c["classifica"] if x["user_id"] == user["id"]), None)
-    return {"mese": mese, "online": cfg.get("online"), "chiuso": c["chiuso"], "classifica": cl,
+    return {"mese": mese, "modalita": c["modalita"], "online": cfg.get("online"), "chiuso": c["chiuso"], "classifica": cl,
             "mio": {k: me[k] for k in ("posizione", "valore", "eolo_n", "energia_n", "riparazioni_n", "riparazioni_margine", "sim_nuova", "sim_mnp", "fisso", "gettoni_n", "gettoni_lordo", "premio_lordo", "premio_pct", "totale_lordo")} if me else None}
 
 
@@ -989,7 +1047,9 @@ def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
     return [
         ("1. Partecipanti", [", ".join(users.get(u, u) for u in cfg.get("partecipanti", [])), "Negozi che alimentano il fondo: " + ", ".join(stores.get(s, s) for s in cfg.get("negozi_fondo", []))]),
         ("2. Gettone per contratto", [f"Per ogni contratto EOLO confermato dal fornitore e attribuito al venditore: {cfg['gettone_lordo']:.2f} EUR lordi in busta paga; per ogni contratto luce/gas (CambiaOra/ENEL): {float(cfg.get('gettone_energia_lordo', cfg['gettone_lordo'])):.2f} EUR lordi.",
-                                      "Il gettone matura nel mese in cui il fornitore conferma la provvigione (fattura), non alla firma del contratto.",
+                                      "Il gettone matura nel mese in cui il fornitore paga la provvigione (EOLO: fatturato del mese precedente; luce/gas: pratiche pagate il mese successivo), non alla firma del contratto. Gli importi sono lordi: le imposte sono a carico di chi li riceve.",
+                                      f"Il contratto luce/gas ({float(cfg.get('energia_importo') or 0):.2f} EUR) vale per meta' a chi acquisisce il cliente e per meta' a chi lavora la pratica; se e' la stessa persona, tutto a lei.",
+                                      "Durante il mese ognuno vede la classifica provvisoria calcolata sui contratti inseriti a gestionale, salvo conguaglio e verifiche; alla chiusura del mese vale la classifica reale sui pagamenti ricevuti.",
                                       "Contratti annullati, respinti o stornati dal fornitore non generano gettone; gli storni successivi vengono compensati sul mese seguente."]),
         ("3. Fondo premi", [f"Il fondo e' alimentato dalle provvigioni EOLO confermate dei negozi indicati: {cfg['eolo_fondo_pct']:.0f}% della provvigione residua dopo il costo del gettone.",
                             f"Il fondo e' alimentato anche dai contratti luce/gas (CambiaOra/ENEL) pagati nel mese: {float(cfg.get('energia_importo', 0)):.2f} EUR per contratto, di cui il {float(cfg.get('energia_fondo_pct', cfg['eolo_fondo_pct'])):.0f}% della parte residua dopo il gettone lordo ({float(cfg.get('gettone_energia_lordo', cfg['gettone_lordo'])):.2f} EUR, tasse a carico di chi lo riceve) va al fondo; il contratto conta nel mese in cui viene pagato, non alla firma.",

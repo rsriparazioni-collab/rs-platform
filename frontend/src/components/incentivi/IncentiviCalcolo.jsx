@@ -67,12 +67,13 @@ export const FondoPanel = ({ d }) => (
 
 export const IncentiviCalcolo = ({ mese }) => {
   const [d, setD] = useState(null);
+  const [modalita, setModalita] = useState("reale");
   useEffect(() => {
     let attivo = true;
-    api.get(`/incentivi/calcolo?mese=${mese}`).then((r) => { if (attivo) setD(r.data); }).catch((e) => toast.error(apiError(e)));
+    api.get(`/incentivi/calcolo?mese=${mese}&modalita=${modalita}`).then((r) => { if (attivo) setD(r.data); }).catch((e) => toast.error(apiError(e)));
     return () => { attivo = false; };
-  }, [mese]);
-  const load = useCallback(() => api.get(`/incentivi/calcolo?mese=${mese}`).then((r) => setD(r.data)).catch((e) => toast.error(apiError(e))), [mese]);
+  }, [mese, modalita]);
+  const load = useCallback(() => api.get(`/incentivi/calcolo?mese=${mese}&modalita=${modalita}`).then((r) => setD(r.data)).catch((e) => toast.error(apiError(e))), [mese, modalita]);
   const chiudi = async () => {
     if (!window.confirm(`Chiudere ${mese} e confermare i premi? Il calcolo viene congelato (riapribile).`)) return;
     try { await api.post(`/incentivi/chiusura/${mese}`); toast.success("Mese chiuso e premi confermati"); load(); } catch (e) { toast.error(apiError(e)); }
@@ -82,7 +83,13 @@ export const IncentiviCalcolo = ({ mese }) => {
   return (
     <div className="space-y-4" data-testid="inc-calcolo">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-slate-600">{d.n_provvigioni} provvigioni caricate per {mese}{d.chiuso && <span className="ml-2 rounded bg-slate-900 px-2 py-0.5 text-xs text-white">CHIUSO da {d.chiusura?.approvato_da}</span>}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs" data-testid="inc-modalita">
+            <button type="button" onClick={() => setModalita("reale")} className={`rounded-md px-3 py-1 ${modalita === "reale" ? "bg-slate-900 text-white" : "text-slate-600"}`} data-testid="inc-modalita-reale">Reale · pagato/fatturato</button>
+            <button type="button" onClick={() => setModalita("provvisoria")} className={`rounded-md px-3 py-1 ${modalita === "provvisoria" ? "bg-amber-500 text-white" : "text-slate-600"}`} data-testid="inc-modalita-provvisoria">Provvisoria · inseriti a gestionale</button>
+          </div>
+          <p className="text-sm text-slate-600">{modalita === "reale" ? `${d.n_provvigioni} provvigioni caricate per ${mese}` : `${d.n_provvigioni} contratti inseriti nel mese ${mese} (salvo conguaglio: è quella che vedono i ragazzi)`}{d.chiuso && <span className="ml-2 rounded bg-slate-900 px-2 py-0.5 text-xs text-white">CHIUSO da {d.chiusura?.approvato_da}</span>}</p>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1" onClick={() => downloadBlob(`/incentivi/export?mese=${mese}`, `incentivi_${mese}.xlsx`)} data-testid="inc-export"><FileDown className="h-4 w-4" /> Excel</Button>
           {d.chiuso ? <Button variant="outline" size="sm" className="gap-1" onClick={riapri} data-testid="inc-riapri"><Unlock className="h-4 w-4" /> Riapri mese</Button>

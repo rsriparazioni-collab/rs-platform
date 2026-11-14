@@ -9,7 +9,7 @@ import { eur } from "./IncentiviCalcolo";
 const SHEET_DEFAULT = "1bYRn-pAzYXPI1BCnWph8XIMGXhfHsEZz6o_22etuG1M";
 
 export const IncentiviInPagamento = ({ mese, meta }) => {
-  const [competenza, setCompetenza] = useState(mese);
+  const [competenza, setCompetenza] = useState(() => { const [y, m] = mese.split("-").map(Number); const d = new Date(y, m - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
   const [prev, setPrev] = useState(null);
   const [sel, setSel] = useState({});
   const [importi, setImporti] = useState({});
@@ -55,7 +55,7 @@ export const IncentiviInPagamento = ({ mese, meta }) => {
           <h3 className="font-semibold text-slate-900">Contratti del gestionale da confermare → pagamento {mese}</h3>
           <div className="flex items-center gap-2 text-sm"><span className="text-slate-500">Competenza</span><input type="month" value={competenza} onChange={(e) => setCompetenza(e.target.value)} className="h-9 rounded-md border border-slate-200 px-2" data-testid="inc-competenza" /></div>
         </div>
-        {prev && <p className="mt-1 text-xs text-slate-500">EOLO totali nel mese: {prev.n_eolo_totale} → soglia {prev.soglia_eolo ? `Da ${prev.soglia_eolo}` : "non raggiunta (min 5)"}. Energia proposta {eur(50)} a contratto. Modifica l'importo se diverso dalla fattura.</p>}
+        {prev && <p className="mt-1 text-xs text-slate-500">EOLO totali nel mese: {prev.n_eolo_totale} → soglia {prev.soglia_eolo ? `Da ${prev.soglia_eolo}` : "non raggiunta (min 5)"}. Energia: {eur(prev.righe.find((r) => r.fonte === "energia")?.importo ?? 25)} a riga (metà acquisizione / metà lavorazione se persone diverse). Modifica l'importo se diverso dalla fattura.</p>}
         <div className="mt-3 max-h-80 overflow-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase text-slate-500"><tr><th className="px-2 py-1"></th><th className="px-2 py-1">Fonte</th><th className="px-2 py-1">Negozio</th><th className="px-2 py-1">Persona</th><th className="px-2 py-1">Data</th><th className="px-2 py-1">Descrizione</th><th className="px-2 py-1">Importo €</th><th className="px-2 py-1">Note</th></tr></thead>
@@ -94,10 +94,10 @@ export const IncentiviInPagamento = ({ mese, meta }) => {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="flex items-center gap-2 font-semibold text-slate-900"><Table className="h-4 w-4" /> Compensi EOLO dal foglio Google · {mese}</h3>
-            <p className="text-xs text-slate-500">Un click: il gestionale trova da solo la scheda del mese nel foglio EOLO e carica compensi, gare e gara retail (le righe già caricate vengono saltate).</p>
+            <p className="text-xs text-slate-500">Un click: il gestionale legge la scheda del mese precedente (fatturato EOLO) e la carica nella gara di {mese}, mese in cui viene pagato. Le righe già caricate vengono saltate.</p>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => importa(true)} disabled={busyFoglio} data-testid="inc-foglio-anteprima">{busyFoglio ? "Leggo il foglio..." : `Carica foglio EOLO di ${mese}`}</Button>
+            <Button size="sm" onClick={() => importa(true)} disabled={busyFoglio} data-testid="inc-foglio-anteprima">{busyFoglio ? "Leggo il foglio..." : `Carica fatturato EOLO del mese prima → pagato ${mese}`}</Button>
             {anteprima && anteprima.nuove > 0 && <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => importa(false)} disabled={busyFoglio} data-testid="inc-foglio-importa">Conferma {anteprima.nuove} righe ({eur(anteprima.totale_nuove)})</Button>}
           </div>
         </div>
