@@ -62,7 +62,7 @@ async def _default_config() -> dict:
     users = await _utenti_base(db)
     fondo = [stores[n] for n in ("morbegno", "gravedona") if n in stores]
     srls = [stores[n] for n in ("sondrio",) if n in stores]
-    return {"id": CONFIG_ID, "online": False, "gettone_lordo": 25.0, "gettone_energia_lordo": 10.0, "costo_datore_fattore": 1.45, "eolo_fondo_pct": 50.0,
+    return {"id": CONFIG_ID, "online": False, "gettone_lordo": 25.0, "gettone_energia_lordo": 25.0, "costo_datore_fattore": 1.45, "eolo_fondo_pct": 50.0,
             "trattenuta_terzi_pct": 15.0, "energia_importo": 25.0, "energia_acquisizione": 12.5, "energia_lavorazione": 12.5, "energia_fondo_pct": 50.0,
             "premi_pct": [40, 30, 20, 10], "tetto_fondo": 0.0, "padre_in_fondo": True,
             "partecipanti": [users[n] for n in ("kevin", "deborah", "silvio", "bruno") if n in users],
@@ -101,6 +101,12 @@ async def get_config() -> dict:
         c.update(upd)
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
         await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {k: {"prima": prima[k], "dopo": upd[k]} for k in prima}})
+    if not c.get("gettone_energia_v2"):
+        prima_g = c.get("gettone_energia_lordo")
+        upd = {"gettone_energia_lordo": float(c.get("gettone_lordo", 25.0)), "gettone_energia_v2": True, "updated_at": _now()}
+        c.update(upd)
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
+        await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"gettone_energia_lordo": {"prima": prima_g, "dopo": upd["gettone_energia_lordo"]}}})
     return c
 
 
@@ -700,14 +706,14 @@ async def calcola(mese: str, cfg: dict) -> dict:
             per_persona[uid][f"{fonte}_importo"] += imp
         if in_gruppo:
             if fonte == "eolo":
-                residuo = imp - (gettone * fatt if gett_applicato else 0)
+                residuo = max(imp - (gettone * fatt if gett_applicato else 0), 0.0)
                 quota = residuo * float(cfg["eolo_fondo_pct"]) / 100
                 fondo_lordo_eolo += quota
                 fondo_per_entita[ent or "ditta"] += quota
             else:
                 energia_gruppo += imp
                 # CambiaOra paga 25 € a contratto: quando pagato alimenta la gara del mese come EOLO (stessa %, dopo il gettone)
-                residuo = imp - (gettone_energia * fatt if gett_applicato else 0)
+                residuo = max(imp - (gettone_energia * fatt if gett_applicato else 0), 0.0)
                 quota = residuo * float(cfg.get("energia_fondo_pct", cfg["eolo_fondo_pct"])) / 100
                 fondo_lordo_energia += quota
                 fondo_per_entita[ent or "ditta"] += quota
@@ -974,8 +980,9 @@ def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
         ("2. Gettone per contratto", [f"Per ogni contratto EOLO confermato dal fornitore e attribuito al venditore: {cfg['gettone_lordo']:.2f} EUR lordi in busta paga; per ogni contratto luce/gas (CambiaOra/ENEL): {float(cfg.get('gettone_energia_lordo', cfg['gettone_lordo'])):.2f} EUR lordi.",
                                       "Il gettone matura nel mese in cui il fornitore conferma la provvigione (fattura), non alla firma del contratto.",
                                       "Contratti annullati, respinti o stornati dal fornitore non generano gettone; gli storni successivi vengono compensati sul mese seguente."]),
-        ("3. Fondo premi", [f"Il fondo e' alimentato esclusivamente dalle provvigioni EOLO confermate dei negozi indicati: {cfg['eolo_fondo_pct']:.0f}% della provvigione residua dopo il costo del gettone.",
-                            "Le provvigioni luce/gas coprono il gettone e restano all'azienda. SIM, riparazioni, vendite e negozi esterni non alimentano il fondo.",
+        ("3. Fondo premi", [f"Il fondo e' alimentato dalle provvigioni EOLO confermate dei negozi indicati: {cfg['eolo_fondo_pct']:.0f}% della provvigione residua dopo il costo del gettone.",
+                            f"Il fondo e' alimentato anche dai contratti luce/gas (CambiaOra/ENEL) pagati nel mese: {float(cfg.get('energia_importo', 0)):.2f} EUR per contratto, di cui il {float(cfg.get('energia_fondo_pct', cfg['eolo_fondo_pct'])):.0f}% della parte residua dopo il costo del gettone va al fondo; il contratto conta nel mese in cui viene pagato, non alla firma.",
+                            "SIM, riparazioni, vendite e negozi esterni non alimentano il fondo ma contano solo per la classifica.",
                             "Il fondo non puo' essere negativo e viene distribuito solo se effettivamente incassato." + (f" Tetto mensile: {cfg['tetto_fondo']:.2f} EUR." if cfg.get("tetto_fondo") else "")]),
         ("4. Classifica mensile", ["Il punteggio e' il valore generato nel mese, con questi pesi:",
                                    f"EOLO: {cfg['coef_eolo']:.0f}% della provvigione confermata; luce/gas: {cfg['coef_energia']:.0f}% della provvigione confermata;",
