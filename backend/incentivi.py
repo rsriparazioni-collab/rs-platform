@@ -70,6 +70,7 @@ async def _default_config() -> dict:
             "bonus_squadra_pct": 0.0,
             "negozi_fondo": fondo, "entita": [{"store_id": s, "entita": "ditta", "da": ""} for s in fondo] + [{"store_id": s, "entita": "srls", "da": ""} for s in srls],
             "persona_negozio": {stores["gravedona"]: users["kevin"]} if "gravedona" in stores and "kevin" in users else {},
+            "riparazioni_a": users.get("bruno", ""),
             "spareggio": "contratti_eolo_energia", "updated_at": _now()}
 
 
@@ -107,6 +108,13 @@ async def get_config() -> dict:
         c.update(upd)
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
         await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"gettone_energia_lordo": {"prima": prima_g, "dopo": upd["gettone_energia_lordo"]}}})
+    # Le riparazioni le lavora Bruno anche se segnate da altri: punteggio riparazioni tutto a lui (modificabile in Regole)
+    if not c.get("riparazioni_a_v1"):
+        users = await _utenti_base(db)
+        upd = {"riparazioni_a": users.get("bruno", ""), "riparazioni_a_v1": True, "updated_at": _now()}
+        c.update(upd)
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
+        await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"riparazioni_a": {"prima": None, "dopo": upd["riparazioni_a"]}}})
     return c
 
 
@@ -135,6 +143,7 @@ class ConfigInput(BaseModel):
     entita: Optional[List[dict]] = None
     persona_negozio: Optional[dict] = None
     spareggio: Optional[str] = None
+    riparazioni_a: Optional[str] = None
 
 
 @router.get("/config")
@@ -640,11 +649,12 @@ async def _attivita_mese(mese: str, partecipanti: set, cfg: dict) -> dict:
     """Valore classifica da riparazioni (stati reali lavorate: pronto/pronto_ritiro/consegnato, attribuite a chi le ha lavorate), SIM e fisso non-EOLO."""
     db = _d["db"]
     val = {u: {"riparazioni_n": 0, "riparazioni_margine": 0.0, "sim_nuova": 0, "sim_mnp": 0, "fisso": 0} for u in partecipanti}
+    rip_a = cfg.get("riparazioni_a") or ""
     async for s in db.servizi.find({"tipo": {"$in": ["riparazione", "sim", "internet", "fisso"]}}, {"_id": 0, "tipo": 1, "stato": 1, "prezzo_finale": 1, "importo": 1, "costo_componente": 1, "con_ricambio": 1, "ricambi_usati": 1,
                                                                                                     "operatore_id": 1, "created_by": 1, "lavorato_da_id": 1, "lavorato_at": 1, "data_lavorazione": 1, "data_uscita": 1, "data_attivazione": 1, "created_at": 1,
                                                                                                     "tipo_attivazione": 1, "operatore_tel": 1, "esito_attivazione": 1}):
         if s["tipo"] == "riparazione":
-            uid = s.get("lavorato_da_id") or s.get("operatore_id") or s.get("created_by") or ""
+            uid = rip_a if rip_a in partecipanti else (s.get("lavorato_da_id") or s.get("operatore_id") or s.get("created_by") or "")
             if uid not in partecipanti or s.get("stato") not in ("pronto", "pronto_ritiro", "consegnato"):
                 continue
             if _ym(s.get("lavorato_at") or s.get("data_lavorazione") or s.get("data_uscita") or s.get("created_at")) != mese:
@@ -987,7 +997,7 @@ def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
                             "Il fondo non puo' essere negativo e viene distribuito solo se effettivamente incassato." + (f" Tetto mensile: {cfg['tetto_fondo']:.2f} EUR." if cfg.get("tetto_fondo") else "")]),
         ("4. Classifica mensile", ["Il punteggio e' il valore generato nel mese, con questi pesi:",
                                    f"EOLO: {cfg['coef_eolo']:.0f}% della provvigione confermata; luce/gas: {cfg['coef_energia']:.0f}% della provvigione confermata;",
-                                   f"riparazioni lavorate (pronte/consegnate): {cfg['coef_riparazione']:.0f}% del margine (prezzo - ricambio); SIM nuova {cfg['valore_sim_nuova']:.2f} EUR, SIM MNP {cfg['valore_sim_mnp']:.2f} EUR, fisso/internet non EOLO {cfg['valore_fisso']:.2f} EUR (valori figurativi).",
+                                   f"riparazioni lavorate (pronte/consegnate): {cfg['coef_riparazione']:.0f}% del margine (prezzo - ricambio)" + (f", attribuite tutte a {users.get(cfg['riparazioni_a'], 'chi le lavora')} indipendentemente da chi le registra" if cfg.get("riparazioni_a") else "") + f"; SIM nuova {cfg['valore_sim_nuova']:.2f} EUR, SIM MNP {cfg['valore_sim_mnp']:.2f} EUR, fisso/internet non EOLO {cfg['valore_fisso']:.2f} EUR (valori figurativi).",
                                    "Spareggio: piu' contratti EOLO+energia, poi piu' attivita' totali, infine premio diviso in parti uguali."]),
         ("5. Premi", ["Il fondo del mese e' ripartito tra i primi classificati: " + ", ".join(f"{i + 1}o {p:.0f}%" for i, p in enumerate(premi)) + ".",
                       "Un partecipante con valore zero nel mese non riceve premio. I premi sono importi lordi erogati in busta paga, soggetti a tassazione e contributi di legge.",
