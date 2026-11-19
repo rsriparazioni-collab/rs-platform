@@ -6685,6 +6685,9 @@ api_router.include_router(corrispettivi_ade_module.router)
 import pdp_analisi as pdp_analisi_module
 pdp_analisi_module.setup(db=db, get_current_user=get_current_user, centro=contabilita_module._centro, pdp_calcolo=contabilita_module._pdp_calcolo, fatturato_mese=contabilita_module._fatturato_mese)
 api_router.include_router(pdp_analisi_module.router)
+import pdp_specchio as pdp_specchio_module
+pdp_specchio_module._d.update(db=db, user=contabilita_module._user, mese_dati=contabilita_module._mese_dati)
+api_router.include_router(pdp_specchio_module.router)
 
 @api_router.post("/cron/corrispettivi-giornalieri")
 async def cron_corrispettivi_giornalieri(request: Request, background_tasks: BackgroundTasks):
