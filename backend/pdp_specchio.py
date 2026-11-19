@@ -51,7 +51,8 @@ def parse_specchio(csv_text: str) -> dict:
     ade = {}
     if i + 1 < len(rows):
         r = rows[i + 1]
-        ade = {"corrispettivi": num(r[0]), "fatture_emesse": num(r[1]), "fatture_ricevute": num(r[2])}
+        # riga sotto "fatturato": [totale (RT + emesse), corrispettivi RT, fatture emesse]
+        ade = {"totale": num(r[0]), "corrispettivi": num(r[1]), "fatture_emesse": num(r[2])}
     # fornitori: riga con >=5 nomi nelle colonne >=6, valori nella prima riga successiva con >=3 importi in quelle colonne
     fornitori, guadagno, iva = [], None, None
     for k in range(i + 1, min(i + 40, len(rows))):
@@ -74,6 +75,7 @@ def parse_specchio(csv_text: str) -> dict:
         if r[0].lower().startswith("cori"):
             break
     det = parse_pdp_sheet(csv_text)
+    ade["fatture_ricevute"] = round(sum(x["totale"] for x in det["ricevute"]), 2)
     return {"colonne": colonne, "negozi": negozi, "totali": tot, "tot_entrate": round(sum(n["tot_entrate"] for n in negozi), 2), "tot_spese": round(sum(n["tot_spese"] for n in negozi), 2),
             "ade": ade, "fornitori": fornitori, "tot_fornitori": round(sum(f["importo"] for f in fornitori), 2), "guadagno": guadagno, "iva": iva,
             "corrispettivi": det["corrispettivi"], "emesse": det["emesse"], "ricevute": det["ricevute"]}

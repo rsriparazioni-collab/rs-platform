@@ -77,8 +77,8 @@ export const PdpSpecchio = ({ anno, mese, setAnno, setMese }) => {
             </table>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-testid="pdp-specchio-ade">
-            {[["Corrispettivi (AdE)", p.ade?.corrispettivi, "text-emerald-700"], ["Fatture emesse (AdE)", p.ade?.fatture_emesse, "text-emerald-700"], ["Fatture ricevute (AdE)", p.ade?.fatture_ricevute, "text-rose-700"], ["Fornitori", p.tot_fornitori, "text-rose-700"], ["Guadagno", p.guadagno, p.guadagno >= 0 ? "text-emerald-700" : "text-rose-700"]].map(([l, v, cls]) => (
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6" data-testid="pdp-specchio-ade">
+            {[["Totale RT + fatture (AdE)", p.ade?.totale, "text-slate-900"], ["Corrispettivi RT (AdE)", p.ade?.corrispettivi, "text-emerald-700"], ["Fatture emesse (AdE)", p.ade?.fatture_emesse, "text-emerald-700"], ["Fatture ricevute (AdE)", p.ade?.fatture_ricevute, "text-rose-700"], ["Fornitori", p.tot_fornitori, "text-rose-700"], ["Guadagno", p.guadagno, p.guadagno >= 0 ? "text-emerald-700" : "text-rose-700"]].map(([l, v, cls]) => (
               <div key={l} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{l}</p><p className={`mt-1 text-lg font-semibold tabular-nums ${cls}`}>{v == null ? "—" : eur(v)}</p></div>
             ))}
           </div>
@@ -87,7 +87,7 @@ export const PdpSpecchio = ({ anno, mese, setAnno, setMese }) => {
           {p.fornitori?.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-white p-4" data-testid="pdp-specchio-fornitori">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Fornitori del mese</p>
-              <div className="flex flex-wrap gap-2">{p.fornitori.map((f) => <span key={f.nome} className={`rounded-lg border px-2.5 py-1 text-xs ${f.importo ? "border-slate-200 bg-slate-50 text-slate-800" : "border-dashed border-slate-200 text-slate-400"}`}>{f.nome} <b className="tabular-nums">{f.importo ? eur(f.importo) : "—"}</b></span>)}</div>
+              <div className="flex flex-wrap gap-2">{p.fornitori.map((f, i) => <span key={`${f.nome}-${i}`} className={`rounded-lg border px-2.5 py-1 text-xs ${f.importo ? "border-slate-200 bg-slate-50 text-slate-800" : "border-dashed border-slate-200 text-slate-400"}`}>{f.nome} <b className="tabular-nums">{f.importo ? eur(f.importo) : "—"}</b></span>)}</div>
             </div>
           )}
 

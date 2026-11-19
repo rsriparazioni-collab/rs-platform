@@ -1,0 +1,40 @@
+{
+  "summary": "Tested the PDP specchio feature and the new 3-tab Contabilita page. Backend: 8/8 pytest pass on the public URL (tests/test_iter50_pdp_specchio.py). GET 2026-10 as admin returns 200 with every expected value: morbegno 11318/9965/1353, gravedona 7549/4375/3174, ade 27549.65/11163.9/16385.75, guadagno 1580.37, iva 3071.73, 43/24/48 detail rows, no _id. Without auth it returns 401. Non-admin returns 403. In preview the only non-admin that can log in is michael, who hits the MFA-setup 403 first, so the role guard was also checked with a unit test. Missing month returns dati=null and a bad anno returns 422. POST carica works: run twice, 10 months each time, no errors, count per anno/mese stays 1, ids are kept, values unchanged. Frontend (admin login with TOTP): tabs cassa/pdp/altro are all visible. Cassa still shows Corrispettivi. PDP tab: all required testids render. Changing the month changes the data (Aug shows 2 stores, as in the sheet; Dec shows the empty state). Carica shows the busy label, then the toast 'Foglio PDP letto: 10 mesi aggiornati' and an updated timestamp. The apri-foglio href is correct. Altro: all 9 sub-menu items render content with no console errors. Found one semantic data bug: the AdE labels are shifted (see rca).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "pdp_specchio.parse_specchio -> dati.ade", "issue": "The AdE cells are mislabeled. Row 8 of the sheet holds [TOTALE = RT + emesse, Corrispettivi RT, Fatture emesse], not [corrispettivi, emesse, ricevute]. Proof, for all 10 months: ade.corrispettivi == ade.fatture_emesse + ade.fatture_ricevute (Oct: 11163.90 + 16385.75 = 27549.65). Also sum(dettaglio corrispettivi.totale) == ade.fatture_emesse (Oct 11163.90) and sum(emesse.totale) == ade.fatture_ricevute (Oct 16385.75). The real ricevute total (sum of ricevute rows, Oct 10820.13) is not shown anywhere. As a result the UI shows emesse revenue in red as 'Fatture ricevute (AdE)'. The expected values in the review request match the current, wrong labels.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/contabilita/pdp-specchio", "issue": "Calls _mese_dati once per store, one after another, on every GET. Acceptable for now, but this could be done with asyncio.gather."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PdpSpecchio fornitori chips", "issue": "Duplicate React keys (gls/iliad/dhl appear twice in the sheet) caused about 24 console errors. FIXED by tester: key now uses `${f.nome}-${i}`. Re-verified: 0 console errors.", "selector": "[data-testid=pdp-specchio-fornitori]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "PDP del mese", "issues": ["Defaults to the current month (Nov 2026), which has no sheet tab, so the first view is the empty state. Suggest defaulting to the latest mesi_disponibili.", "AdE card labels are wrong (see the backend critical issue). 'Fatture ricevute' is red but shows emesse revenue."]},
+      {"screen": "Cassa > SpeseCassa", "issues": ["React warning '<span> cannot be a child of <option>' in SelFattura. This probably comes from the visual-edit instrumentation wrapping the expression; use a template string in the option text to avoid it."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter50_pdp_specchio.py", "/app/test_reports/pytest/iter50.xml"],
+  "action_items": [
+    "Fix the AdE label mapping in parse_specchio: col0 = totale (RT + emesse), col1 = corrispettivi RT, col2 = fatture emesse. Take fatture_ricevute from sum(ricevute.totale), or from wherever the sheet holds it. Update the UI cards and the expected values to match.",
+    "Optional: on the PDP tab, default the month to the most recent month in mesi_disponibili.",
+    "Optional: fix the span-in-option warning in SpeseCassa SelFattura."
+  ],
+  "critical_code_review_comments": [
+    "parse_specchio reads the AdE row by position (rows[i+1][0..2]) with no labels, which is fragile. Cross-check the values against the detail sums (it would have caught the label shift).",
+    "carica_tutti fetches about 10 CSVs one after another inside the request (about 10s). There is no lock against two concurrent runs, apart from the busy flag in the UI.",
+    "gestionale_corrispettivi is keyed by lowercase store name. The sheet uses names like 'morbegno2' in the details, so a name mismatch silently drops the comparison.",
+    "The row testids pdp-specchio-riga-{nome} would contain spaces if a sheet store name had spaces."
+  ],
+  "updated_files": ["/app/frontend/src/components/contabilita/PdpSpecchio.jsx", "/app/backend/tests/test_iter50_pdp_specchio.py"],
+  "success_rate": {"backend": "100% (8/8), but with 1 semantic data bug", "frontend": "100% of the flows tested"},
+  "seed_data_creation": "None. POST carica was run 3 times (upsert of the 10 existing months from the public sheet). No other data was modified.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && REACT_APP_BACKEND_URL=... pytest tests/test_iter50_pdp_specchio.py -n 0. Admin TOTP has replay protection: wait for a new 30s window between pytest and browser logins. The non-admin path cannot be tested end to end because all non-admins are forced to set up MFA (403). The PDP tab defaults to the current month, so select Ottobre 2026 to see data. If the AdE mapping is fixed, update the assertions in test_values_2026_10.",
+  "rca of the issue": "AdE mislabel. Repro: GET /api/contabilita/pdp-specchio?anno=2026&mese=10 gives ade.corrispettivi 27549.65 = fatture_emesse 11163.9 + fatture_ricevute 16385.75. In the same payload, sum(corrispettivi[].totale) = 11163.90 and sum(emesse[].totale) = 16385.75. Cause: the sheet row after 'fatturato' is [total, RT, emesse], and parse_specchio lines 52-54 label it [corrispettivi, emesse, ricevute]. Fix: remap the labels and compute ricevute from the detail rows."
+}
