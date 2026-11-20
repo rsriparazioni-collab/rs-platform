@@ -10,6 +10,7 @@ import { ClienteLink } from "../components/ClienteLink";
 import { useRicordiPreview, RicordiLine } from "../components/Ricordi";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { TelefoniaReport } from "../components/TelefoniaReport";
 
 const SEZIONI = {
   mobile: { label: "Mobile", tipi: ["sim"], defaultTipo: "sim", icon: Smartphone },
@@ -60,6 +61,7 @@ export default function Telefonia() {
     { id: "fisso", label: `Fisso (${servizi.filter((s) => s.tipo !== "sim").length})` },
     { id: "vincoli", label: `Vincoli in scadenza (${inScadenza})` },
     { id: "proposte", label: `Da proporre (${proposte.length})` },
+    { id: "report", label: "Report mese" },
   ];
 
   return (
@@ -214,6 +216,8 @@ export default function Telefonia() {
           </table>
         </div>
       )}
+
+      {tab === "report" && <TelefoniaReport canSeeAll={canSeeAll} />}
 
       <ServizioDetail servizio={detailRow} onClose={() => setDetailRow(null)} onChanged={load}
                       onEdit={(s) => { setEditing(s); setFormTipo(s.tipo); setFormOpen(true); }} isAdmin={user.role === "admin"} />

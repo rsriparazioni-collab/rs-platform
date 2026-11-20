@@ -5794,6 +5794,70 @@ async def report_vincoli(user: dict = Depends(get_current_user), giorni: int = 9
     out.sort(key=lambda x: x["giorni_alla_scadenza"])
     return out
 
+@api_router.get("/telefonia/report")
+async def telefonia_report(anno: int, mese: int, user: dict = Depends(get_current_user)):
+    """Report mensile telefonia: attivazioni per sezione (mobile/fisso) e operatore, con confronto mese precedente e dettaglio negozi."""
+    if "telefonia" not in user_sections(user):
+        raise HTTPException(status_code=403, detail="Sezione non abilitata")
+    scope = servizio_scope(user)
+    scope["tipo"] = {"$in": ["sim", "internet", "fisso"]}
+    ym = f"{anno:04d}-{mese:02d}"
+    prev_y, prev_m = (anno, mese - 1) if mese > 1 else (anno - 1, 12)
+    ym_prev = f"{prev_y:04d}-{prev_m:02d}"
+    stores = {s["id"]: s["nome"] async for s in db.stores.find({}, {"_id": 0, "id": 1, "nome": 1})}
+    annullati = ("annullata", "respinta", "stornata", "non_riconosciuta")
+
+    def vuoto():
+        return {"n": 0, "nuovi": 0, "mnp": 0, "cambio_offerta": 0, "importo": 0.0, "pagati": 0, "non_pagati": 0, "annullati": 0, "negozi": {}, "categorie": {}}
+
+    out = {"mobile": {}, "fisso": {}}
+    prev = {"mobile": {}, "fisso": {}}
+    async for s in db.servizi.find(scope, {"_id": 0}):
+        m = (s.get("data_attivazione") or s.get("created_at") or "")[:7]
+        if m not in (ym, ym_prev):
+            continue
+        sez = "mobile" if s.get("tipo") == "sim" else "fisso"
+        op = (s.get("operatore_tel") or "Senza operatore").strip() or "Senza operatore"
+        target = out if m == ym else prev
+        r = target[sez].setdefault(op, vuoto())
+        if s.get("esito_attivazione") in annullati:
+            r["annullati"] += 1
+            continue
+        r["n"] += 1
+        r["importo"] += float(s.get("importo") or 0)
+        r["pagati" if s.get("pagato") else "non_pagati"] += 1
+        ta = s.get("tipo_attivazione") or ""
+        if sez == "mobile" and ta in ("nuovo", "mnp", "cambio_offerta"):
+            r["nuovi" if ta == "nuovo" else ta] += 1
+        neg = stores.get(s.get("venditore_id"), "—")
+        r["negozi"][neg] = r["negozi"].get(neg, 0) + 1
+        cat = s.get("categoria_prodotto") or s.get("prodotto") or ""
+        if cat:
+            r["categorie"][cat] = r["categorie"].get(cat, 0) + 1
+
+    def righe(sez):
+        rows = []
+        for op, r in out[sez].items():
+            rows.append({"operatore": op, **{k: (round(v, 2) if isinstance(v, float) else v) for k, v in r.items()}, "n_prec": prev[sez].get(op, {}).get("n", 0)})
+        for op, r in prev[sez].items():
+            if op not in out[sez]:
+                rows.append({"operatore": op, **vuoto(), "n_prec": r["n"]})
+        rows.sort(key=lambda x: (-x["n"], x["operatore"].lower()))
+        return rows
+
+    res = {"mese": ym, "mese_prec": ym_prev, "sezioni": {}}
+    for sez in ("mobile", "fisso"):
+        rows = righe(sez)
+        tot_negozi = {}
+        for r in rows:
+            for k, v in r["negozi"].items():
+                tot_negozi[k] = tot_negozi.get(k, 0) + v
+        res["sezioni"][sez] = {"righe": rows, "totale": sum(r["n"] for r in rows), "totale_prec": sum(r["n_prec"] for r in rows),
+                               "importo": round(sum(r["importo"] for r in rows), 2), "annullati": sum(r["annullati"] for r in rows), "negozi": tot_negozi}
+    return res
+
+
+
 @api_router.get("/telefonia/proposte")
 async def telefonia_proposte(user: dict = Depends(get_current_user)):
     """Clienti con mobile ma senza fisso e senza contratto energia: da proporre."""
