@@ -9,7 +9,7 @@ import { Switch } from "./ui/switch";
 import { fmtDate } from "../lib/constants";
 
 const CAMPI = [
-  { key: "msg_cambiaora", marchio: "cambiaora", label: "CambiaOra – contratti luce/gas (non Enel)", hint: "Dal numero CambiaOra, 7 giorni dopo la data contratto" },
+  { key: "msg_cambiaora", marchio: "cambiaora", label: "CambiaOra – contratti luce/gas (non Enel)", hint: "Dal numero CambiaOra, a partire da 7 giorni dopo la data contratto (dai più vecchi): testo generico, senza riferimenti a quando è stato fatto" },
   { key: "msg_rs", marchio: "rs", label: "RS Riparazioni – riparazioni, SIM, vendite, ritiri, Enel", hint: "Dal numero del negozio, 7 giorni dopo la chiusura" },
 ];
 

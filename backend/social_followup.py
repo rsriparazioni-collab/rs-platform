@@ -17,12 +17,12 @@ GIORNI_ATTESA = 7
 
 DEFAULTS = {
     "msg_cambiaora": ("Ciao {nome}, siamo CambiaOra 👋\n"
-                      "Sono passati pochi giorni dall'attivazione del tuo contratto: speriamo sia andato tutto bene!\n"
+                      "Grazie per aver scelto noi per la tua fornitura: speriamo che tutto stia andando bene!\n"
                       "Se ti va, seguici su Instagram: troverai consigli per risparmiare in bolletta, novità e promozioni riservate ai clienti 👇\n"
                       "https://www.instagram.com/cambiaora.store\n"
-                      "Grazie per averci scelto, per qualsiasi dubbio siamo qui."),
+                      "Per qualsiasi dubbio sulla tua fornitura siamo sempre qui."),
     "msg_rs": ("Ciao {nome}, siamo RS Riparazioni 👋\n"
-               "È passata una settimana dal tuo passaggio da noi: speriamo che tutto funzioni alla perfezione!\n"
+               "Grazie per esserti affidato a noi: speriamo che tutto funzioni alla perfezione!\n"
                "Se ti fa piacere, seguici sui social per promozioni, accessori e consigli utili 👇\n"
                "Instagram: https://www.instagram.com/rs_riparazioni\n"
                "Facebook: https://www.facebook.com/share/19WLUP2BAn/\n"
@@ -45,11 +45,25 @@ class SettingsInput(BaseModel):
     msg_rs: Optional[str] = None
 
 
+_VECCHIE_FRASI = {
+    "Sono passati pochi giorni dall'attivazione del tuo contratto: speriamo sia andato tutto bene!": "Grazie per aver scelto noi per la tua fornitura: speriamo che tutto stia andando bene!",
+    "È passata una settimana dal tuo passaggio da noi: speriamo che tutto funzioni alla perfezione!": "Grazie per esserti affidato a noi: speriamo che tutto funzioni alla perfezione!",
+    "Grazie per averci scelto, per qualsiasi dubbio siamo qui.": "Per qualsiasi dubbio sulla tua fornitura siamo sempre qui.",
+}
+
+
+def _generico(msg: str) -> str:
+    # i messaggi vanno anche a contratti vecchi: niente riferimenti a "pochi giorni fa"
+    for vecchia, nuova in _VECCHIE_FRASI.items():
+        msg = msg.replace(vecchia, nuova)
+    return msg
+
+
 async def _settings() -> dict:
     doc = await _d["db"].settings.find_one({"key": KEY}, {"_id": 0}) or {}
     v = doc.get("value") or {}
     return {"attivo": bool(v.get("attivo", False)), "per_giorno": int(v.get("per_giorno") or 5),
-            "msg_cambiaora": v.get("msg_cambiaora") or DEFAULTS["msg_cambiaora"], "msg_rs": v.get("msg_rs") or DEFAULTS["msg_rs"]}
+            "msg_cambiaora": _generico(v.get("msg_cambiaora") or DEFAULTS["msg_cambiaora"]), "msg_rs": _generico(v.get("msg_rs") or DEFAULTS["msg_rs"])}
 
 
 def _tel(c: dict) -> str:
