@@ -481,7 +481,7 @@ export default function ServizioForm({ open, onClose, servizio, defaultTipo, met
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Numero</Label>
-                <Input value={form.numero || ""} onChange={(e) => set("numero", e.target.value)} data-testid="servizio-numero" />
+                <Input value={form.numero || ""} onChange={(e) => set("numero", e.target.value)} placeholder={tipo !== "sim" ? "vuoto = numero del cliente" : ""} data-testid="servizio-numero" />
               </div>
               {tipo === "sim" && (
                 <div className="space-y-1.5">

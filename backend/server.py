@@ -4749,6 +4749,8 @@ async def create_servizio(input: ServizioInput, user: dict = Depends(get_current
         data["venditore_id"] = client_doc.get("venditore_id") or (user.get("store_ids") or [""])[0]
     if data["tipo"] == "riparazione" and data["stato"] not in RIP_STATI:
         data["stato"] = "ingresso"
+    if data["tipo"] in ("internet", "fisso") and not (data.get("numero") or "").strip():
+        data["numero"] = (client_doc.get("telefono") or "").strip()
     if data["tipo"] == "riparazione":
         data["numero_riparazione"] = await next_numero("riparazione", data.get("venditore_id") or "")
     apply_rip_dates(data)
@@ -4797,6 +4799,9 @@ async def update_servizio(servizio_id: str, input: ServizioInput, background_tas
         data.pop("venditore_id", None)
     apply_rip_dates(data, old)
     cifra_segreti(data, old)
+    if old.get("tipo") in ("internet", "fisso") and "numero" in data and not (data.get("numero") or "").strip():
+        cl = await db.clients.find_one({"id": old.get("client_id")}, {"_id": 0, "telefono": 1})
+        data["numero"] = ((cl or {}).get("telefono") or "").strip()
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     if data.get("pagato") and not old.get("pagato"):
         data["last_payment_date"] = date.today().isoformat()
