@@ -9,6 +9,54 @@ const SHEET_URL = "https://docs.google.com/spreadsheets/d/1aVjFCxg-Gm3zNQNcEE-Jq
 const GRUPPO = { entrate: ["Entrate", "bg-emerald-50 text-emerald-900"], spese_fisse: ["Spese fisse", "bg-rose-50 text-rose-900"], spese_semifisse: ["Spese semi fisse modificabili", "bg-amber-50 text-amber-900"] };
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const n0 = (v) => (v ? eur(v) : <span className="text-slate-300">—</span>);
+const ESCLUSI = ["tirano", "sondalo"];
+const SEPARATO = "sondrio";
+
+const Griglia = ({ titolo, negozi, p, d, testid }) => {
+  if (!negozi.length) return null;
+  const tot = Object.fromEntries(p.colonne.map((c) => [c.key, negozi.reduce((a, n) => a + (n.valori[c.key] || 0), 0)]));
+  const totE = negozi.reduce((a, n) => a + n.tot_entrate, 0);
+  const totS = negozi.reduce((a, n) => a + n.tot_spese, 0);
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white" data-testid={testid}>
+      <p className="border-b border-slate-100 px-3 py-2 text-sm font-semibold text-slate-800">{titolo}</p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide">
+            <th className="px-3 py-1.5" />
+            {Object.entries(GRUPPO).map(([g, [l, cls]]) => { const n = p.colonne.filter((c) => c.gruppo === g).length; return n ? <th key={g} colSpan={n} className={`px-3 py-1.5 text-center ${cls}`}>{l}</th> : null; })}
+            <th className="px-3 py-1.5 text-center bg-slate-100 text-slate-700" colSpan={3}>Totali</th>
+          </tr>
+          <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+            <th className="px-3 py-2">Negozio</th>
+            {p.colonne.map((c) => <th key={c.key} className="px-3 py-2 text-right">{c.label}</th>)}
+            <th className="px-3 py-2 text-right">Entrate</th><th className="px-3 py-2 text-right">Spese</th><th className="px-3 py-2 text-right">Risultato</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {negozi.map((n) => {
+            const g = d.gestionale_corrispettivi[n.nome.toLowerCase()];
+            return (
+              <tr key={n.nome} data-testid={`pdp-specchio-riga-${n.nome.toLowerCase()}`}>
+                <td className="px-3 py-2 font-medium text-slate-900">{cap(n.nome)}</td>
+                {p.colonne.map((c, i) => <td key={c.key} className="px-3 py-2 text-right tabular-nums">{n0(n.valori[c.key])}{i === 0 && g != null && Math.abs(g - (n.valori[c.key] || 0)) >= 1 && <span className="block text-[10px] text-amber-600" title="Corrispettivi inseriti nel gestionale">gest. {eur(g)}</span>}</td>)}
+                <td className="px-3 py-2 text-right font-semibold tabular-nums text-emerald-700">{eur(n.tot_entrate)}</td>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums text-rose-700">{eur(n.tot_spese)}</td>
+                <td className={`px-3 py-2 text-right font-bold tabular-nums ${n.risultato >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{eur(n.risultato)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        {negozi.length > 1 && (
+          <tfoot className="bg-slate-50 font-semibold">
+            <tr data-testid={`${testid}-totali`}><td className="px-3 py-2">Fatturato</td>{p.colonne.map((c) => <td key={c.key} className="px-3 py-2 text-right tabular-nums">{n0(tot[c.key])}</td>)}
+              <td className="px-3 py-2 text-right text-emerald-700">{eur(totE)}</td><td className="px-3 py-2 text-right text-rose-700">{eur(totS)}</td><td className={`px-3 py-2 text-right ${totE - totS >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{eur(totE - totS)}</td></tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+};
 
 const Dettaglio = ({ titolo, righe, cols, testid }) => (
   <details className="rounded-xl border border-slate-200 bg-white" data-testid={testid}>
@@ -42,40 +90,8 @@ export const PdpSpecchio = ({ anno, mese, setAnno, setMese }) => {
       </div>
       {!p ? <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500" data-testid="pdp-specchio-vuoto">Nessuna scheda "{MESI[mese].slice(0, 3).toLowerCase()}{String(anno).slice(2)}" trovata nel foglio per {MESI[mese]} {anno}. Premi "Aggiorna dal foglio PDP" dopo averla creata.</p> : (
         <>
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white" data-testid="pdp-specchio-griglia">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-wide">
-                  <th className="px-3 py-1.5" />
-                  {Object.entries(GRUPPO).map(([g, [l, cls]]) => { const n = p.colonne.filter((c) => c.gruppo === g).length; return n ? <th key={g} colSpan={n} className={`px-3 py-1.5 text-center ${cls}`}>{l}</th> : null; })}
-                  <th className="px-3 py-1.5 text-center bg-slate-100 text-slate-700" colSpan={3}>Totali</th>
-                </tr>
-                <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-3 py-2">Negozio</th>
-                  {p.colonne.map((c) => <th key={c.key} className="px-3 py-2 text-right">{c.label}</th>)}
-                  <th className="px-3 py-2 text-right">Entrate</th><th className="px-3 py-2 text-right">Spese</th><th className="px-3 py-2 text-right">Risultato</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {p.negozi.map((n) => {
-                  const g = d.gestionale_corrispettivi[n.nome.toLowerCase()];
-                  return (
-                    <tr key={n.nome} data-testid={`pdp-specchio-riga-${n.nome.toLowerCase()}`}>
-                      <td className="px-3 py-2 font-medium text-slate-900">{cap(n.nome)}</td>
-                      {p.colonne.map((c, i) => <td key={c.key} className="px-3 py-2 text-right tabular-nums">{n0(n.valori[c.key])}{i === 0 && g != null && Math.abs(g - (n.valori[c.key] || 0)) >= 1 && <span className="block text-[10px] text-amber-600" title="Corrispettivi inseriti nel gestionale">gest. {eur(g)}</span>}</td>)}
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums text-emerald-700">{eur(n.tot_entrate)}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums text-rose-700">{eur(n.tot_spese)}</td>
-                      <td className={`px-3 py-2 text-right font-bold tabular-nums ${n.risultato >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{eur(n.risultato)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="bg-slate-50 font-semibold">
-                <tr data-testid="pdp-specchio-totali"><td className="px-3 py-2">Fatturato</td>{p.colonne.map((c) => <td key={c.key} className="px-3 py-2 text-right tabular-nums">{n0(p.totali[c.key])}</td>)}
-                  <td className="px-3 py-2 text-right text-emerald-700">{eur(p.tot_entrate)}</td><td className="px-3 py-2 text-right text-rose-700">{eur(p.tot_spese)}</td><td className={`px-3 py-2 text-right ${p.tot_entrate - p.tot_spese >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{eur(p.tot_entrate - p.tot_spese)}</td></tr>
-              </tfoot>
-            </table>
-          </div>
+          <Griglia titolo="Negozi RS (Morbegno + Gravedona)" negozi={p.negozi.filter((n) => !ESCLUSI.includes(n.nome.toLowerCase()) && n.nome.toLowerCase() !== SEPARATO)} p={p} d={d} testid="pdp-specchio-griglia" />
+          <Griglia titolo="Sondrio (a parte)" negozi={p.negozi.filter((n) => n.nome.toLowerCase() === SEPARATO)} p={p} d={d} testid="pdp-specchio-griglia-sondrio" />
 
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6" data-testid="pdp-specchio-ade">
             {[["Totale RT + fatture (AdE)", p.ade?.totale, "text-slate-900"], ["Corrispettivi RT (AdE)", p.ade?.corrispettivi, "text-emerald-700"], ["Fatture emesse (AdE)", p.ade?.fatture_emesse, "text-emerald-700"], ["Fatture ricevute (AdE)", p.ade?.fatture_ricevute, "text-rose-700"], ["Fornitori", p.tot_fornitori, "text-rose-700"], ["Guadagno", p.guadagno, p.guadagno >= 0 ? "text-emerald-700" : "text-rose-700"]].map(([l, v, cls]) => (
