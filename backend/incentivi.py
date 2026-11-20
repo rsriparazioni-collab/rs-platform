@@ -72,7 +72,7 @@ async def _default_config() -> dict:
             "trattenuta_terzi_pct": 15.0, "energia_importo": 25.0, "energia_acquisizione": 12.5, "energia_lavorazione": 12.5, "energia_fondo_pct": 50.0,
             "premi_pct": [40, 30, 20, 10], "tetto_fondo": 0.0, "padre_in_fondo": True,
             "partecipanti": [users[n] for n in ("kevin", "deborah", "silvio", "bruno") if n in users],
-            "coef_eolo": 100.0, "coef_energia": 100.0, "coef_riparazione": 50.0, "valore_sim_nuova": 5.0, "valore_sim_mnp": 10.0, "valore_fisso": 20.0,
+            "coef_eolo": 100.0, "coef_energia": 100.0, "coef_riparazione": 50.0, "punti_eolo": 25.0, "punti_energia": 25.0, "punti_riparazione": 4.0, "energia_lav_pct": 75.0, "valore_sim_nuova": 5.0, "valore_sim_mnp": 10.0, "valore_fisso": 20.0,
             "bonus_squadra_pct": 0.0,
             "negozi_fondo": fondo, "entita": [{"store_id": s, "entita": "ditta", "da": ""} for s in fondo] + [{"store_id": s, "entita": "srls", "da": ""} for s in srls],
             "persona_negozio": {stores["gravedona"]: users["kevin"]} if "gravedona" in stores and "kevin" in users else {},
@@ -131,6 +131,12 @@ async def get_config() -> dict:
         c["foglio_mese_pag_v1"] = True
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": {"foglio_mese_pag_v1": True}})
         await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"foglio_eolo_mese_pagamento": {"prima": "mese fattura", "dopo": f"mese successivo ({n} righe spostate)"}}})
+    # Classifica a pezzi (EOLO 25, energia 25 divisa 75 lavorazione / 25 acquisizione, riparazione 4)
+    if not c.get("punti_pezzi_v1"):
+        upd = {"punti_eolo": 25.0, "punti_energia": 25.0, "punti_riparazione": 4.0, "energia_lav_pct": 75.0, "punti_pezzi_v1": True, "updated_at": _now()}
+        c.update(upd)
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
+        await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"classifica": {"prima": "euro (coef %)", "dopo": "punti a pezzi: EOLO 25, energia 25 (75/25), riparazione 4"}}})
     # Le riparazioni le lavora Bruno anche se segnate da altri: punteggio riparazioni tutto a lui (modificabile in Regole)
     # Fisso mensile già percepito da scalare dal maturato (Kevin 300, Silvio 300, Deborah 100, Bruno 200)
     if not c.get("gia_percepito_v1"):
@@ -166,6 +172,10 @@ class ConfigInput(BaseModel):
     coef_eolo: Optional[float] = None
     coef_energia: Optional[float] = None
     coef_riparazione: Optional[float] = None
+    punti_eolo: Optional[float] = None
+    punti_energia: Optional[float] = None
+    punti_riparazione: Optional[float] = None
+    energia_lav_pct: Optional[float] = None
     valore_sim_nuova: Optional[float] = None
     valore_sim_mnp: Optional[float] = None
     valore_fisso: Optional[float] = None
@@ -341,7 +351,9 @@ async def _righe_gestionale(mese: str, cfg: dict, gia: set, stores: dict, users:
     out = []
     lav = await _lavoratori_pratiche(db)
     imp_tot = float(cfg["energia_importo"])
-    imp_acq = imp_lav = round(imp_tot / 2, 2)
+    lav_pct = float(cfg.get("energia_lav_pct", 75.0))
+    imp_lav = round(imp_tot * lav_pct / 100, 2)
+    imp_acq = round(imp_tot - imp_lav, 2)
     async for c in db.clients.find({"lavorazione": {"$in": ["cambio_effettuato", "rinnovato"]}, "anonimizzato_at": {"$in": [None]}}, {"_id": 0}):
         if _ym(c.get("data_contratto") or c.get("updated_at")) != mese:
             continue
@@ -752,7 +764,7 @@ async def calcola(mese: str, cfg: dict, provvisoria: bool = False) -> dict:
     anomalie = []
     energia_importo = float(cfg["energia_importo"]) or 1.0
 
-    per_persona = {u: {"user_id": u, "nome": users[u], "eolo_n": 0, "eolo_importo": 0.0, "energia_n": 0, "energia_importo": 0.0, "gettoni_n": 0, "gettoni_lordo": 0.0} for u in partecipanti}
+    per_persona = {u: {"user_id": u, "nome": users[u], "eolo_n": 0, "eolo_importo": 0.0, "energia_n": 0, "energia_importo": 0.0, "energia_quote": 0.0, "gettoni_n": 0, "gettoni_lordo": 0.0} for u in partecipanti}
     fondo_lordo_eolo, fondo_lordo_energia, energia_gruppo, gettoni_tot = 0.0, 0.0, 0.0, 0
     fondo_per_entita = defaultdict(float)
     esterni = defaultdict(lambda: {"eolo": 0.0, "energia": 0.0, "n": 0, "righe": []})
@@ -774,6 +786,8 @@ async def calcola(mese: str, cfg: dict, provvisoria: bool = False) -> dict:
             gettoni_lordi_tot += gett_val
             per_persona[uid][f"{fonte}_n"] += 1
             per_persona[uid][f"{fonte}_importo"] += imp
+            if fonte == "energia":
+                per_persona[uid]["energia_quote"] += min(imp / energia_importo, 1.0)
         elif uid in pset and imp < 0:
             per_persona[uid][f"{fonte}_importo"] += imp
         if in_gruppo:
@@ -811,8 +825,9 @@ async def calcola(mese: str, cfg: dict, provvisoria: bool = False) -> dict:
     classifica = []
     for u in partecipanti:
         pp, a = per_persona[u], att[u]
-        valore = (pp["eolo_importo"] * float(cfg["coef_eolo"]) / 100 + pp["energia_importo"] * float(cfg["coef_energia"]) / 100
-                  + a["riparazioni_margine"] * float(cfg["coef_riparazione"]) / 100 + a["sim_nuova"] * float(cfg["valore_sim_nuova"])
+        # classifica "a pezzi": misura la vendita, non i soldi (il fondo misura i soldi)
+        valore = (pp["eolo_n"] * float(cfg["punti_eolo"]) + pp["energia_quote"] * float(cfg["punti_energia"])
+                  + a["riparazioni_n"] * float(cfg["punti_riparazione"]) + a["sim_nuova"] * float(cfg["valore_sim_nuova"])
                   + a["sim_mnp"] * float(cfg["valore_sim_mnp"]) + a["fisso"] * float(cfg["valore_fisso"]))
         classifica.append({**pp, **a, "valore": _r(valore), "contratti_eolo_energia": pp["eolo_n"] + pp["energia_n"],
                            "attivita_totali": pp["eolo_n"] + pp["energia_n"] + a["riparazioni_n"] + a["sim_nuova"] + a["sim_mnp"] + a["fisso"],
@@ -905,7 +920,7 @@ async def calcola(mese: str, cfg: dict, provvisoria: bool = False) -> dict:
                       "fattore_costo_datore": fatt, "trattenute_esterni": trattenute_tot,
                       "risultato_azienda": _r(eolo_gruppo + energia_gruppo + trattenute_tot - costo_datore), "premi_per_entita": {k: _r(v) for k, v in premi_per_entita.items()}},
             "classifica": classifica, "bonus_squadra": bonus, "estratti_conto": estratti, "anomalie": anomalie, "n_provvigioni": len(provv),
-            "parametri": {k: cfg.get(k) for k in ("gettone_lordo", "eolo_fondo_pct", "trattenuta_terzi_pct", "premi_pct", "coef_eolo", "coef_energia", "coef_riparazione", "valore_sim_nuova", "valore_sim_mnp", "valore_fisso", "tetto_fondo", "costo_datore_fattore", "energia_lavorazione")}}
+            "parametri": {k: cfg.get(k) for k in ("gettone_lordo", "eolo_fondo_pct", "trattenuta_terzi_pct", "premi_pct", "punti_eolo", "punti_energia", "energia_lav_pct", "punti_riparazione", "valore_sim_nuova", "valore_sim_mnp", "valore_fisso", "tetto_fondo", "costo_datore_fattore", "energia_lavorazione")}}
 
 
 @router.get("/calcolo")
@@ -918,7 +933,7 @@ async def get_calcolo(mese: str, request: Request, override: str = "", modalita:
             ov = json.loads(override)
             assert isinstance(ov, dict)
             cfg = {**cfg, **ov}
-            for k in ("gettone_lordo", "eolo_fondo_pct", "costo_datore_fattore", "trattenuta_terzi_pct", "coef_eolo", "coef_energia", "coef_riparazione", "valore_sim_nuova", "valore_sim_mnp", "valore_fisso", "tetto_fondo"):
+            for k in ("gettone_lordo", "eolo_fondo_pct", "costo_datore_fattore", "trattenuta_terzi_pct", "punti_eolo", "punti_energia", "energia_lav_pct", "punti_riparazione", "valore_sim_nuova", "valore_sim_mnp", "valore_fisso", "tetto_fondo"):
                 cfg[k] = float(cfg.get(k) or 0)
             cfg["premi_pct"] = [float(x) for x in cfg.get("premi_pct", [])]
         except Exception:
@@ -1059,7 +1074,7 @@ def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
         ("1. Partecipanti", [", ".join(users.get(u, u) for u in cfg.get("partecipanti", [])), "Negozi che alimentano il fondo: " + ", ".join(stores.get(s, s) for s in cfg.get("negozi_fondo", []))]),
         ("2. Gettone per contratto", [f"Per ogni contratto EOLO confermato dal fornitore e attribuito al venditore: {cfg['gettone_lordo']:.2f} EUR lordi in busta paga; per ogni contratto luce/gas (CambiaOra/ENEL): {float(cfg.get('gettone_energia_lordo', cfg['gettone_lordo'])):.2f} EUR lordi.",
                                       "Il gettone matura nel mese in cui il fornitore paga la provvigione (EOLO: fatturato del mese precedente; luce/gas: pratiche pagate il mese successivo), non alla firma del contratto. Gli importi sono lordi: le imposte sono a carico di chi li riceve.",
-                                      f"Il contratto luce/gas ({float(cfg.get('energia_importo') or 0):.2f} EUR) vale per meta' a chi acquisisce il cliente e per meta' a chi lavora la pratica; se e' la stessa persona, tutto a lei.",
+                                      f"Il contratto luce/gas ({float(cfg.get('energia_importo') or 0):.2f} EUR) vale per il {cfg.get('energia_lav_pct', 75):.0f}% a chi lavora la pratica e per il {100 - float(cfg.get('energia_lav_pct', 75)):.0f}% a chi acquisisce il cliente; se e' la stessa persona, tutto a lei.",
                                       "Durante il mese ognuno vede la classifica provvisoria calcolata sui contratti inseriti a gestionale, salvo conguaglio e verifiche; alla chiusura del mese vale la classifica reale sui pagamenti ricevuti.",
                                       "Contratti annullati, respinti o stornati dal fornitore non generano gettone; gli storni successivi vengono compensati sul mese seguente."]),
         ("3. Fondo premi", [f"Il fondo e' alimentato dalle provvigioni EOLO confermate dei negozi indicati: {cfg['eolo_fondo_pct']:.0f}% della provvigione residua dopo il costo del gettone.",
@@ -1067,8 +1082,8 @@ def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
                             "SIM, riparazioni, vendite e negozi esterni non alimentano il fondo ma contano solo per la classifica.",
                             "Il fondo non puo' essere negativo e viene distribuito solo se effettivamente incassato." + (f" Tetto mensile: {cfg['tetto_fondo']:.2f} EUR." if cfg.get("tetto_fondo") else "")]),
         ("4. Classifica mensile", ["Il punteggio e' il valore generato nel mese, con questi pesi:",
-                                   f"EOLO: {cfg['coef_eolo']:.0f}% della provvigione confermata; luce/gas: {cfg['coef_energia']:.0f}% della provvigione confermata;",
-                                   f"riparazioni lavorate (pronte/consegnate): {cfg['coef_riparazione']:.0f}% del margine (prezzo - ricambio)" + (f", attribuite tutte a {users.get(cfg['riparazioni_a'], 'chi le lavora')} indipendentemente da chi le registra" if cfg.get("riparazioni_a") else "") + f"; SIM nuova {cfg['valore_sim_nuova']:.2f} EUR, SIM MNP {cfg['valore_sim_mnp']:.2f} EUR, fisso/internet non EOLO {cfg['valore_fisso']:.2f} EUR (valori figurativi).",
+                                   f"La classifica misura la vendita, non i soldi: ogni contratto EOLO confermato vale {cfg['punti_eolo']:.0f} punti; ogni contratto luce/gas pagato vale {cfg['punti_energia']:.0f} punti, divisi {cfg.get('energia_lav_pct', 75):.0f}% a chi lavora la pratica e {100 - float(cfg.get('energia_lav_pct', 75)):.0f}% a chi ha acquisito il cliente (tutto a lei se e' la stessa persona);",
+                                   f"ogni riparazione lavorata (pronta/consegnata) vale {cfg['punti_riparazione']:.0f} punti" + (f", attribuite tutte a {users.get(cfg['riparazioni_a'], 'chi le lavora')} indipendentemente da chi le registra" if cfg.get("riparazioni_a") else "") + f"; SIM nuova {cfg['valore_sim_nuova']:.0f} punti, SIM MNP {cfg['valore_sim_mnp']:.0f} punti, fisso/internet non EOLO {cfg['valore_fisso']:.0f} punti.",
                                    "Spareggio: piu' contratti EOLO+energia, poi piu' attivita' totali, infine premio diviso in parti uguali."]),
         ("5. Premi", ["Il fondo del mese e' ripartito tra i primi classificati: " + ", ".join(f"{i + 1}o {p:.0f}%" for i, p in enumerate(premi)) + ".",
                       "Dal totale maturato (gettoni + premio) viene scalato il fisso mensile gia' percepito da ciascuno: viene pagata solo l'eccedenza.",
