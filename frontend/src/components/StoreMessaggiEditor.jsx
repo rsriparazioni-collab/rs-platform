@@ -12,7 +12,7 @@ const CAMPI = [
   { key: "msg_vincolo", label: "Scadenza vincolo telefonia (30 gg prima)", hint: "Per Mobile/Fisso con vincolo > 0 mesi" },
   { key: "msg_offerta_annuale", label: "Scadenza offerta annuale (30 gg prima)", hint: "Per Mobile/Fisso con vincolo 0: ogni anno dall'attivazione" },
   { key: "msg_rinnovo_energia", label: "Rinnovo contratto luce/gas (60 gg prima)", hint: "Inviato al 10° mese dall'attivazione del contratto energia" },
-  { key: "msg_truffe", label: "Attenzione alle truffe (10 gg dopo attivazione)", hint: "Inviato una volta, 10 giorni dopo l'attivazione del contratto energia. *testo* = grassetto, _testo_ = corsivo" },
+  { key: "msg_truffe", label: "Attenzione alle truffe (2 gg dopo 'cambio effettuato')", hint: "Inviato una volta per numero di telefono, 2 giorni dopo che il contratto passa a 'cambio effettuato'. *testo* = grassetto, _testo_ = corsivo" },
   { key: "msg_bollette", label: "Invito a inviare le bollette (20 gg in Centro Alert)", hint: "Inviato una volta ai clienti in alert rinnovo da 20 giorni e non ancora lavorati" },
   { key: "msg_compleanno", label: "Auguri di compleanno (ore 9:00)", hint: "Inviato una volta l'anno il giorno del compleanno (data di nascita o codice fiscale) dal numero del negozio. Variabili: {nome} {cognome} {negozio}" },
   { key: "msg_conferma_link", label: "Conferma link/plico fornitore (richiesta Switcho)", hint: "Inviato al cliente dal numero del negozio quando Switcho chiede di confermare il link o il plico del fornitore. Variabili: {nome} {negozio} {fornitore}" },

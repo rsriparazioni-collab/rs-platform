@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import StoreMessaggiEditor, { MSG_KEYS } from "../components/StoreMessaggiEditor";
 import MessaggiEnelEditor from "../components/MessaggiEnelEditor";
 import SocialFollowupPanel from "../components/SocialFollowupPanel";
+import MessaggiPanoramica from "../components/MessaggiPanoramica";
 
 export default function Negozi() {
   const { user } = useAuth();
@@ -70,6 +71,7 @@ export default function Negozi() {
         )}
       </div>
 
+      {isAdmin && <MessaggiPanoramica />}
       {isAdmin && <SocialFollowupPanel />}
       {isAdmin && <MessaggiEnelEditor />}
 

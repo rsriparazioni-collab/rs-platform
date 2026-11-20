@@ -754,6 +754,42 @@ def store_msg(store: Optional[dict], key: str, **vals) -> str:
 async def messaggi_default(user: dict = Depends(get_current_user)):
     return {"defaults": MSG_DEFAULTS, "placeholders": MSG_PLACEHOLDERS}
 
+
+@api_router.get("/messaggi-panoramica")
+async def messaggi_panoramica(admin: dict = Depends(require_admin)):
+    """Tutti i messaggi automatici in un colpo d'occhio: CambiaOra (numero Sondrio), ENEL, RS Riparazioni (negozi), social."""
+    sondrio = await db.stores.find_one({"nome": {"$regex": f"^{CAMBIAORA_STORE_NAME}$", "$options": "i"}}, {"_id": 0})
+    enel = await messaggi_enel()
+    social = await social_followup_module._settings()
+
+    def voce(key, label, quando, store=None):
+        return {"key": key, "label": label, "quando": quando, "testo": (store or {}).get(key) or MSG_DEFAULTS[key], "personalizzato": bool((store or {}).get(key))}
+
+    cambiaora = [voce("msg_privacy", "Privacy", "Col link privacy alla registrazione", sondrio),
+                 voce("msg_truffe", "Attenzione alle truffe", f"{TRUFFE_DOPO_GIORNI} giorni dopo 'cambio effettuato', una volta per numero", sondrio),
+                 voce("msg_rinnovo_energia", "Rinnovo luce/gas", "60 giorni prima della scadenza (10° mese)", sondrio),
+                 voce("msg_bollette", "Invito a mandare le bollette", "Clienti in alert rinnovo da 20 giorni non lavorati", sondrio),
+                 voce("msg_conferma_link", "Conferma link/plico fornitore", "Su richiesta Switcho", sondrio),
+                 voce("msg_grazie_bolletta", "Grazie per la bolletta", "Risposta automatica", sondrio),
+                 voce("msg_grazie_documento", "Grazie per il documento", "Risposta automatica", sondrio),
+                 {"key": "social_cambiaora", "label": "Seguici su Instagram", "quando": f"Dopo 7 giorni, max {social['per_giorno']}/giorno, {'ACCESO' if social['attivo'] else 'SPENTO'}", "testo": social["msg_cambiaora"], "personalizzato": False}]
+    enel_v = [{"key": "recensione_deborah", "label": "Recensione (numero Deborah)", "quando": "5 secondi dopo la privacy, clienti ENEL non Gravedona", "testo": enel["recensione_deborah"]},
+              {"key": "recensione_gravedona", "label": "Recensione (Gravedona)", "quando": "Dal numero Gravedona ai suoi clienti ENEL", "testo": enel["recensione_gravedona"]},
+              {"key": "truffe", "label": "Attenzione alle truffe", "quando": f"{TRUFFE_DOPO_GIORNI} giorni dopo 'cambio effettuato', una volta per numero", "testo": enel["truffe"]}]
+    rs_keys = [("msg_privacy", "Privacy", "Col link privacy"), ("msg_pronto", "Pronto per il ritiro", "Riparazione → Pronto"), ("msg_promemoria", "Promemoria ritiro", "7 giorni dopo l'avviso"),
+               ("msg_recensione", "Recensione", "5 secondi dopo la consegna"), ("msg_ricambio_arrivato", "Ricambio arrivato", "Quando segni il ricambio arrivato"),
+               ("msg_vincolo", "Scadenza vincolo telefonia", "30 giorni prima"), ("msg_offerta_annuale", "Scadenza offerta annuale", "30 giorni prima"),
+               ("msg_vendita_ordinato", "Telefono ordinato", "Alla vendita con ordine"), ("msg_vendita_arrivato", "Telefono arrivato", "All'arrivo in negozio"),
+               ("msg_ordine_arrivato", "Ordine accessori arrivato", "Al carico in magazzino"), ("msg_sollecito_ritiro", "Sollecito ritiro", "Se non ritirato dopo alcuni giorni"),
+               ("msg_disponibile", "Articolo disponibile", "Manuale da scheda cliente"), ("msg_firma_ritiro", "Firma bolla ritiro usato", "Alla bolla ritiro"),
+               ("msg_compleanno", "Auguri di compleanno", "Ore 9:00 del compleanno")]
+    rs = [voce(k, l, q) for k, l, q in rs_keys]
+    rs.append({"key": "social_rs", "label": "Seguici sui social", "quando": f"Dopo 7 giorni, max {social['per_giorno']}/giorno, {'ACCESO' if social['attivo'] else 'SPENTO'}", "testo": social["msg_rs"], "personalizzato": False})
+    personalizzati = {s["nome"]: [k for k, _, _ in rs_keys if s.get(k)] async for s in db.stores.find({}, {"_id": 0, "nome": 1, **{k: 1 for k, _, _ in rs_keys}})}
+    return {"gruppi": [{"id": "cambiaora", "titolo": "CambiaOra (numero Sondrio)", "voci": cambiaora}, {"id": "enel", "titolo": "ENEL", "voci": enel_v},
+                       {"id": "rs", "titolo": "RS Riparazioni (testo standard; ogni negozio può personalizzare dalla matita)", "voci": rs}],
+            "negozi_personalizzati": {k: v for k, v in personalizzati.items() if v}}
+
 @api_router.get("/stores")
 async def list_stores(user: dict = Depends(get_current_user)):
     stores = await db.stores.find({}, {"_id": 0}).to_list(500)
@@ -5522,26 +5558,44 @@ async def avvisi_bollette_anteprima(admin: dict = Depends(require_admin)):
 async def avvisi_bollette_ora(admin: dict = Depends(require_admin)):
     return await invia_avvisi_bollette()
 
-TRUFFE_DOPO_GIORNI = 10
+TRUFFE_DOPO_GIORNI = 2
 TRUFFE_FINESTRA_GIORNI = 40
 
+
+def _tel_norm(t: str) -> str:
+    d = "".join(ch for ch in (t or "") if ch.isdigit())
+    return d[-10:] if len(d) >= 10 else d
+
+
 async def invia_avvisi_truffe() -> dict:
-    clients = await db.clients.find({"data_contratto": {"$nin": [None, ""]}, "telefono": {"$nin": [None, ""]},
-                                     "truffe_msg_sent_at": {"$in": [None]}}, {"_id": 0}).to_list(20000)
+    """Anti-truffa: 2 giorni dopo che il contratto (CambiaOra o ENEL) è passato a 'cambio effettuato', una sola volta per numero di telefono."""
+    clients = await db.clients.find({"lavorazione": "cambio_effettuato", "telefono": {"$nin": [None, ""]}, "truffe_msg_sent_at": {"$in": [None]}}, {"_id": 0}).to_list(20000)
+    gia = {_tel_norm(c["telefono"]) async for c in db.clients.find({"truffe_msg_sent_at": {"$nin": [None]}, "telefono": {"$nin": [None, ""]}}, {"_id": 0, "telefono": 1})}
+    cambi = {}
+    async for lg in db.lavorazioni_log.find({"status": "cambio_effettuato"}, {"_id": 0, "client_id": 1, "created_at": 1}).sort("created_at", 1):
+        cambi[lg["client_id"]] = lg.get("created_at") or ""
     report = []
     for c in clients:
-        compute_dates(c)
-        if not c.get("data_attivazione"):
+        tel = _tel_norm(c["telefono"])
+        if not tel or tel in gia:
             continue
-        giorni = (date.today() - date.fromisoformat(c["data_attivazione"])).days
+        rif = (cambi.get(c["id"]) or c.get("updated_at") or c.get("created_at") or "")[:10]
+        try:
+            giorni = (date.today() - date.fromisoformat(rif)).days
+        except ValueError:
+            continue
         if not (TRUFFE_DOPO_GIORNI <= giorni <= TRUFFE_FINESTRA_GIORNI):
             continue
         store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
         msg = (await messaggi_enel())["truffe"] if is_enel(c) else store_msg(store, "msg_truffe", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
         try:
-            await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="truffe", client_id=c["id"])
-            await db.clients.update_one({"id": c["id"]}, {"$set": {"truffe_msg_sent_at": datetime.now(timezone.utc).isoformat()}})
-            report.append({"client_id": c["id"], "inviato": True})
+            r = await wa_send(c["telefono"], msg, session=await wa_session_cliente(c), tipo="truffe", client_id=c["id"])
+            if not (r or {}).get("dry_run"):
+                now = datetime.now(timezone.utc).isoformat()
+                ids = [x["id"] async for x in db.clients.find({"telefono": {"$nin": [None, ""]}}, {"_id": 0, "id": 1, "telefono": 1}) if _tel_norm(x["telefono"]) == tel]
+                await db.clients.update_many({"id": {"$in": ids}}, {"$set": {"truffe_msg_sent_at": now}})
+                gia.add(tel)
+            report.append({"client_id": c["id"], "inviato": not (r or {}).get("dry_run"), "dry_run": bool((r or {}).get("dry_run"))})
         except HTTPException as e:
             report.append({"client_id": c["id"], "inviato": False, "errore": str(e.detail)})
     if report:
