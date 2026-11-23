@@ -5448,7 +5448,8 @@ async def invia_promemoria_ritiro() -> dict:
 
 VINCOLO_PREAVVISO_GIORNI = 7  # telefonia: avviso al cliente 7 giorni prima della scadenza
 
-async def invia_avvisi_vincolo() -> dict:
+async def invia_avvisi_vincolo(min_giorni: int = 0, max_giorni: int | None = None) -> dict:
+    max_giorni = VINCOLO_PREAVVISO_GIORNI if max_giorni is None else max_giorni
     svcs = await db.servizi.find({"tipo": {"$in": ["sim", "internet", "fisso"]}, "data_attivazione": {"$nin": [None, ""]}},
                                  {"_id": 0}).to_list(10000)
     report = []
@@ -5458,10 +5459,11 @@ async def invia_avvisi_vincolo() -> dict:
             continue
         scad, annuale = so
         giorni = (scad - date.today()).days
-        if not (0 <= giorni <= VINCOLO_PREAVVISO_GIORNI) or svc.get("vincolo_msg_sent_for") == scad.isoformat():
+        if not (min_giorni <= giorni <= max_giorni) or svc.get("vincolo_msg_sent_for") == scad.isoformat():
             continue
         client_doc = await db.clients.find_one({"id": svc["client_id"]}, {"_id": 0, "nome": 1, "cognome": 1, "telefono": 1})
         if not client_doc or not client_doc.get("telefono"):
+            report.append({"servizio": svc["id"], "inviato": False, "errore": "cliente senza telefono", "scadenza": scad.isoformat()})
             continue
         store = await db.stores.find_one({"id": svc.get("venditore_id")}, {"_id": 0})
         msg = store_msg(store, "msg_offerta_annuale" if annuale else "msg_vincolo",
@@ -5485,7 +5487,8 @@ async def avvisi_vincolo_ora(admin: dict = Depends(require_admin)):
 
 RINNOVO_PREAVVISO_GIORNI = 60
 
-async def invia_avvisi_rinnovo_energia() -> dict:
+async def invia_avvisi_rinnovo_energia(min_giorni: int = 0, max_giorni: int | None = None) -> dict:
+    max_giorni = RINNOVO_PREAVVISO_GIORNI if max_giorni is None else max_giorni
     clients = await db.clients.find({"data_contratto": {"$nin": [None, ""]}, "telefono": {"$nin": [None, ""]}}, {"_id": 0}).to_list(20000)
     report = []
     for c in clients:
@@ -5493,7 +5496,7 @@ async def invia_avvisi_rinnovo_energia() -> dict:
         if not c.get("data_scadenza"):
             continue
         giorni = (date.fromisoformat(c["data_scadenza"]) - date.today()).days
-        if not (0 <= giorni <= RINNOVO_PREAVVISO_GIORNI) or c.get("rinnovo_msg_sent_for") == c["data_scadenza"]:
+        if not (min_giorni <= giorni <= max_giorni) or c.get("rinnovo_msg_sent_for") == c["data_scadenza"]:
             continue
         store = await db.stores.find_one({"id": c.get("venditore_id")}, {"_id": 0})
         msg = store_msg(store, "msg_rinnovo_energia", nome=c.get("nome", ""), cognome=c.get("cognome", ""))
@@ -5512,6 +5515,27 @@ async def invia_avvisi_rinnovo_energia() -> dict:
 @api_router.post("/energia/avvisi-rinnovo/invia-ora")
 async def avvisi_rinnovo_ora(admin: dict = Depends(require_admin)):
     return await invia_avvisi_rinnovo_energia()
+
+
+@api_router.post("/avvisi/verifica-invia")
+async def avvisi_verifica_invia(min_giorni: int = 1, max_giorni: int = 30, admin: dict = Depends(require_admin)):
+    """Centro Alert: controlla le scadenze (rinnovi energia e vincoli telefonia) tra min e max giorni e manda SUBITO gli avvisi non ancora inviati."""
+    dry = await wa_dry_run_attivo()
+    rin = await invia_avvisi_rinnovo_energia(min_giorni, max_giorni)
+    vin = await invia_avvisi_vincolo(min_giorni, max_giorni)
+    # quanti risultano già avvisati nella stessa finestra (per far vedere che il controllo è completo)
+    gia_rin = 0
+    async for c in db.clients.find({"data_contratto": {"$nin": [None, ""]}}, {"_id": 0, "data_contratto": 1, "rinnovo_msg_sent_for": 1}):
+        compute_dates(c)
+        if c.get("data_scadenza") and min_giorni <= (date.fromisoformat(c["data_scadenza"]) - date.today()).days <= max_giorni and c.get("rinnovo_msg_sent_for") == c["data_scadenza"]:
+            gia_rin += 1
+
+    def riepilogo(rep):
+        return {"inviati_ora": sum(1 for r in rep if r.get("inviato")), "errori": [r for r in rep if r.get("errore")], "dry_run": sum(1 for r in rep if r.get("dry_run"))}
+
+    await db.cron_log.insert_one({"job": "avvisi-verifica-manuale", "at": datetime.now(timezone.utc).isoformat(), "by": admin.get("name"), "finestra": [min_giorni, max_giorni],
+                                  "rinnovo_energia": riepilogo(rin["report"]), "vincolo": riepilogo(vin["report"])})
+    return {"dry_run": dry, "finestra": {"da": min_giorni, "a": max_giorni}, "rinnovo_energia": {**riepilogo(rin["report"]), "gia_inviati": gia_rin}, "vincolo": riepilogo(vin["report"])}
 
 BOLLETTE_DOPO_GIORNI = 20
 

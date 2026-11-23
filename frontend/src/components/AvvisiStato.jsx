@@ -17,6 +17,18 @@ export default function AvvisiStato() {
     try { const r = await api.post("/avvisi/ripristina-test"); toast.success(`Riabilitati: ${r.data.rinnovo_energia} rinnovi · ${r.data.bollette} bollette · ${r.data.vincolo} vincoli`); load(); }
     catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
   };
+  const [esito, setEsito] = useState(null);
+  const verifica = async () => {
+    if (!window.confirm("Controllo le scadenze da 30 a 1 giorno (rinnovi luce/gas e vincoli telefonia) e mando SUBITO i WhatsApp non ancora inviati. Procedo?")) return;
+    setBusy(true);
+    try {
+      const r = await api.post("/avvisi/verifica-invia?min_giorni=1&max_giorni=30");
+      setEsito(r.data);
+      const tot = r.data.rinnovo_energia.inviati_ora + r.data.vincolo.inviati_ora;
+      toast.success(r.data.dry_run ? "Modalità test: nessun invio reale" : `Inviati ora: ${tot} avvisi`);
+      load();
+    } catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
+  };
   if (!d) return null;
   const giri = Object.entries(LABEL).map(([k, l]) => [k, l, d.giri[k]]);
   return (
@@ -40,10 +52,23 @@ export default function AvvisiStato() {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-2 text-[11px] text-slate-500">
         <span>{Object.values(d.regole).join(" · ")}</span>
-        <button type="button" onClick={ripristina} disabled={busy} className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100" data-testid="avvisi-ripristina-test">
-          Riabilita avvisi fatti in modalità test
-        </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={verifica} disabled={busy} className="rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-100" data-testid="avvisi-verifica-invia">
+            {busy ? "Controllo…" : "Verifica scadenze 30→1 gg e invia i mancanti"}
+          </button>
+          <button type="button" onClick={ripristina} disabled={busy} className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100" data-testid="avvisi-ripristina-test">
+            Riabilita avvisi fatti in modalità test
+          </button>
+        </div>
       </div>
+      {esito && (
+        <div className="border-t px-5 py-2 text-xs" data-testid="avvisi-verifica-esito">
+          <p className="font-medium text-slate-800">Esito controllo scadenze {esito.finestra.a}→{esito.finestra.da} giorni{esito.dry_run && <span className="ml-2 text-amber-700">(modalità test: nessun invio reale)</span>}</p>
+          <p className="text-slate-600">Rinnovi luce/gas: <b className="text-emerald-700">{esito.rinnovo_energia.inviati_ora} inviati ora</b> · {esito.rinnovo_energia.gia_inviati} già avvisati in precedenza · {esito.rinnovo_energia.errori.length} errori</p>
+          <p className="text-slate-600">Vincoli telefonia: <b className="text-emerald-700">{esito.vincolo.inviati_ora} inviati ora</b> · {esito.vincolo.errori.length} errori</p>
+          {[...esito.rinnovo_energia.errori, ...esito.vincolo.errori].slice(0, 10).map((e, i) => <p key={i} className="text-rose-600">• {e.client_id || e.servizio}: {e.errore}</p>)}
+        </div>
+      )}
     </details>
   );
 }
