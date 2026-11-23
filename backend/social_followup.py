@@ -60,8 +60,13 @@ def _generico(msg: str) -> str:
 
 
 async def _settings() -> dict:
-    doc = await _d["db"].settings.find_one({"key": KEY}, {"_id": 0}) or {}
+    db = _d["db"]
+    doc = await db.settings.find_one({"key": KEY}, {"_id": 0}) or {}
     v = doc.get("value") or {}
+    # richiesta utente: acceso una tantum anche in produzione (poi comanda l'interruttore del pannello)
+    if not v.get("acceso_v1"):
+        v = {**v, "attivo": True, "acceso_v1": True}
+        await db.settings.update_one({"key": KEY}, {"$set": {"value": v}}, upsert=True)
     return {"attivo": bool(v.get("attivo", False)), "per_giorno": int(v.get("per_giorno") or 5),
             "msg_cambiaora": _generico(v.get("msg_cambiaora") or DEFAULTS["msg_cambiaora"]), "msg_rs": _generico(v.get("msg_rs") or DEFAULTS["msg_rs"])}
 
@@ -224,7 +229,8 @@ async def salva(body: SettingsInput, user: dict = Depends(_current_user)):
     upd = {k: v for k, v in body.model_dump().items() if v is not None}
     if "per_giorno" in upd:
         upd["per_giorno"] = max(1, min(int(upd["per_giorno"]), 10))
-    await _d["db"].settings.update_one({"key": KEY}, {"$set": {"value": {**cur, **upd}}}, upsert=True)
+    raw = (await _d["db"].settings.find_one({"key": KEY}, {"_id": 0}) or {}).get("value") or {}
+    await _d["db"].settings.update_one({"key": KEY}, {"$set": {"value": {**raw, **cur, **upd}}}, upsert=True)
     return {"settings": await _settings()}
 
 
