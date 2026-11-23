@@ -19,7 +19,7 @@ export const IncentiviRegole = ({ cfg, meta, reload }) => {
 
   const salva = async () => {
     const body = Object.fromEntries(NUM.map(([k]) => [k, parseFloat(f[k]) || 0]));
-    body.premi_pct = premi.split("/").map((x) => parseFloat(x) || 0); body.partecipanti = f.partecipanti; body.negozi_fondo = f.negozi_fondo; body.padre_in_fondo = f.padre_in_fondo; body.persona_negozio = f.persona_negozio || {}; body.riparazioni_a = f.riparazioni_a || ""; body.gia_percepito = Object.fromEntries(Object.entries(f.gia_percepito || {}).map(([k, v]) => [k, parseFloat(v) || 0]));
+    body.premi_pct = premi.split("/").map((x) => parseFloat(x) || 0); body.partecipanti = f.partecipanti; body.negozi_fondo = f.negozi_fondo; body.padre_in_fondo = f.padre_in_fondo; body.persona_negozio = f.persona_negozio || {}; body.riparazioni_a = f.riparazioni_a || ""; body.riparazioni_quota_da = f.riparazioni_quota_da || ""; body.riparazioni_quota_ogni = parseInt(f.riparazioni_quota_ogni) || 0; body.gia_percepito = Object.fromEntries(Object.entries(f.gia_percepito || {}).map(([k, v]) => [k, parseFloat(v) || 0]));
     try { await api.put("/incentivi/config", body); toast.success("Regole salvate (modifica registrata)"); reload(); } catch (e) { toast.error(apiError(e)); }
   };
   const cambiaEntita = async () => {
@@ -49,6 +49,12 @@ export const IncentiviRegole = ({ cfg, meta, reload }) => {
         <p className="font-medium text-slate-800">Punteggio riparazioni a</p>
         <p className="text-xs text-slate-500">Tutte le riparazioni lavorate del mese contano per questa persona, anche se registrate da altri (chi le lavora davvero). Vuoto = a chi le ha segnate.</p>
         <select className="mt-2 h-8 rounded-md border border-slate-200 px-1 text-xs" value={f.riparazioni_a || ""} onChange={(e) => setF({ ...f, riparazioni_a: e.target.value })} data-testid="inc-riparazioni-a-select"><option value="">— chi le ha segnate —</option>{meta.users.filter((u) => f.partecipanti.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs" data-testid="inc-riparazioni-quota">
+          <span className="text-slate-600">Chi registra le riparazioni (acquisisce il cliente) tiene 1 riparazione ogni</span>
+          <Input type="number" className="h-8 w-16" value={f.riparazioni_quota_ogni ?? ""} onChange={(e) => setF({ ...f, riparazioni_quota_ogni: e.target.value })} data-testid="inc-riparazioni-quota-ogni" />
+          <span className="text-slate-600">registrate da</span>
+          <select className="h-8 rounded-md border border-slate-200 px-1 text-xs" value={f.riparazioni_quota_da || ""} onChange={(e) => setF({ ...f, riparazioni_quota_da: e.target.value })} data-testid="inc-riparazioni-quota-da"><option value="">— nessuno —</option>{meta.users.filter((u) => f.partecipanti.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+        </div>
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm" data-testid="inc-gia-percepito">
         <p className="font-medium text-slate-800">Fisso mensile già percepito (da scalare)</p>

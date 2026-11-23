@@ -137,6 +137,13 @@ async def get_config() -> dict:
         c.update(upd)
         await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
         await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"classifica": {"prima": "euro (coef %)", "dopo": "punti a pezzi: EOLO 25, energia 25 (75/25), riparazione 4"}}})
+    # Silvio inserisce le riparazioni (acquisisce il cliente) ma le lavora Bruno: 1 ogni 20 inserite da Silvio resta a Silvio
+    if not c.get("riparazioni_quota_v1"):
+        users = await _utenti_base(db)
+        upd = {"riparazioni_quota_da": users.get("silvio", ""), "riparazioni_quota_ogni": 20, "riparazioni_quota_v1": True, "updated_at": _now()}
+        c.update(upd)
+        await db.incentivi_config.update_one({"id": CONFIG_ID}, {"$set": upd})
+        await db.incentivi_config_log.insert_one({"id": str(uuid.uuid4()), "at": _now(), "user_id": "", "user_name": "Sistema", "modifiche": {"riparazioni_quota": {"prima": None, "dopo": "1 ogni 20 inserite da Silvio"}}})
     # Le riparazioni le lavora Bruno anche se segnate da altri: punteggio riparazioni tutto a lui (modificabile in Regole)
     # Fisso mensile già percepito da scalare dal maturato (Kevin 300, Silvio 300, Deborah 100, Bruno 200)
     if not c.get("gia_percepito_v1"):
@@ -185,6 +192,8 @@ class ConfigInput(BaseModel):
     persona_negozio: Optional[dict] = None
     spareggio: Optional[str] = None
     riparazioni_a: Optional[str] = None
+    riparazioni_quota_da: Optional[str] = None
+    riparazioni_quota_ogni: Optional[int] = None
     gia_percepito: Optional[dict] = None
 
 
@@ -718,11 +727,14 @@ async def _attivita_mese(mese: str, partecipanti: set, cfg: dict) -> dict:
     db = _d["db"]
     val = {u: {"riparazioni_n": 0, "riparazioni_margine": 0.0, "sim_nuova": 0, "sim_mnp": 0, "fisso": 0} for u in partecipanti}
     rip_a = cfg.get("riparazioni_a") or ""
+    quota_da, quota_ogni = cfg.get("riparazioni_quota_da") or "", int(cfg.get("riparazioni_quota_ogni") or 0)
+    inserite_da_quota = {"n": 0, "margine": 0.0}
     async for s in db.servizi.find({"tipo": {"$in": ["riparazione", "sim", "internet", "fisso"]}}, {"_id": 0, "tipo": 1, "stato": 1, "prezzo_finale": 1, "importo": 1, "costo_componente": 1, "con_ricambio": 1, "ricambi_usati": 1,
                                                                                                     "operatore_id": 1, "created_by": 1, "lavorato_da_id": 1, "lavorato_at": 1, "data_lavorazione": 1, "data_uscita": 1, "data_attivazione": 1, "created_at": 1,
                                                                                                     "tipo_attivazione": 1, "operatore_tel": 1, "esito_attivazione": 1}):
         if s["tipo"] == "riparazione":
-            uid = rip_a if rip_a in partecipanti else (s.get("lavorato_da_id") or s.get("operatore_id") or s.get("created_by") or "")
+            inserita_da = s.get("operatore_id") or s.get("created_by") or ""
+            uid = rip_a if rip_a in partecipanti else (s.get("lavorato_da_id") or inserita_da)
             if uid not in partecipanti or s.get("stato") not in ("pronto", "pronto_ritiro", "consegnato"):
                 continue
             if _ym(s.get("lavorato_at") or s.get("data_lavorazione") or s.get("data_uscita") or s.get("created_at")) != mese:
@@ -731,6 +743,9 @@ async def _attivita_mese(mese: str, partecipanti: set, cfg: dict) -> dict:
             costo = float(s.get("costo_componente") or 0) if s.get("con_ricambio") else sum(float(r.get("prezzo_acquisto") or r.get("costo") or 0) * int(r.get("quantita") or 1) for r in s.get("ricambi_usati") or [])
             val[uid]["riparazioni_n"] += 1
             val[uid]["riparazioni_margine"] += max(0.0, prezzo - costo)
+            if quota_da and inserita_da == quota_da and uid != quota_da:
+                inserite_da_quota["n"] += 1
+                inserite_da_quota["margine"] += max(0.0, prezzo - costo)
         else:
             uid = s.get("operatore_id") or s.get("created_by") or ""
             if uid not in partecipanti:
@@ -741,6 +756,15 @@ async def _attivita_mese(mese: str, partecipanti: set, cfg: dict) -> dict:
                 val[uid]["sim_mnp" if s.get("tipo_attivazione") == "mnp" else "sim_nuova"] += 1
             elif (s.get("operatore_tel") or "").strip().lower() != "eolo":
                 val[uid]["fisso"] += 1
+    # 1 riparazione ogni N inserite da `quota_da` (es. Silvio acquisisce il cliente) torna a lui per riconoscere la gestione
+    if quota_da in partecipanti and quota_ogni > 0 and rip_a in partecipanti and inserite_da_quota["n"]:
+        k = inserite_da_quota["n"] // quota_ogni
+        if k:
+            m_medio = inserite_da_quota["margine"] / inserite_da_quota["n"]
+            val[quota_da]["riparazioni_n"] += k
+            val[quota_da]["riparazioni_margine"] += m_medio * k
+            val[rip_a]["riparazioni_n"] -= k
+            val[rip_a]["riparazioni_margine"] -= m_medio * k
     return val
 
 
@@ -1083,7 +1107,7 @@ def regole_testo(cfg: dict, users: dict, stores: dict) -> list:
                             "Il fondo non puo' essere negativo e viene distribuito solo se effettivamente incassato." + (f" Tetto mensile: {cfg['tetto_fondo']:.2f} EUR." if cfg.get("tetto_fondo") else "")]),
         ("4. Classifica mensile", ["Il punteggio e' il valore generato nel mese, con questi pesi:",
                                    f"La classifica misura la vendita, non i soldi: ogni contratto EOLO confermato vale {cfg['punti_eolo']:.0f} punti; ogni contratto luce/gas pagato vale {cfg['punti_energia']:.0f} punti, divisi {cfg.get('energia_lav_pct', 75):.0f}% a chi lavora la pratica e {100 - float(cfg.get('energia_lav_pct', 75)):.0f}% a chi ha acquisito il cliente (tutto a lei se e' la stessa persona);",
-                                   f"ogni riparazione lavorata (pronta/consegnata) vale {cfg['punti_riparazione']:.0f} punti" + (f", attribuite tutte a {users.get(cfg['riparazioni_a'], 'chi le lavora')} indipendentemente da chi le registra" if cfg.get("riparazioni_a") else "") + f"; SIM nuova {cfg['valore_sim_nuova']:.0f} punti, SIM MNP {cfg['valore_sim_mnp']:.0f} punti, fisso/internet non EOLO {cfg['valore_fisso']:.0f} punti.",
+                                   f"ogni riparazione lavorata (pronta/consegnata) vale {cfg['punti_riparazione']:.0f} punti" + (f", attribuite tutte a {users.get(cfg['riparazioni_a'], 'chi le lavora')} indipendentemente da chi le registra" if cfg.get("riparazioni_a") else "") + (f"; a {users.get(cfg['riparazioni_quota_da'], '')} resta 1 riparazione ogni {int(cfg.get('riparazioni_quota_ogni') or 0)} da lui registrate, per la gestione del cliente" if cfg.get("riparazioni_quota_da") and int(cfg.get("riparazioni_quota_ogni") or 0) else "") + f"; SIM nuova {cfg['valore_sim_nuova']:.0f} punti, SIM MNP {cfg['valore_sim_mnp']:.0f} punti, fisso/internet non EOLO {cfg['valore_fisso']:.0f} punti.",
                                    "Spareggio: piu' contratti EOLO+energia, poi piu' attivita' totali, infine premio diviso in parti uguali."]),
         ("5. Premi", ["Il fondo del mese e' ripartito tra i primi classificati: " + ", ".join(f"{i + 1}o {p:.0f}%" for i, p in enumerate(premi)) + ".",
                       "Dal totale maturato (gettoni + premio) viene scalato il fisso mensile gia' percepito da ciascuno: viene pagata solo l'eccedenza.",
