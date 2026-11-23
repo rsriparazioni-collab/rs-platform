@@ -6311,6 +6311,7 @@ async def whatsapp_queue_loop() -> None:
             await process_whatsapp_queue()
             if giro % 5 == 0:
                 await reinvio_automatico_falliti()
+                await social_followup_module.tick_fallback()
             await db.cron_log.update_one({"job": "whatsapp-queue-loop"},
                                          {"$set": {"last_run": datetime.now(timezone.utc).isoformat()}}, upsert=True)
         except Exception as e:

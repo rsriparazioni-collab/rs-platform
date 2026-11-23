@@ -55,7 +55,8 @@ export default function SocialFollowupPanel() {
             <h2 className="font-heading text-lg font-semibold text-slate-800">Seguici sui social (7 giorni dopo)</h2>
             <p className="text-xs text-slate-500">
               In coda: CambiaOra {data.in_coda.cambiaora} · RS {data.in_coda.rs} · {s.per_giorno} al giorno per marchio
-              {data.ultimo_giro?.last_run && <> · ultimo giro {fmtDate(data.ultimo_giro.last_run)}</>}
+              {data.ultimo_giro?.last_run && <> · ultimo giro {fmtDate(data.ultimo_giro.last_run)}{data.ultimo_giro.origine && ` (${data.ultimo_giro.origine})`}{data.ultimo_giro.esito?.skipped && <span className="text-amber-700"> — saltato: {data.ultimo_giro.esito.skipped}</span>}{data.ultimo_giro.esito?.in_corso && <span className="text-sky-700"> — in corso</span>}</>}
+              {!data.ultimo_giro?.last_run && <span className="text-amber-700"> · nessun giro automatico ancora registrato</span>}
             </p>
           </div>
         </button>

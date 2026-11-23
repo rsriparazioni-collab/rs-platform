@@ -154,12 +154,15 @@ async def _invia_uno(marchio: str, c: dict, tpl: str) -> dict:
     return log
 
 
-async def invia_giornaliero(forza: bool = False, distanzia: bool = True) -> dict:
+async def invia_giornaliero(forza: bool = False, distanzia: bool = True, origine: str = "cron") -> dict:
     """Cron 10:00: N messaggi 'seguici sui social' per marchio, dai più vecchi, una sola volta per numero."""
     db = _d["db"]
     st = await _settings()
     if not st["attivo"] and not forza:
+        await db.cron_log.update_one({"job": "social-followup"}, {"$set": {"last_run": _now().isoformat(), "esito": {"skipped": "interruttore spento"}, "origine": origine}}, upsert=True)
         return {"skipped": "spento"}
+    # segno subito il giro di oggi, così il fallback interno non lo ripete mentre il cron sta ancora inviando
+    await db.cron_log.update_one({"job": "social-followup"}, {"$set": {"last_run": _now().isoformat(), "esito": {"in_corso": True}, "origine": origine}}, upsert=True)
     esito = {}
     for marchio, tpl in (("cambiaora", st["msg_cambiaora"]), ("rs", st["msg_rs"])):
         coda = await _coda(marchio)
@@ -171,8 +174,23 @@ async def invia_giornaliero(forza: bool = False, distanzia: bool = True) -> dict
             inviati += log["ok"]
             errori += not log["ok"]
         esito[marchio] = {"inviati": inviati, "errori": errori, "in_coda": max(len(coda) - inviati, 0)}
-    await db.cron_log.update_one({"job": "social-followup"}, {"$set": {"last_run": _now().isoformat(), "esito": esito}}, upsert=True)
+    await db.cron_log.update_one({"job": "social-followup"}, {"$set": {"last_run": _now().isoformat(), "esito": esito, "origine": origine}}, upsert=True)
     return esito
+
+
+async def tick_fallback() -> None:
+    """Chiamato ogni 5 minuti dal loop interno: se il cron piattaforma non ha girato oggi, dalle 10:00 (lun-sab, ora italiana) parte da qui."""
+    from zoneinfo import ZoneInfo
+    db = _d["db"]
+    ora = datetime.now(ZoneInfo("Europe/Rome"))
+    if ora.weekday() == 6 or ora.hour < 10:
+        return
+    ultimo = await db.cron_log.find_one({"job": "social-followup"}, {"_id": 0, "last_run": 1})
+    if ultimo and (ultimo.get("last_run") or "")[:10] == _now().isoformat()[:10]:
+        return
+    if not (await _settings())["attivo"]:
+        return
+    await invia_giornaliero(origine="fallback-interno")
 
 
 def _admin(user: dict):
@@ -213,7 +231,7 @@ async def salva(body: SettingsInput, user: dict = Depends(_current_user)):
 @router.post("/social-followup/invia-ora")
 async def invia_ora(user: dict = Depends(_current_user)):
     _admin(user)
-    return await invia_giornaliero(forza=True, distanzia=False)
+    return await invia_giornaliero(forza=True, distanzia=False, origine="manuale")
 
 
 class InboxTextInput(BaseModel):
