@@ -6335,7 +6335,7 @@ async def whatsapp_queue_loop() -> None:
             await process_whatsapp_queue()
             if giro % 5 == 0:
                 await reinvio_automatico_falliti()
-                await social_followup_module.tick_fallback()
+                await scheduler_interno_tick()
             await db.cron_log.update_one({"job": "whatsapp-queue-loop"},
                                          {"$set": {"last_run": datetime.now(timezone.utc).isoformat()}}, upsert=True)
         except Exception as e:
@@ -6468,6 +6468,12 @@ def _audit_classify(method: str, path: str):
 @app.middleware("http")
 async def audit_middleware(request: Request, call_next):
     response = await call_next(request)
+    if request.url.path.startswith("/api/cron/") and request.method == "POST" and response.status_code < 300:
+        # il cron piattaforma ha chiamato: lo scheduler interno non deve ripetere il job oggi
+        try:
+            await db.cron_log.update_one({"job": f"sched:{request.url.path.split('/')[-1]}"}, {"$set": {"last_run": datetime.now(timezone.utc).isoformat(), "origine": "cron"}}, upsert=True)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"segna cron: {e}")
     refresh = getattr(request.state, "refresh_token", None)
     if refresh and response.status_code < 400:
         set_session_cookie(response, refresh)
@@ -6895,6 +6901,88 @@ async def cron_corrispettivi_fine_mese(request: Request, background_tasks: Backg
 google_drive_module.setup(db=db, get_current_user=get_current_user, get_object=get_object, fernet=_fernet)
 api_router.include_router(google_drive_module.router)
 report_ritiri_module.setup(carica_report_su_drive=google_drive_module.carica_report_su_drive, sheet_sync=google_drive_module.scrivi_ritiro_su_foglio)
+
+
+# ---------------- Scheduler interno di riserva ----------------
+# Se il cron della piattaforma non chiama l'endpoint entro 15 minuti dall'orario (ora italiana), il job parte da qui.
+def _avvisi_mattino():
+    async def _run():
+        for nome, fn in (("riparazioni-ferme", invia_avvisi_riparazioni_ferme), ("promemoria-ritiro", invia_promemoria_ritiro), ("avvisi-vincolo", invia_avvisi_vincolo),
+                         ("rinnovo-energia", invia_avvisi_rinnovo_energia), ("bollette", invia_avvisi_bollette), ("avvisi-truffe", invia_avvisi_truffe),
+                         ("ordini-fermi", vendite_module.avvisi_ordini_fermi), ("ritiri-in-attesa", vendite_module.sollecita_ritiri_in_attesa), ("retention-gdpr", pulizia_retention_gdpr)):
+            await _esegui_isolato(nome, fn)
+    return _run()
+
+
+def _auguri():
+    async def _run():
+        await _esegui_isolato("auguri", ricordi_module.invia_auguri)
+        await _esegui_isolato("bollette-rinnovo", documenti_module.promemoria_bollette_rinnovo)
+        await _esegui_isolato("classifica-allegati", documenti_module.classifica_notturna)
+    return _run()
+
+
+def _switcho():
+    async def _run():
+        await _esegui_isolato("switcho-conferma-link", switcho_module.promemoria_conferma_link)
+        await _esegui_isolato("switcho-silenzio", switcho_module.avviso_silenzio)
+    return _run()
+
+
+def _scadenze_fiscali():
+    async def _run():
+        await _esegui_isolato("scadenze-fiscali", fiscale_module.alert_scadenze)
+        await _esegui_isolato("scadenzario", scadenzario_module.alert_scadenze)
+    return _run()
+
+
+LUN_SAB = {0, 1, 2, 3, 4, 5}
+# (nome endpoint cron, ora, minuto, giorni settimana ammessi o None=tutti, funzione)
+SCHEDULER_JOBS = [
+    ("daily-digest", 7, 0, None, send_digest_email),
+    ("riepilogo-lavorazioni", 8, 0, LUN_SAB, lavorazioni_module.riepilogo_mattutino),
+    ("scadenze-fiscali", 8, 0, None, _scadenze_fiscali),
+    ("riepilogo-da-sistemare", 8, 0, {0}, automazioni_contabilita_module.riepilogo_settimanale),
+    ("riparazioni-ferme", 8, 30, None, _avvisi_mattino),
+    ("auguri-compleanno", 9, 0, None, _auguri),
+    ("switcho-48h", 9, 30, LUN_SAB, _switcho),
+    ("social-followup", 10, 0, LUN_SAB, social_followup_module.invia_giornaliero),
+    ("corrispettivi-fine-mese", 18, 0, None, contabilita_module.avviso_fine_mese),
+    ("promemoria-registro", 18, 30, LUN_SAB, kpi_module.promemoria_registro),
+    ("obiettivi", 19, 0, None, kpi_module.controlla_obiettivi),
+    ("corrispettivi-giornalieri", 19, 0, None, contabilita_module.invia_wa_giornaliero),
+]
+
+
+async def scheduler_interno_tick() -> None:
+    from zoneinfo import ZoneInfo
+    gate = await db.settings.find_one({"key": "scheduler_interno"}, {"_id": 0})
+    if gate is not None and gate.get("value") is False:
+        return
+    ora = datetime.now(ZoneInfo("Europe/Rome"))
+    minuti_ora = ora.hour * 60 + ora.minute
+    oggi_utc = datetime.now(timezone.utc).isoformat()[:10]
+    for nome, hh, mm, giorni, fn in SCHEDULER_JOBS:
+        if giorni is not None and ora.weekday() not in giorni:
+            continue
+        if minuti_ora < hh * 60 + mm + 15:
+            continue
+        marker = await db.cron_log.find_one({"job": f"sched:{nome}"}, {"_id": 0, "last_run": 1})
+        if marker and (marker.get("last_run") or "")[:10] == oggi_utc:
+            continue
+        await db.cron_log.update_one({"job": f"sched:{nome}"}, {"$set": {"last_run": datetime.now(timezone.utc).isoformat(), "origine": "scheduler-interno"}}, upsert=True)
+        logger.info(f"scheduler interno: avvio {nome} (il cron piattaforma non ha chiamato)")
+        asyncio.create_task(_esegui_isolato(f"sched-{nome}", fn))
+
+
+@api_router.get("/avvisi/scheduler")
+async def avvisi_scheduler(admin: dict = Depends(require_admin)):
+    """Stato dei job giornalieri: chi li ha fatti partire oggi (cron piattaforma o scheduler interno)."""
+    out = []
+    for nome, hh, mm, giorni, _ in SCHEDULER_JOBS:
+        m = await db.cron_log.find_one({"job": f"sched:{nome}"}, {"_id": 0})
+        out.append({"job": nome, "orario": f"{hh:02d}:{mm:02d}", "giorni": "lun-sab" if giorni == LUN_SAB else ("lunedì" if giorni == {0} else "tutti"), "ultimo": (m or {}).get("last_run"), "origine": (m or {}).get("origine")})
+    return {"jobs": out}
 
 app.include_router(api_router)
 

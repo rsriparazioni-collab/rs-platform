@@ -9,7 +9,8 @@ const fmt = (iso) => (iso ? new Date(iso).toLocaleString("it-IT", { day: "2-digi
 export default function AvvisiStato() {
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
-  const load = () => api.get("/avvisi/stato").then((r) => setD(r.data)).catch(() => {});
+  const [sched, setSched] = useState(null);
+  const load = () => { api.get("/avvisi/stato").then((r) => setD(r.data)).catch(() => {}); api.get("/avvisi/scheduler").then((r) => setSched(r.data.jobs)).catch(() => {}); };
   useEffect(() => { load(); }, []);
   const ripristina = async () => {
     if (!window.confirm("Riabilito gli avvisi che risultano 'inviati' ma erano stati fatti in MODALITÀ TEST (mai arrivati al cliente)? Partiranno al prossimo giro delle 8:30.")) return;
@@ -50,6 +51,17 @@ export default function AvvisiStato() {
           </div>
         ))}
       </div>
+      {sched && (
+        <div className="border-t px-5 py-2 text-[11px]" data-testid="avvisi-scheduler">
+          <p className="mb-1 font-medium text-slate-700">Job giornalieri: chi li ha fatti partire oggi (cron piattaforma o scheduler interno di riserva, che interviene 15 min dopo l'orario)</p>
+          <div className="flex flex-wrap gap-1.5">
+            {sched.map((j) => {
+              const oggi = j.ultimo && new Date(j.ultimo).toDateString() === new Date().toDateString();
+              return <span key={j.job} className={`rounded px-2 py-0.5 ${oggi ? (j.origine === "cron" ? "bg-emerald-50 text-emerald-800" : "bg-sky-50 text-sky-800") : "bg-slate-100 text-slate-600"}`} title={j.ultimo || "mai"} data-testid={`sched-${j.job}`}>{j.job} {j.orario}{oggi ? ` ✓ ${j.origine === "cron" ? "cron" : "interno"}` : ` · ultimo ${fmt(j.ultimo)}`}</span>;
+            })}
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-2 text-[11px] text-slate-500">
         <span>{Object.values(d.regole).join(" · ")}</span>
         <div className="flex gap-2">
