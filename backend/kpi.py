@@ -306,17 +306,28 @@ async def calcola_kpi(user_id: str, anno: int, mese: int) -> dict:
             add(f"fisso:{op}", s["created_at"])
             dinamiche[f"fisso:{op}"] = (f"Fisso/Internet — {op}", "internet")
     rip_q = {"tipo": "riparazione"}
-    if target and target.get("role") == "tecnico":
+    # regole incentivi: le riparazioni "fatte" vanno a chi le lavora (riparazioni_a); a chi le registra (quota_da) ne resta 1 ogni N (la N-esima)
+    icfg = await db.incentivi_config.find_one({}, {"_id": 0, "riparazioni_a": 1, "riparazioni_quota_da": 1, "riparazioni_quota_ogni": 1}) or {}
+    rip_a, quota_da, quota_ogni = icfg.get("riparazioni_a") or "", icfg.get("riparazioni_quota_da") or "", int(icfg.get("riparazioni_quota_ogni") or 0)
+    if rip_a:
+        if user_id != rip_a:
+            rip_q["created_by"] = user_id
+    elif target and target.get("role") == "tecnico":
         pass
     elif target and target.get("store_ids"):
         rip_q["venditore_id"] = {"$in": target["store_ids"]}
     else:
         rip_q["created_by"] = user_id
-    async for r in db.servizi.find({**rip_q, "$or": [{"created_at": rng}, {"updated_at": rng}, {"data_uscita": rng}]}, {"_id": 0, "client_id": 1, "created_at": 1, "updated_at": 1, "stato": 1, "data_uscita": 1, "esito_riparazione": 1, "ricambi_usati": 1}):
-        if start <= (r.get("created_at") or "")[:10] < end:
+    rips = [r async for r in db.servizi.find({**rip_q, "$or": [{"created_at": rng}, {"updated_at": rng}, {"data_uscita": rng}]}, {"_id": 0, "client_id": 1, "created_at": 1, "created_by": 1, "updated_at": 1, "stato": 1, "data_uscita": 1, "esito_riparazione": 1, "ricambi_usati": 1})]
+    chiuse_quota = sorted([r for r in rips if r.get("stato") in RIP_CHIUSI and r.get("created_by") == quota_da and start <= (r.get("data_uscita") or r.get("updated_at") or "")[:10] < end], key=lambda r: r.get("data_uscita") or r.get("updated_at") or "") if rip_a and quota_da and quota_ogni else []
+    a_quota = {id(r) for i, r in enumerate(chiuse_quota, 1) if i % quota_ogni == 0}
+    for r in rips:
+        if start <= (r.get("created_at") or "")[:10] < end and (not rip_a or r.get("created_by") == user_id):
             add("rip_ritirata", r["created_at"], client_id=r.get("client_id"))
         fine = r.get("data_uscita") or r.get("updated_at") or ""
         if r.get("stato") in RIP_CHIUSI and start <= fine[:10] < end:
+            if rip_a and ((user_id == rip_a and id(r) in a_quota) or (user_id != rip_a and id(r) not in a_quota)):
+                continue
             esito = r.get("esito_riparazione") or ("non_riparabile" if r.get("stato") == "non_riparabile" else "")
             if not esito and any((u.get("nome") or "").lower().startswith(("usato", "rigenerat")) for u in r.get("ricambi_usati") or []):
                 esito = "ricambio_usato"
