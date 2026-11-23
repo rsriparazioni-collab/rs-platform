@@ -34,7 +34,7 @@ import pandas as pd
 import pymupdf as fitz
 from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, BackgroundTasks, UploadFile, File, Form
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -3760,6 +3760,10 @@ async def whatsapp_dry_run_set(input: DryRunInput, admin: dict = Depends(require
     _DRY_RUN_CACHE["value"] = None
     return {"dry_run": input.value}
 
+WA_TIPI_AUTOMATICI = {"rinnovo_energia", "bollette", "vincolo", "offerta_annuale", "truffe", "promemoria_ritiro", "compleanno", "social_cambiaora", "social_rs", "vendita_ordine_fermo", "sollecito_ritiro", "bollette_rinnovo"}
+WA_PAUSA_AUTOMATICI_SEC = 6
+
+
 async def wa_send(phone: str, message: str, session: str = "default", tipo: str = "", client_id: str = "", servizio_id: str = ""):
     log = {"id": str(uuid.uuid4()), "phone": phone, "session": session, "message": message[:1000], "tipo": tipo,
            "client_id": client_id, "servizio_id": servizio_id,
@@ -3768,6 +3772,8 @@ async def wa_send(phone: str, message: str, session: str = "default", tipo: str 
         log.update({"ok": True, "session_used": "dry-run", "dry_run": True})
         await db.wa_log.insert_one(log)
         return {"status": "dry-run", "dry_run": True}
+    if tipo in WA_TIPI_AUTOMATICI:
+        await asyncio.sleep(WA_PAUSA_AUTOMATICI_SEC)  # distanzia gli invii automatici: niente raffiche che bloccano il numero
     try:
         async with httpx.AsyncClient(timeout=30) as http_client:
             resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message, "session": session}, headers=wa_headers())
@@ -6467,6 +6473,9 @@ def _audit_classify(method: str, path: str):
 
 @app.middleware("http")
 async def audit_middleware(request: Request, call_next):
+    if request.url.path.startswith("/api/cron/") and request.method == "POST" and not request.url.path.endswith("/whatsapp-due") and await avvisi_in_pausa():
+        # pausa avvisi (ripartenza pulita): il cron piattaforma viene ringraziato ma non eseguito; lo scheduler interno recupera alla fine della pausa
+        return JSONResponse({"status": "paused"})
     response = await call_next(request)
     if request.url.path.startswith("/api/cron/") and request.method == "POST" and response.status_code < 300:
         # il cron piattaforma ha chiamato: lo scheduler interno non deve ripetere il job oggi
@@ -6954,10 +6963,32 @@ SCHEDULER_JOBS = [
 ]
 
 
+async def _ripartenza_pulita_una_tantum() -> None:
+    """Richiesta utente: i falliti di oggi non vanno rimandati; domani gli avvisi ripartono dalle 15:00 (ora italiana), poi tutto regolare."""
+    from zoneinfo import ZoneInfo
+    if await db.settings.find_one({"key": "ripartenza_pulita_v1"}, {"_id": 1}):
+        return
+    oggi_utc = datetime.now(timezone.utc).isoformat()[:10]
+    res = await db.wa_log.update_many({"ok": False, "at": {"$gte": oggi_utc}, "retried_at": {"$in": [None]}},
+                                      {"$set": {"retried_at": datetime.now(timezone.utc).isoformat(), "annullato": True, "annullato_motivo": "ripartenza pulita richiesta dall'amministrazione"}})
+    domani_15 = (datetime.now(ZoneInfo("Europe/Rome")) + timedelta(days=1)).replace(hour=15, minute=0, second=0, microsecond=0)
+    await db.settings.update_one({"key": "avvisi_pausa_fino"}, {"$set": {"value": domani_15.astimezone(timezone.utc).isoformat()}}, upsert=True)
+    await db.settings.update_one({"key": "ripartenza_pulita_v1"}, {"$set": {"value": True, "at": datetime.now(timezone.utc).isoformat(), "falliti_annullati": res.modified_count}}, upsert=True)
+    logger.info(f"ripartenza pulita: {res.modified_count} falliti annullati, avvisi in pausa fino a {domani_15}")
+
+
+async def avvisi_in_pausa() -> bool:
+    doc = await db.settings.find_one({"key": "avvisi_pausa_fino"}, {"_id": 0, "value": 1})
+    return bool(doc and doc.get("value") and datetime.now(timezone.utc).isoformat() < doc["value"])
+
+
 async def scheduler_interno_tick() -> None:
     from zoneinfo import ZoneInfo
+    await _ripartenza_pulita_una_tantum()
     gate = await db.settings.find_one({"key": "scheduler_interno"}, {"_id": 0})
     if gate is not None and gate.get("value") is False:
+        return
+    if await avvisi_in_pausa():
         return
     ora = datetime.now(ZoneInfo("Europe/Rome"))
     minuti_ora = ora.hour * 60 + ora.minute
