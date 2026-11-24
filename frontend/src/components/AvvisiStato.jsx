@@ -30,6 +30,16 @@ export default function AvvisiStato() {
       load();
     } catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
   };
+  const reinvia = async () => {
+    if (!window.confirm("Falliti delle ultime 24 ore: annullo i doppioni e i già inviati, poi mando UNA sola volta quelli corretti (a rate, nei limiti). Procedo?")) return;
+    setBusy(true);
+    try {
+      const r = await api.post("/avvisi/reinvia-falliti?ore=24");
+      setEsito({ reinvio: r.data });
+      toast.success(`Pianificati ${r.data.da_inviare} invii · ${r.data.doppioni_annullati} doppioni annullati`);
+      load();
+    } catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
+  };
   if (!d) return null;
   const giri = Object.entries(LABEL).map(([k, l]) => [k, l, d.giri[k]]);
   return (
@@ -69,12 +79,22 @@ export default function AvvisiStato() {
           <button type="button" onClick={verifica} disabled={busy} className="rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-100" data-testid="avvisi-verifica-invia">
             {busy ? "Controllo…" : "Verifica scadenze 30→1 gg e invia i mancanti"}
           </button>
+          <button type="button" onClick={reinvia} disabled={busy} className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100" data-testid="avvisi-reinvia-falliti">
+            Falliti 24h: annulla doppioni e reinvia i corretti
+          </button>
           <button type="button" onClick={ripristina} disabled={busy} className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100" data-testid="avvisi-ripristina-test">
             Riabilita avvisi fatti in modalità test
           </button>
         </div>
       </div>
-      {esito && (
+      {esito?.reinvio && (
+        <div className="border-t px-5 py-2 text-xs" data-testid="avvisi-reinvio-esito">
+          <p className="font-medium text-slate-800">Falliti ultime 24 ore: {esito.reinvio.falliti_trovati}</p>
+          <p className="text-slate-600"><b className="text-emerald-700">{esito.reinvio.da_inviare} in invio</b> · {esito.reinvio.doppioni_annullati} doppioni annullati · {esito.reinvio.gia_inviati_ok} già inviati correttamente · {esito.reinvio.non_validi} numeri/testi non validi</p>
+          <p className="text-slate-500">{esito.reinvio.nota}</p>
+        </div>
+      )}
+      {esito && !esito.reinvio && (
         <div className="border-t px-5 py-2 text-xs" data-testid="avvisi-verifica-esito">
           <p className="font-medium text-slate-800">Esito controllo scadenze {esito.finestra.a}→{esito.finestra.da} giorni{esito.dry_run && <span className="ml-2 text-amber-700">(modalità test: nessun invio reale)</span>}</p>
           <p className="text-slate-600">Rinnovi luce/gas: <b className="text-emerald-700">{esito.rinnovo_energia.inviati_ora} inviati ora</b> · {esito.rinnovo_energia.gia_inviati} già avvisati in precedenza · {esito.rinnovo_energia.errori.length} errori</p>

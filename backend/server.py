@@ -7023,6 +7023,52 @@ async def scheduler_interno_tick() -> None:
         asyncio.create_task(_esegui_isolato(f"sched-{nome}", fn))
 
 
+@api_router.post("/avvisi/reinvia-falliti")
+async def avvisi_reinvia_falliti(ore: int = 24, background_tasks: BackgroundTasks = None, admin: dict = Depends(require_admin)):
+    """Falliti delle ultime N ore: i doppioni (stesso numero + stesso tipo/testo) vengono annullati, resta un solo invio per numero; si saltano
+    numeri non validi e messaggi già andati a buon fine nello stesso periodo. L'invio reale avviene in background a rate (limiti orari/giornalieri)."""
+    da = (datetime.now(timezone.utc) - timedelta(hours=ore)).isoformat()
+    falliti = await db.wa_log.find({"ok": False, "dry_run": {"$ne": True}, "at": {"$gte": da}, "retried_ok": {"$ne": True}}, {"_id": 0}).sort("at", 1).to_list(5000)
+    riusciti = {(_tel_norm(l.get("phone")), l.get("tipo") or "") async for l in db.wa_log.find({"ok": True, "dry_run": {"$ne": True}, "at": {"$gte": da}}, {"_id": 0, "phone": 1, "tipo": 1})}
+    now = datetime.now(timezone.utc).isoformat()
+    da_inviare, doppioni, gia_ok, errati, visti = [], 0, 0, 0, set()
+    for f in falliti:
+        tel = _tel_norm(f.get("phone"))
+        if len(tel) < 9 or not (f.get("message") or "").strip():
+            errati += 1
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": now, "annullato": True, "annullato_motivo": "numero o testo non valido"}})
+            continue
+        chiave = (tel, f.get("tipo") or f["message"][:80])
+        if chiave in riusciti:
+            gia_ok += 1
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": now, "annullato": True, "annullato_motivo": "già inviato correttamente"}})
+            continue
+        if chiave in visti:
+            doppioni += 1
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": now, "annullato": True, "annullato_motivo": "doppione"}})
+            continue
+        visti.add(chiave)
+        da_inviare.append(f)
+
+    async def _invia():
+        ok = 0
+        for f in da_inviare:
+            try:
+                r = await wa_send(f["phone"], f["message"], session=f.get("session") or "default", tipo=f.get("tipo") or "reinvio", client_id=f.get("client_id") or "")
+                if not (r or {}).get("dry_run"):
+                    await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": datetime.now(timezone.utc).isoformat(), "retried_ok": True, "annullato": False}})
+                    ok += 1
+            except HTTPException as e:
+                if e.status_code == 429:
+                    logger.info(f"reinvio falliti: limite raggiunto, {len(da_inviare) - ok} restano per il prossimo giro")
+                    break
+        await db.cron_log.update_one({"job": "reinvio-falliti-manuale"}, {"$set": {"last_run": datetime.now(timezone.utc).isoformat(), "esito": {"inviati": ok, "pianificati": len(da_inviare)}}}, upsert=True)
+
+    background_tasks.add_task(_invia)
+    return {"falliti_trovati": len(falliti), "doppioni_annullati": doppioni, "gia_inviati_ok": gia_ok, "non_validi": errati, "da_inviare": len(da_inviare),
+            "nota": "L'invio parte ora in background, distanziato e nei limiti orari/giornalieri: quelli oltre il limite ripartono al giro automatico successivo."}
+
+
 @api_router.get("/avvisi/scheduler")
 async def avvisi_scheduler(admin: dict = Depends(require_admin)):
     """Stato dei job giornalieri: chi li ha fatti partire oggi (cron piattaforma o scheduler interno)."""
