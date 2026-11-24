@@ -3835,6 +3835,10 @@ async def _motivo_doppione(phone: str, tipo: str, message: str) -> Optional[str]
     tel = _tel_norm(phone)
     if not tel or phone.strip().endswith("@g.us"):
         return None
+    if not tipo.startswith(WA_TIPI_INTERNI_PREFIX) and tel != _tel_norm(contabilita_module.NUMERO_AMMINISTRAZIONE):
+        nostro = await db.wa_sessioni_stato.find_one({"numero": {"$regex": tel + "$"}}, {"_id": 0, "nome": 1})
+        if nostro:
+            return f"il numero del cliente è quello del nostro negozio ({nostro.get('nome')}): correggere il telefono in scheda cliente"
     now = datetime.now(timezone.utc)
     base = {"dry_run": {"$ne": True}, "saltato": {"$ne": True}, "$or": [{"phone_norm": tel}, {"phone": phone}]}
     da_corso = (now - timedelta(minutes=10)).isoformat()
@@ -4016,6 +4020,18 @@ async def whatsapp_mappa_invii(user: dict = Depends(get_current_user)):
         problemi = [r["flusso"] for r in righe if r["da"].get("connessa") is not True]
         out.append({"store_id": s["id"], "negozio": s["nome"], "review_link": bool(s.get("review_link")), "telefono_avvisi": s.get("telefono_avvisi") or "", "righe": righe, "problemi": problemi})
     return {"negozi": out, "dry_run": await wa_dry_run_attivo()}
+
+@api_router.get("/whatsapp/clienti-numero-negozio")
+async def whatsapp_clienti_numero_negozio(admin: dict = Depends(require_admin)):
+    """Clienti con il telefono uguale a uno dei nostri numeri WhatsApp (errore di inserimento): i loro messaggi arriverebbero al negozio."""
+    numeri = [s["numero"][-10:] async for s in db.wa_sessioni_stato.find({"numero": {"$nin": [None, ""]}}, {"_id": 0, "numero": 1}) if s.get("numero")]
+    if not numeri:
+        return []
+    out = []
+    async for c in db.clients.find({"deleted": {"$ne": True}, "telefono": {"$regex": "(" + "|".join(numeri) + ")$"}}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "telefono": 1, "venditore_id": 1, "origine": 1}):
+        out.append(c)
+    return out
+
 
 @api_router.get("/whatsapp/sessions-summary")
 async def whatsapp_sessions_summary(admin: dict = Depends(require_admin)):
