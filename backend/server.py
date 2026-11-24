@@ -3710,8 +3710,10 @@ async def whatsapp_coda_stato(user: dict = Depends(get_current_user)):
     loop = await db.cron_log.find_one({"job": "whatsapp-queue-loop"}, {"_id": 0, "last_run": 1})
     return {"in_coda": in_coda, "prossimo_invio": (prossimo or {}).get("send_after"),
             "ultimo_invio_ok": ultimo_ok, "ultimo_errore": ultimo_err,
-            "inviati_24h": await db.wa_log.count_documents({"ok": True, "at": {"$gte": da}}),
-            "falliti_24h": await db.wa_log.count_documents({"ok": False, "at": {"$gte": da}}),
+            "inviati_24h": await db.wa_log.count_documents({"ok": True, "saltato": {"$ne": True}, "at": {"$gte": da}}),
+            "saltati_24h": await db.wa_log.count_documents({"saltato": True, "at": {"$gte": da}}),
+            "falliti_24h": await db.wa_log.count_documents({"ok": False, "in_corso": {"$ne": True}, "at": {"$gte": da}}),
+            "in_attesa_riaggancio": await db.wa_log.count_documents({"ok": False, "in_corso": {"$ne": True}, "retried_at": {"$in": [None]}, "at": {"$gte": da}, "error": {"$regex": "riaggancio|non connessa|limite|fuori orario", "$options": "i"}}),
             "ultimo_giro_coda": (loop or {}).get("last_run"), "dry_run": await wa_dry_run_attivo()}
 
 async def wa_session_cliente(c: dict) -> str:
@@ -3772,11 +3774,14 @@ async def _limiti_automatici() -> dict:
 
 
 async def _conteggio_automatici(da_iso: str) -> int:
-    return await db.wa_log.count_documents({"ok": True, "dry_run": {"$ne": True}, "tipo": {"$in": list(WA_TIPI_AUTOMATICI)}, "at": {"$gte": da_iso}})
+    return await db.wa_log.count_documents({"ok": True, "dry_run": {"$ne": True}, "saltato": {"$ne": True}, "tipo": {"$in": list(WA_TIPI_AUTOMATICI)}, "at": {"$gte": da_iso}})
 
 
 async def _controlla_limiti_automatici() -> None:
-    """Arretrati (es. 300 dopo un blocco) vanno smaltiti a rate: max N/ora e M/giorno; oltre, il messaggio resta 'da inviare' e riparte il giorno dopo."""
+    """Arretrati (es. 300 dopo un blocco) vanno smaltiti a rate: max N/ora e M/giorno e solo di giorno; oltre, il messaggio resta 'da inviare' e riparte dopo."""
+    ora_it = datetime.now(ZoneInfo("Europe/Rome")).hour
+    if not (WA_ORARIO_AUTOMATICI[0] <= ora_it < WA_ORARIO_AUTOMATICI[1]):
+        raise HTTPException(status_code=429, detail=f"fuori orario invii automatici ({WA_ORARIO_AUTOMATICI[0]}-{WA_ORARIO_AUTOMATICI[1]}): riprende domattina")
     lim = await _limiti_automatici()
     now = datetime.now(timezone.utc)
     if await _conteggio_automatici(now.isoformat()[:10]) >= lim["giorno"]:
@@ -3785,20 +3790,88 @@ async def _controlla_limiti_automatici() -> None:
         raise HTTPException(status_code=429, detail=f"limite orario invii automatici ({lim['ora']}) raggiunto: riprende tra poco")
 
 
+WA_ORARIO_AUTOMATICI = (8, 21)  # ora italiana: fuori da questa finestra gli automatici aspettano
+# finestra anti-doppione per tipo (ore): stesso numero + stesso tipo già inviato ok → non si rimanda
+WA_DEDUP_ORE = {"compleanno": 24 * 300, "social_cambiaora": 24 * 365, "social_rs": 24 * 365, "truffe": 24 * 365,
+                "rinnovo_energia": 24 * 25, "bollette": 24 * 15, "bollette_rinnovo": 24 * 25, "offerta_annuale": 24 * 300,
+                "vincolo": 24 * 300, "promemoria_ritiro": 24 * 3, "sollecito_ritiro": 24 * 3, "vendita_ordine_fermo": 24 * 3}
+WA_TESTO_UGUALE_ORE = 6
+_WA_STATUS_CACHE = {"at": 0.0, "sessions": []}
+WA_TIPI_INTERNI_PREFIX = ("avviso_negozio", "riepilogo", "corrispettivi", "promemoria_kpi", "promemoria_estere", "promemoria_ade", "incentivi",
+                          "fiscale", "scadenzario", "pdp_", "ade_", "chiusura_mese", "fatture_non_trovate", "switcho", "magazzino", "sessione_")
+
+
+async def wa_sessioni_connesse(max_age: float = 20.0) -> list:
+    """Sessioni connesse sul microservizio (cache breve per non martellare /status ad ogni invio)."""
+    import time
+    if time.time() - _WA_STATUS_CACHE["at"] > max_age:
+        try:
+            async with httpx.AsyncClient(timeout=8) as http_client:
+                st = (await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())).json()
+            _WA_STATUS_CACHE.update({"at": time.time(), "sessions": [s for s in st.get("sessions", []) if s.get("connected")]})
+        except Exception:
+            _WA_STATUS_CACHE.update({"at": time.time(), "sessions": None})
+    return _WA_STATUS_CACHE["sessions"]
+
+
+async def _sessione_effettiva(phone: str, session: str, tipo: str) -> str:
+    """Numero richiesto se collegato; altrimenti 'default'. I messaggi interni (riepiloghi, avvisi ai negozi/amministrazione)
+    partono da qualunque numero collegato: non devono mai restare fermi. I messaggi ai clienti aspettano il riaggancio del loro numero."""
+    conn = await wa_sessioni_connesse()
+    if conn is None:
+        raise HTTPException(status_code=503, detail="Servizio WhatsApp non raggiungibile: in attesa di riaggancio")
+    ids = {s["session"] for s in conn}
+    if session in ids:
+        return session
+    if "default" in ids:
+        return "default"
+    interno = tipo.startswith(WA_TIPI_INTERNI_PREFIX) or _tel_norm(phone) == _tel_norm(contabilita_module.NUMERO_AMMINISTRAZIONE)
+    if interno and ids:
+        return sorted(ids)[0]
+    raise HTTPException(status_code=503, detail=f"Sessione WhatsApp '{session}' non connessa: in attesa di riaggancio")
+
+
+async def _motivo_doppione(phone: str, tipo: str, message: str) -> Optional[str]:
+    tel = _tel_norm(phone)
+    if not tel or phone.strip().endswith("@g.us"):
+        return None
+    now = datetime.now(timezone.utc)
+    base = {"dry_run": {"$ne": True}, "saltato": {"$ne": True}, "$or": [{"phone_norm": tel}, {"phone": phone}]}
+    da_corso = (now - timedelta(minutes=10)).isoformat()
+    if await db.wa_log.find_one({**base, "in_corso": True, "at": {"$gte": da_corso}, "message": message[:1000]}):
+        return "stesso messaggio già in partenza"
+    if tipo in WA_TIPI_AUTOMATICI:
+        da = (now - timedelta(hours=WA_DEDUP_ORE.get(tipo, 48))).isoformat()
+        if await db.wa_log.find_one({**base, "ok": True, "tipo": tipo, "at": {"$gte": da}}):
+            return f"'{tipo}' già inviato a questo numero di recente"
+    da = (now - timedelta(hours=WA_TESTO_UGUALE_ORE)).isoformat()
+    if await db.wa_log.find_one({**base, "ok": True, "at": {"$gte": da}, "message": message[:1000]}):
+        return f"stesso testo già inviato nelle ultime {WA_TESTO_UGUALE_ORE} ore"
+    return None
+
+
 async def wa_send(phone: str, message: str, session: str = "default", tipo: str = "", client_id: str = "", servizio_id: str = ""):
-    log = {"id": str(uuid.uuid4()), "phone": phone, "session": session, "message": message[:1000], "tipo": tipo,
+    log = {"id": str(uuid.uuid4()), "phone": phone, "phone_norm": _tel_norm(phone), "session": session, "message": message[:1000], "tipo": tipo,
            "client_id": client_id, "servizio_id": servizio_id,
            "at": datetime.now(timezone.utc).isoformat(), "ok": False, "error": None, "session_used": None}
     if await wa_dry_run_attivo():
         log.update({"ok": True, "session_used": "dry-run", "dry_run": True})
         await db.wa_log.insert_one(log)
         return {"status": "dry-run", "dry_run": True}
-    if tipo in WA_TIPI_AUTOMATICI:
-        await _controlla_limiti_automatici()
-        await asyncio.sleep(random.randint(WA_PAUSA_AUTOMATICI_SEC[0], WA_PAUSA_AUTOMATICI_SEC[1]))  # distanzia gli invii automatici: niente raffiche che bloccano il numero
+    motivo = await _motivo_doppione(phone, tipo, message)
+    if motivo:
+        log.update({"ok": True, "saltato": True, "session_used": "saltato", "error": motivo})
+        await db.wa_log.insert_one(log)
+        return {"status": "saltato", "saltato": True, "motivo": motivo}
+    await db.wa_log.insert_one({**log, "in_corso": True})  # prenota subito: un secondo invio uguale nel frattempo viene saltato
     try:
+        if tipo in WA_TIPI_AUTOMATICI:
+            await _controlla_limiti_automatici()
+        sess = await _sessione_effettiva(phone, session, tipo)
+        if tipo in WA_TIPI_AUTOMATICI:
+            await asyncio.sleep(random.randint(WA_PAUSA_AUTOMATICI_SEC[0], WA_PAUSA_AUTOMATICI_SEC[1]))  # distanzia gli invii automatici: niente raffiche che bloccano il numero
         async with httpx.AsyncClient(timeout=30) as http_client:
-            resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message, "session": session}, headers=wa_headers())
+            resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message, "session": sess}, headers=wa_headers())
         data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
         log["ok"] = resp.status_code == 200 and bool(data.get("success"))
         log["session_used"] = data.get("session")
@@ -3813,7 +3886,7 @@ async def wa_send(phone: str, message: str, session: str = "default", tipo: str 
         log["error"] = str(e)
         raise HTTPException(status_code=502, detail=f"Servizio WhatsApp non raggiungibile: {e}")
     finally:
-        await db.wa_log.insert_one(log)
+        await db.wa_log.update_one({"id": log["id"]}, {"$set": {k: v for k, v in log.items() if k != "id"}, "$unset": {"in_corso": ""}})
 
 PRIVACY_PROXY = "https://rsriparazioni.com/api/proxy.php"
 
@@ -6340,6 +6413,7 @@ async def startup():
     except Exception as e:
         logger.error(f"Storage init fallito: {e}")
     asyncio.create_task(whatsapp_queue_loop())
+    asyncio.create_task(wa_sessioni_monitor_loop())
     asyncio.create_task(avvisi_bollette_loop())
     asyncio.create_task(backup_module.backup_loop())
     asyncio.create_task(contabilita_module.invii_programmati_loop())
@@ -6365,39 +6439,88 @@ async def whatsapp_queue_loop() -> None:
             logger.error(f"whatsapp_queue_loop errore: {e}")
 
 async def reinvio_automatico_falliti() -> dict:
-    """Rimanda da soli i WA falliti per servizio giù/sessione non connessa (ultime 24h, max 3 tentativi), solo se il servizio ora risponde."""
-    da = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    q = {"ok": False, "dry_run": {"$ne": True}, "at": {"$gte": da}, "retried_at": {"$in": [None]}, "phone": {"$nin": [None, ""]}, "message": {"$nin": [None, ""]},
-         "error": {"$regex": "raggiungibile|non connessa|connect|timeout|502|503|Sessione", "$options": "i"}, "auto_retry": {"$not": {"$gte": 3}}}
-    falliti = await db.wa_log.find(q, {"_id": 0}).sort("at", 1).to_list(200)
+    """Rimanda da soli i WA fermi per servizio giù / numero scollegato / limite o orario (ultime 72h, max 10 tentativi veri), appena il numero è di nuovo collegato."""
+    da = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+    q = {"ok": False, "dry_run": {"$ne": True}, "in_corso": {"$ne": True}, "at": {"$gte": da}, "retried_at": {"$in": [None]}, "phone": {"$nin": [None, ""]}, "message": {"$nin": [None, ""]},
+         "error": {"$regex": "raggiungibile|non connessa|connect|timeout|502|503|Sessione|riaggancio|limite|fuori orario", "$options": "i"}, "auto_retry": {"$not": {"$gte": 10}}}
+    falliti = await db.wa_log.find(q, {"_id": 0}).sort("at", 1).to_list(300)
     if not falliti:
         return {"reinviati": 0}
-    try:
-        async with httpx.AsyncClient(timeout=8) as http_client:
-            st = (await http_client.get(f"{WA_SERVICE}/status", headers=wa_headers())).json()
-        connesse = {s["session"] for s in st.get("sessions", []) if s.get("connected")}
-    except Exception:
+    conn = await wa_sessioni_connesse(max_age=0)
+    if conn is None:
         return {"reinviati": 0, "motivo": "servizio ancora giù"}
+    connesse = {s["session"] for s in conn}
     ok, visti = 0, set()
     now = datetime.now(timezone.utc).isoformat()
     for f in falliti:
         sess = f.get("session") or "default"
-        if sess not in connesse and sess != "dry-run":
-            continue
-        chiave = (f["phone"], f["message"][:80])
+        interno = (f.get("tipo") or "").startswith(WA_TIPI_INTERNI_PREFIX) or _tel_norm(f["phone"]) == _tel_norm(contabilita_module.NUMERO_AMMINISTRAZIONE)
+        if not connesse or (sess not in connesse and "default" not in connesse and not interno):
+            continue  # il suo numero non è ancora tornato: resta in attesa, nessun tentativo bruciato
+        chiave = (_tel_norm(f["phone"]), f.get("tipo") or f["message"][:80])
         if chiave in visti:
-            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": now, "retried_skip": "duplicato"}})
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": now, "annullato": True, "annullato_motivo": "doppione"}})
             continue
         visti.add(chiave)
         try:
-            await wa_send(f["phone"], f["message"], session=sess, tipo=f.get("tipo") or "reinvio", client_id=f.get("client_id") or "")
-            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": now, "retried_ok": True, "retried_auto": True}})
+            r = await wa_send(f["phone"], f["message"], session=sess, tipo=f.get("tipo") or "reinvio", client_id=f.get("client_id") or "")
+            await db.wa_log.update_one({"id": f["id"]}, {"$set": {"retried_at": now, "retried_ok": True, "retried_auto": True, **({"annullato": True, "annullato_motivo": r.get("motivo")} if r.get("saltato") else {})}})
             ok += 1
-        except HTTPException:
+        except HTTPException as e:
+            if e.status_code == 429:
+                logger.info(f"reinvio automatico: {e.detail}; il resto riparte al prossimo giro")
+                break
             await db.wa_log.update_one({"id": f["id"]}, {"$inc": {"auto_retry": 1}})
     if ok:
         logger.info(f"reinvio automatico WhatsApp: {ok} messaggi recuperati")
     return {"reinviati": ok}
+
+WA_SCOLLEGATA_AVVISO_MIN = 10
+
+
+async def wa_sessioni_monitor_tick() -> dict:
+    """Ogni giro: memorizza quali numeri sono collegati; se un numero che era collegato resta giù oltre 10 minuti avvisa l'amministrazione (una volta ogni 6 ore per numero)."""
+    conn = await wa_sessioni_connesse(max_age=0)
+    if conn is None:
+        return {"servizio": "giù"}
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    connesse = {s["session"]: s for s in conn}
+    for sid, s in connesse.items():
+        await db.wa_sessioni_stato.update_one({"session": sid}, {"$set": {"last_connected": now_iso, "nome": (s.get("user") or {}).get("name"), "numero": ((s.get("user") or {}).get("id") or "").split(":")[0].split("@")[0], "connected": True}}, upsert=True)
+    avvisate = []
+    async for st in db.wa_sessioni_stato.find({"session": {"$nin": list(connesse)}}, {"_id": 0}):
+        if st.get("connected"):
+            await db.wa_sessioni_stato.update_one({"session": st["session"]}, {"$set": {"connected": False, "disconnected_at": now_iso}})
+            continue
+        giu_da = st.get("disconnected_at") or st.get("last_connected")
+        if not giu_da or (now - datetime.fromisoformat(giu_da)).total_seconds() < WA_SCOLLEGATA_AVVISO_MIN * 60:
+            continue
+        if (now - datetime.fromisoformat(st.get("last_connected") or now_iso)).days > 7:
+            continue  # sessione vecchia/orfana: non è più in uso
+        ultimo = st.get("avvisato_at")
+        if ultimo and (now - datetime.fromisoformat(ultimo)).total_seconds() < 6 * 3600:
+            continue
+        testo = (f"⚠️ WhatsApp scollegato: *{st.get('nome') or st['session']}* ({st.get('numero') or '?'}) non è più collegato al gestionale da oltre {WA_SCOLLEGATA_AVVISO_MIN} minuti.\n"
+                 f"I messaggi di quel numero restano in attesa e ripartono da soli appena si ricollega. Apri Gestionale → WhatsApp → Reimposta e inquadra il QR dal telefono.")
+        try:
+            await wa_send(contabilita_module.NUMERO_AMMINISTRAZIONE, testo, session="default", tipo="sessione_scollegata")
+            avvisate.append(st["session"])
+        except HTTPException as e:
+            logger.warning(f"avviso sessione scollegata non inviato: {e.detail}")
+        await db.wa_sessioni_stato.update_one({"session": st["session"]}, {"$set": {"avvisato_at": now_iso}})
+    return {"connesse": len(connesse), "avvisate": avvisate}
+
+
+async def wa_sessioni_monitor_loop() -> None:
+    await asyncio.sleep(90)
+    while True:
+        try:
+            await wa_sessioni_monitor_tick()
+        except Exception as e:
+            logger.error(f"monitor sessioni WhatsApp: {e}")
+        await asyncio.sleep(300)
+
 
 async def avvisi_bollette_loop() -> None:
     """Fallback interno: una volta al giorno (ore 10 Italia) invia i WA 'bollette' ai clienti in alert da 20+ giorni."""
@@ -7028,7 +7151,7 @@ async def avvisi_reinvia_falliti(ore: int = 24, background_tasks: BackgroundTask
     """Falliti delle ultime N ore: i doppioni (stesso numero + stesso tipo/testo) vengono annullati, resta un solo invio per numero; si saltano
     numeri non validi e messaggi già andati a buon fine nello stesso periodo. L'invio reale avviene in background a rate (limiti orari/giornalieri)."""
     da = (datetime.now(timezone.utc) - timedelta(hours=ore)).isoformat()
-    falliti = await db.wa_log.find({"ok": False, "dry_run": {"$ne": True}, "at": {"$gte": da}, "retried_ok": {"$ne": True}}, {"_id": 0}).sort("at", 1).to_list(5000)
+    falliti = await db.wa_log.find({"ok": False, "dry_run": {"$ne": True}, "in_corso": {"$ne": True}, "at": {"$gte": da}, "retried_ok": {"$ne": True}}, {"_id": 0}).sort("at", 1).to_list(5000)
     riusciti = {(_tel_norm(l.get("phone")), l.get("tipo") or "") async for l in db.wa_log.find({"ok": True, "dry_run": {"$ne": True}, "at": {"$gte": da}}, {"_id": 0, "phone": 1, "tipo": 1})}
     now = datetime.now(timezone.utc).isoformat()
     da_inviare, doppioni, gia_ok, errati, visti = [], 0, 0, 0, set()

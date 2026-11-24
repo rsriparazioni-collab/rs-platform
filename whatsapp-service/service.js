@@ -178,6 +178,22 @@ async function initSession(sessionId) {
   return sess;
 }
 
+// Cane da guardia: ogni 2 minuti, una sessione con credenziali salvate ma né connessa né in attesa di QR viene riavviata (riaggancio automatico)
+setInterval(() => {
+  for (const [id, s] of Object.entries(sessions)) {
+    if (s.connected || s.qr) { s.muta = 0; continue; }
+    if (!fs.existsSync(path.join(AUTH_DIR, id, 'creds.json'))) continue;
+    s.muta = (s.muta || 0) + 1;
+    if (s.muta < 2) continue;
+    console.log(`[${id}] watchdog: sessione ferma con credenziali salvate → riaggancio`);
+    try { s.sock && s.sock.end(undefined); } catch (_) { /* ignore */ }
+    delete sessions[id];
+    initSession(id).catch((e) => console.error('Init error:', e));
+  }
+}, 2 * 60 * 1000);
+
+app.get('/health', (req, res) => res.json({ ok: true, sessions: Object.keys(sessions).length, connected: Object.values(sessions).filter((s) => s.connected).length }));
+
 app.get('/status', (req, res) => {
   res.json({
     sessions: Object.entries(sessions).map(([id, s]) => ({

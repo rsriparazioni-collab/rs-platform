@@ -39,7 +39,7 @@ export default function CodaWhatsApp() {
         <div className="rounded-lg bg-slate-50 p-3" data-testid="coda-inviati-24h">
           <p className="text-xs text-slate-500">Inviati ultime 24h</p>
           <p className="text-2xl font-bold text-emerald-700">{s.inviati_24h}</p>
-          <p className="text-xs text-slate-500">{s.falliti_24h} falliti</p>
+          <p className="text-xs text-slate-500" data-testid="coda-dettaglio-24h">{s.falliti_24h} falliti · {s.saltati_24h ?? 0} doppioni evitati · {s.in_attesa_riaggancio ?? 0} in attesa di riaggancio</p>
         </div>
         <div className="rounded-lg bg-slate-50 p-3" data-testid="coda-ultimo-ok">
           <p className="text-xs text-slate-500 flex items-center gap-1"><CheckCircle2 className="h-3 w-3 text-emerald-600" /> Ultimo invio riuscito</p>
