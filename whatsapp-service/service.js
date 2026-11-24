@@ -81,16 +81,18 @@ async function initSession(sessionId) {
     }
   });
   sock.ev.on('creds.update', saveCreds);
-  // sessione "muta": né connessa né QR entro 60 s (credenziali corrotte/scadute) → reset automatico
+  // sessione "muta": né connessa né QR entro 90 s. Se esistono credenziali salvate NON le cancelliamo (il telefono risulta ancora collegato):
+  // ritentiamo solo la connessione. Le cancelliamo solo se non c'erano credenziali (QR mai arrivato).
+  const avevaCredenziali = fs.existsSync(path.join(dir, 'creds.json'));
   setTimeout(() => {
     if (sessions[sessionId] === sess && !sess.connected && !sess.qr) {
-      console.log(`[${sessionId}] nessun QR né connessione dopo 60 s: reset automatico`);
+      console.log(`[${sessionId}] nessun QR né connessione dopo 90 s: ${avevaCredenziali ? 'nuovo tentativo con le credenziali salvate' : 'reset automatico'}`);
       try { sock.end(undefined); } catch (_) { /* ignore */ }
       delete sessions[sessionId];
-      fs.rmSync(dir, { recursive: true, force: true });
+      if (!avevaCredenziali) fs.rmSync(dir, { recursive: true, force: true });
       initSession(sessionId).catch((e) => console.error('Init error:', e));
     }
-  }, 60 * 1000);
+  }, 90 * 1000);
   // Inoltro al gestionale dei messaggi ricevuti nei gruppi (es. gruppo Switcho)
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify' || !CRM_URL || !CRM_WEBHOOK_SECRET) return;

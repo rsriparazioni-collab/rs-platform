@@ -3990,13 +3990,8 @@ async def whatsapp_qr(session: str = "default", user: dict = Depends(get_current
         async with httpx.AsyncClient(timeout=25) as http_client:
             resp = await http_client.get(f"{WA_SERVICE}/qr", params={"session": session}, headers=wa_headers())
             data = resp.json()
-            # sessione "muta" (credenziali scadute: né connessa né QR): la reimpostiamo da soli, al massimo una volta ogni 2 minuti
-            if not data.get("connected") and not data.get("qr"):
-                import time
-                if time.time() - _WA_AUTO_RESET.get(session, 0) > 120:
-                    _WA_AUTO_RESET[session] = time.time()
-                    await http_client.post(f"{WA_SERVICE}/reset", json={"session": session}, headers=wa_headers())
-                    data["reset_automatico"] = True
+            # niente reset automatico: se il telefono risulta collegato ma il servizio sta solo riconnettendo, cancellare le credenziali
+            # obbligherebbe a riscansionare il QR. Il reset resta solo manuale (pulsante "Reimposta").
             return data
     except Exception:
         return {"qr": None, "connected": False}
