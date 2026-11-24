@@ -170,7 +170,8 @@ async function initSession(sessionId) {
     saveCreds();
     if (sess.qr) {
       const parti = sess.qr.split(',');
-      if (parti.length === 4) { parti[3] = nuovo; sess.qr = parti.join(','); }
+      // formato QR: [ref,noise,identity,adv] oppure nuovo [url#ref,noise,identity,adv,1]
+      if (parti.length >= 4) { parti[3] = nuovo; sess.qr = parti.join(','); }
     }
     console.log(`[${sessionId}] companion_reg_refresh: segreto ADV ruotato, QR aggiornato`);
   });
