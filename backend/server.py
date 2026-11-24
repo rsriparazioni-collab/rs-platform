@@ -16,6 +16,7 @@ import hashlib
 import ipaddress
 import logging
 from datetime import datetime, date, timezone, timedelta
+import random
 from zoneinfo import ZoneInfo
 from html import escape
 from html.parser import HTMLParser
@@ -3761,7 +3762,27 @@ async def whatsapp_dry_run_set(input: DryRunInput, admin: dict = Depends(require
     return {"dry_run": input.value}
 
 WA_TIPI_AUTOMATICI = {"rinnovo_energia", "bollette", "vincolo", "offerta_annuale", "truffe", "promemoria_ritiro", "compleanno", "social_cambiaora", "social_rs", "vendita_ordine_fermo", "sollecito_ritiro", "bollette_rinnovo"}
-WA_PAUSA_AUTOMATICI_SEC = 6
+WA_PAUSA_AUTOMATICI_SEC = (20, 60)
+WA_LIMITI_DEFAULT = {"ora": 30, "giorno": 120}
+
+
+async def _limiti_automatici() -> dict:
+    doc = await db.settings.find_one({"key": "wa_limiti_automatici"}, {"_id": 0, "value": 1})
+    return {**WA_LIMITI_DEFAULT, **((doc or {}).get("value") or {})}
+
+
+async def _conteggio_automatici(da_iso: str) -> int:
+    return await db.wa_log.count_documents({"ok": True, "dry_run": {"$ne": True}, "tipo": {"$in": list(WA_TIPI_AUTOMATICI)}, "at": {"$gte": da_iso}})
+
+
+async def _controlla_limiti_automatici() -> None:
+    """Arretrati (es. 300 dopo un blocco) vanno smaltiti a rate: max N/ora e M/giorno; oltre, il messaggio resta 'da inviare' e riparte il giorno dopo."""
+    lim = await _limiti_automatici()
+    now = datetime.now(timezone.utc)
+    if await _conteggio_automatici(now.isoformat()[:10]) >= lim["giorno"]:
+        raise HTTPException(status_code=429, detail=f"limite giornaliero invii automatici ({lim['giorno']}) raggiunto: riprende domani")
+    if await _conteggio_automatici((now - timedelta(hours=1)).isoformat()) >= lim["ora"]:
+        raise HTTPException(status_code=429, detail=f"limite orario invii automatici ({lim['ora']}) raggiunto: riprende tra poco")
 
 
 async def wa_send(phone: str, message: str, session: str = "default", tipo: str = "", client_id: str = "", servizio_id: str = ""):
@@ -3773,7 +3794,8 @@ async def wa_send(phone: str, message: str, session: str = "default", tipo: str 
         await db.wa_log.insert_one(log)
         return {"status": "dry-run", "dry_run": True}
     if tipo in WA_TIPI_AUTOMATICI:
-        await asyncio.sleep(WA_PAUSA_AUTOMATICI_SEC)  # distanzia gli invii automatici: niente raffiche che bloccano il numero
+        await _controlla_limiti_automatici()
+        await asyncio.sleep(random.randint(WA_PAUSA_AUTOMATICI_SEC[0], WA_PAUSA_AUTOMATICI_SEC[1]))  # distanzia gli invii automatici: niente raffiche che bloccano il numero
     try:
         async with httpx.AsyncClient(timeout=30) as http_client:
             resp = await http_client.post(f"{WA_SERVICE}/send", json={"phone": phone, "message": message, "session": session}, headers=wa_headers())
@@ -7013,7 +7035,10 @@ async def avvisi_scheduler(admin: dict = Depends(require_admin)):
     for nome, hh, mm, giorni, _ in SCHEDULER_JOBS:
         m = await db.cron_log.find_one({"job": f"sched:{nome}"}, {"_id": 0})
         out.append({"job": nome, "orario": f"{hh:02d}:{mm:02d}", "giorni": "lun-sab" if giorni == LUN_SAB else ("lunedì" if giorni == {0} else "tutti"), "ultimo": (m or {}).get("last_run"), "origine": (m or {}).get("origine")})
-    return {"jobs": out}
+    lim = await _limiti_automatici()
+    pausa = await db.settings.find_one({"key": "avvisi_pausa_fino"}, {"_id": 0, "value": 1})
+    return {"jobs": out, "limiti": lim, "inviati_oggi": await _conteggio_automatici(datetime.now(timezone.utc).isoformat()[:10]),
+            "ultima_ora": await _conteggio_automatici((datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()), "pausa_fino": (pausa or {}).get("value") if await avvisi_in_pausa() else None}
 
 app.include_router(api_router)
 
