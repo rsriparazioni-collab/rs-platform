@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "react-qr-code";
-import { MessageCircle, CheckCircle2, XCircle, RefreshCw, Store, QrCode, RotateCcw } from "lucide-react";
+import { MessageCircle, CheckCircle2, XCircle, RefreshCw, Store, QrCode, RotateCcw, Download } from "lucide-react";
 import { toast } from "sonner";
-import api, { apiError } from "../lib/api";
+import api, { apiError, downloadBlob } from "../lib/api";
 import { fmtDateTime } from "../lib/constants";
 import { Button } from "../components/ui/button";
 import { useAuth } from "../context/AuthContext";
@@ -106,6 +106,12 @@ export default function WhatsApp() {
         <p className="mt-1 text-sm text-slate-500">
           Energia CambiaOra: sempre dal numero Sondrio (3519460591). Energia ENEL: dal numero di Deborah (o Gravedona). Riparazioni/telefonia: dal numero del negozio
         </p>
+        {user?.role === "admin" && (
+          <Button variant="outline" size="sm" className="mt-2 gap-1" data-testid="wa-download-service-js"
+            onClick={() => downloadBlob("/whatsapp/service-js", "service.js").catch((e) => toast.error(apiError(e)))}>
+            <Download className="h-3.5 w-3.5" /> Scarica service.js aggiornato (per Railway/GitHub)
+          </Button>
+        )}
       </div>
 
       {down && (

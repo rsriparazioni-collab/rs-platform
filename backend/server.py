@@ -4033,6 +4033,17 @@ async def whatsapp_clienti_numero_negozio(admin: dict = Depends(require_admin)):
     return out
 
 
+@api_router.get("/whatsapp/service-js")
+async def whatsapp_service_js(admin: dict = Depends(require_admin)):
+    """Scarica il service.js aggiornato da caricare su Railway/GitHub."""
+    from fastapi.responses import FileResponse
+    from pathlib import Path
+    p = Path(__file__).resolve().parent.parent / "whatsapp-service" / "service.js"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="service.js non trovato")
+    return FileResponse(str(p), media_type="application/javascript", filename="service.js")
+
+
 @api_router.get("/whatsapp/sessions-summary")
 async def whatsapp_sessions_summary(admin: dict = Depends(require_admin)):
     totale = await db.stores.count_documents({}) + 3
